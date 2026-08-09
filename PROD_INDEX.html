@@ -839,6 +839,298 @@
         flex: 0 0 auto;
         margin: 0;
       }
+
+      /* Actos_Condiciones: 8 columnas es el peor caso genérico (7 filas por
+         tarjeta). Se agrupa en: título, quién/dónde reportó, la categoría
+         como titular (qué se encontró) y los cuatro distintivos juntos. */
+      #actos-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #actos-table.pwa-table-cards tbody td,
+      #actos-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #actos-table.pwa-table-cards tbody td::before { display: none; }
+      #actos-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      /* 1) N° + fecha */
+      #actos-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 auto; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px;
+        padding: 0 68px 0 0 !important; margin: 0; border: 0 !important;
+      }
+      #actos-table.pwa-table-cards tbody td:first-child div + div { font-size: 11px !important; color: var(--ds-fg-muted); }
+      /* 2) Quién reportó + área: dato secundario */
+      #actos-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 2; flex: 0 0 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 8px;
+      }
+      #actos-table.pwa-table-cards tbody td:nth-child(2) div:first-child { font-size: 12px !important; font-weight: 700; max-width: none !important; }
+      #actos-table.pwa-table-cards tbody td:nth-child(2) div + div { font-size: 11px !important; color: var(--ds-fg-muted); text-align: right; }
+      /* 3) Categoría: el titular — qué se encontró */
+      #actos-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 3; flex: 0 0 100%; margin-top: 6px;
+        font-size: 15px !important; font-weight: 800 !important; color: var(--ds-fg) !important;
+      }
+      /* 4) Los cuatro distintivos juntos, envolviendo si hace falta */
+      #actos-table.pwa-table-cards tbody td:nth-child(3),
+      #actos-table.pwa-table-cards tbody td:nth-child(5),
+      #actos-table.pwa-table-cards tbody td:nth-child(6),
+      #actos-table.pwa-table-cards tbody td:nth-child(7) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #actos-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* Incidentes: título, quién/dónde, el tipo de evento como titular
+         (agrandado, es la primera pregunta que hace cualquiera que llega al
+         reporte) y gravedad + estado + acciones abiertas juntos al final. */
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #incidentes-table.pwa-table-cards tbody td,
+      #incidentes-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #incidentes-table.pwa-table-cards tbody td::before { display: none; }
+      #incidentes-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #incidentes-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 auto; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px;
+        padding: 0 68px 0 0 !important; margin: 0; border: 0 !important;
+      }
+      #incidentes-table.pwa-table-cards tbody td:first-child div + div { font-size: 11px !important; color: var(--ds-fg-muted); }
+      /* Afectado + área: dato secundario */
+      #incidentes-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 2; flex: 0 0 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 8px;
+      }
+      #incidentes-table.pwa-table-cards tbody td:nth-child(4) div:first-child { font-size: 12px !important; font-weight: 700; max-width: none !important; }
+      #incidentes-table.pwa-table-cards tbody td:nth-child(4) div + div { font-size: 11px !important; color: var(--ds-fg-muted); text-align: right; }
+      /* Tipo de evento: el titular */
+      #incidentes-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 3; flex: 0 0 100%; margin-top: 6px;
+      }
+      #incidentes-table.pwa-table-cards tbody td:nth-child(2) > * { font-size: 13px !important; padding: 3px 10px !important; }
+      /* Gravedad + estado + acciones abiertas, juntos */
+      #incidentes-table.pwa-table-cards tbody td:nth-child(3),
+      #incidentes-table.pwa-table-cards tbody td:nth-child(5),
+      #incidentes-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #incidentes-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* Capacitaciones: el título ya es el nombre de la sesión (no un ID),
+         así que se conserva. Se agrupan debajo: cuándo + cuántos asistieron,
+         el instructor, y los dos distintivos (tipo + vigencia) juntos. */
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #capacitaciones-table.pwa-table-cards tbody td,
+      #capacitaciones-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #capacitaciones-table.pwa-table-cards tbody td::before { display: none; }
+      #capacitaciones-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #capacitaciones-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 100%; display: block;
+        padding: 0 68px 3px 0 !important; margin-bottom: 6px; border-bottom: 1px solid var(--ds-border-soft) !important;
+      }
+      /* Cuándo + cuántos asistieron, misma línea */
+      #capacitaciones-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 2; flex: 1 1 auto; margin-top: 0;
+      }
+      #capacitaciones-table.pwa-table-cards tbody td:nth-child(5) {
+        order: 2; flex: 0 0 auto; margin-top: 0;
+      }
+      /* Instructor: dato secundario */
+      #capacitaciones-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 3; flex: 0 0 100%; font-size: 11px !important; color: var(--ds-fg-muted); margin-top: 6px;
+      }
+      /* Tipo + vigencia, juntos */
+      #capacitaciones-table.pwa-table-cards tbody td:nth-child(2),
+      #capacitaciones-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #capacitaciones-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* IPERC: el título ya es el proceso evaluado (no un ID). Se agrupan
+         tipo + n.º de peligros en una línea, la próxima revisión debajo, y
+         los dos distintivos (riesgo máximo + estado) juntos al final. */
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #iperc-table.pwa-table-cards tbody td,
+      #iperc-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #iperc-table.pwa-table-cards tbody td::before { display: none; }
+      #iperc-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #iperc-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 100%; display: block;
+        padding: 0 68px 3px 0 !important; margin-bottom: 6px; border-bottom: 1px solid var(--ds-border-soft) !important;
+      }
+      /* Tipo + n.º de peligros, misma línea */
+      #iperc-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 2; flex: 1 1 auto; margin-top: 0;
+      }
+      #iperc-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 2; flex: 0 0 auto; margin-top: 0;
+      }
+      /* Próxima revisión: dato secundario */
+      #iperc-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 3; flex: 0 0 100%; margin-top: 6px;
+      }
+      /* Riesgo máximo + estado, juntos */
+      #iperc-table.pwa-table-cards tbody td:nth-child(3),
+      #iperc-table.pwa-table-cards tbody td:nth-child(5) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #iperc-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* EPP: el título ya es el trabajador (no un ID). Se agrupan fecha +
+         n.º de ítems en una línea, el motivo de la entrega como dato con
+         más peso, y reposición + cargo firmado juntos al final. */
+      #epp-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #epp-table.pwa-table-cards tbody td,
+      #epp-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #epp-table.pwa-table-cards tbody td::before { display: none; }
+      #epp-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #epp-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 100%; display: block;
+        padding: 0 68px 3px 0 !important; margin-bottom: 6px; border-bottom: 1px solid var(--ds-border-soft) !important;
+      }
+      /* Fecha de entrega + n.º de ítems, misma línea */
+      #epp-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 2; flex: 1 1 auto; margin-top: 0;
+      }
+      #epp-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 2; flex: 0 0 auto; margin-top: 0;
+      }
+      /* Motivo de la entrega: dato con más peso */
+      #epp-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 3; flex: 0 0 100%; margin-top: 6px;
+      }
+      #epp-table.pwa-table-cards tbody td:nth-child(2) > * { font-size: 13px !important; font-weight: 800; color: var(--ds-fg); }
+      /* Reposición + cargo firmado, juntos */
+      #epp-table.pwa-table-cards tbody td:nth-child(5),
+      #epp-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #epp-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* Charlas: el título ya es el tema (no un ID). Se agrupan fecha/hora +
+         área en una línea, expositor + asistentes en otra, y el turno queda
+         como distintivo al final. */
+      #charlas-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #charlas-table.pwa-table-cards tbody td,
+      #charlas-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #charlas-table.pwa-table-cards tbody td::before { display: none; }
+      #charlas-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #charlas-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 100%; display: block;
+        padding: 0 68px 3px 0 !important; margin-bottom: 6px; border-bottom: 1px solid var(--ds-border-soft) !important;
+      }
+      /* Fecha/hora + área, misma línea */
+      #charlas-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 2; flex: 0 0 auto; margin-top: 0;
+      }
+      #charlas-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 2; flex: 1 1 auto; margin-top: 0; text-align: right;
+      }
+      /* Expositor + asistentes, otra línea */
+      #charlas-table.pwa-table-cards tbody td:nth-child(5) {
+        order: 3; flex: 1 1 auto; margin-top: 6px;
+      }
+      #charlas-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 3; flex: 0 0 auto; margin-top: 6px;
+      }
+      /* Turno: distintivo final */
+      #charlas-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 4; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #charlas-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* Reportes: solo 5 columnas, pero se homologa al mismo patrón —
+         categoría como titular, severidad + sincronización juntas. */
+      #reportes-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #reportes-table.pwa-table-cards tbody td,
+      #reportes-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #reportes-table.pwa-table-cards tbody td::before { display: none; }
+      #reportes-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      #reportes-table.pwa-table-cards tbody td:first-child {
+        order: 1; flex: 1 1 auto; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 8px;
+        padding: 0 38px 0 0 !important; margin: 0; border: 0 !important;
+      }
+      #reportes-table.pwa-table-cards tbody td:first-child p + p { font-size: 11px !important; color: var(--ds-fg-muted); }
+      /* Categoría + inspector: titular */
+      #reportes-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 2; flex: 0 0 100%; margin-top: 8px;
+      }
+      #reportes-table.pwa-table-cards tbody td:nth-child(2) p:first-child { font-size: 14px !important; font-weight: 800; color: var(--ds-fg); }
+      #reportes-table.pwa-table-cards tbody td:nth-child(2) p + p { font-size: 11px !important; color: var(--ds-fg-muted); margin-top: 2px; }
+      /* Severidad + sincronización, juntas */
+      #reportes-table.pwa-table-cards tbody td:nth-child(3),
+      #reportes-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 3; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #reportes-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* Usuarios: el patrón genérico pone el DNI primero y etiqueta cada
+         columna (COLABORADOR, ROL/PERMISOS, ESTADO) — la identidad de la
+         persona (avatar+nombre+correo) es lo que de verdad hay que
+         reconocer, así que pasa a ser el titular; el DNI queda de dato
+         secundario y rol+estado se agrupan al final. */
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+        padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      }
+      #usuarios-table.pwa-table-cards tbody td,
+      #usuarios-table.pwa-table-cards tbody td::before { border: 0 !important; }
+      #usuarios-table.pwa-table-cards tbody td::before { display: none; }
+      #usuarios-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      /* Colaborador: titular */
+      #usuarios-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 1; flex: 1 1 100%; display: block;
+        padding: 0 44px 0 0 !important; margin: 0; border: 0 !important;
+      }
+      /* DNI + estatus: dato secundario */
+      #usuarios-table.pwa-table-cards tbody td:first-child {
+        order: 2; flex: 0 0 100%; display: flex; align-items: baseline; gap: 8px; margin-top: 8px;
+      }
+      /* Rol + estado, juntos */
+      #usuarios-table.pwa-table-cards tbody td:nth-child(3),
+      #usuarios-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 3; flex: 0 0 auto; width: auto; min-height: 0; margin-top: 8px;
+      }
+      #usuarios-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
+
+      /* ─── INDICADORES KPI: siempre 4 en una fila, nunca 2×2 ───
+         Todos los módulos con panel de indicadores usan el mismo patrón
+         `grid grid-cols-2 md:grid-cols-4`: 2 columnas en móvil obliga a
+         desplazarse para ver los 4. Se fuerzan 4 columnas angostas con
+         tipografía más compacta — sigue siendo legible porque cada tarjeta
+         solo tiene una etiqueta corta y un número. */
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+      }
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > div,
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > button {
+        padding: 8px 6px !important;
+        border-radius: 12px !important;
+      }
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > div > p:first-child,
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > button > p:first-child {
+        font-size: 7.5px !important;
+        line-height: 1.15 !important;
+        letter-spacing: 0.02em !important;
+        margin-bottom: 2px !important;
+      }
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > div > p:last-child,
+      div[class*="grid-cols-2"][class*="md:grid-cols-4"] > button > p:last-child {
+        font-size: 16px !important;
+        line-height: 1.05 !important;
+      }
     }
 
     /* ─── 5.b RITMO VERTICAL EN MÓVIL (spacing-scale / content-priority) ───
@@ -4480,6 +4772,10 @@ function renderActosTable(data) {
 
   if (typeof PWA_SKILLS !== 'undefined') {
     if (typeof PWA_SKILLS.initSortableTable === 'function') PWA_SKILLS.initSortableTable('actos-table-body');
+    // Sin esto, las filas que llegan async de Supabase (después del primer
+    // pintado con datos demo) se quedan sin data-label ni la clase de
+    // acciones: enhanceTable() debe correr en CADA render, no solo el inicial.
+    if (typeof PWA_SKILLS.enhanceTable === 'function') PWA_SKILLS.enhanceTable('actos-table-body');
     if (typeof PWA_SKILLS.updateResultCount  === 'function') PWA_SKILLS.updateResultCount('actos-table-body', 'act-result-count');
   }
   const countEl = document.getElementById('act-result-count');

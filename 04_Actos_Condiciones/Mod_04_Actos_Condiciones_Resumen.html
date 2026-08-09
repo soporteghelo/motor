@@ -194,6 +194,10 @@ function renderActosTable(data) {
 
   if (typeof PWA_SKILLS !== 'undefined') {
     if (typeof PWA_SKILLS.initSortableTable === 'function') PWA_SKILLS.initSortableTable('actos-table-body');
+    // Sin esto, las filas que llegan async de Supabase (después del primer
+    // pintado con datos demo) se quedan sin data-label ni la clase de
+    // acciones: enhanceTable() debe correr en CADA render, no solo el inicial.
+    if (typeof PWA_SKILLS.enhanceTable === 'function') PWA_SKILLS.enhanceTable('actos-table-body');
     if (typeof PWA_SKILLS.updateResultCount  === 'function') PWA_SKILLS.updateResultCount('actos-table-body', 'act-result-count');
   }
   const countEl = document.getElementById('act-result-count');
