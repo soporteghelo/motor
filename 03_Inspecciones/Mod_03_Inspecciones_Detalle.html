@@ -148,7 +148,7 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (idEl) idEl.innerText = `INSP-${String(uuid).substring(0, 8).toUpperCase()}`;
 
     const dateEl = document.getElementById('insp-detail-date');
-    if (dateEl) dateEl.innerText = insp.Timestamp ? insp.Timestamp.split('T')[0] : '--';
+    if (dateEl) dateEl.innerText = insp.Fecha_Peru || '--';
 
     const areaEl = document.getElementById('insp-detail-area');
     if (areaEl) areaEl.innerText = insp.Area_Inspeccion || '--';
@@ -157,7 +157,7 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (tipoEl) tipoEl.innerText = insp.Tipo_Hallazgo || '--';
 
     const descEl = document.getElementById('insp-detail-desc');
-    if (descEl) descEl.innerText = insp.Descripcion || '--';
+    if (descEl) descEl.innerText = insp.Descripcion_Tecnica || '--';
 
     const badge = document.getElementById('insp-detail-badge');
     if (badge) {

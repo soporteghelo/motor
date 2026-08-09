@@ -4910,6 +4910,48 @@ function loadResumen_02_Reportes() {
       alert('Error al guardar. Revise la consola.');
     }
   }
+
+  async function loadEdicion_02_Reportes(uuid) {
+    const uuidField = document.getElementById('form-02-uuid');
+    const categoria = document.getElementById('select-categoria-reporte');
+    const otro      = document.getElementById('input-categoria-otro');
+    const severidad = document.querySelector('#main-container [name="Nivel_Severidad"]');
+    const cont      = document.getElementById('report-dynamic-rows');
+
+    if (uuid && uuid !== 'CURRENT') {
+      const r = (window._repData || []).find(x => String(x.UUID) === String(uuid));
+      if (r) {
+        uuidField.value = r.UUID;
+
+        if (categoria) {
+          const existe = Array.from(categoria.options).some(o => o.value === r.Categoria_Reporte);
+          if (existe) {
+            categoria.value = r.Categoria_Reporte;
+            if (otro) otro.style.display = 'none';
+          } else {
+            categoria.value = '__OTHER__';
+            if (otro) { otro.style.display = ''; otro.value = r.Categoria_Reporte || ''; }
+          }
+        }
+        if (severidad) severidad.value = r.Nivel_Severidad || severidad.value;
+
+        // Las observaciones no vienen en el listado (READ_DB solo trae el
+        // padre): sin pedirlas aparte, guardar sin querer las borraba.
+        if (cont) cont.innerHTML = '';
+        const hijos = await DataService.readChildren('02_Reportes', r.UUID);
+        hijos.forEach(h => PWA_SKILLS.addDynamicRow('report-dynamic-rows', SUBCONFIG_02_REPORTES.Config_Modular.Relational_Fields, h));
+        if (!hijos.length && cont) {
+          cont.innerHTML = '<p class="text-center py-6 border border-dashed border-outline-variant rounded-xl text-secondary text-[10px] italic">Presione "+ Nueva Nota" para añadir hallazgos específicos vinculados.</p>';
+        }
+        return;
+      }
+    }
+
+    uuidField.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    if (categoria) { categoria.selectedIndex = 0; if (otro) { otro.style.display = 'none'; otro.value = ''; } }
+    if (severidad) severidad.selectedIndex = 0;
+    if (cont) cont.innerHTML = '<p class="text-center py-6 border border-dashed border-outline-variant rounded-xl text-secondary text-[10px] italic">Presione "+ Nueva Nota" para añadir hallazgos específicos vinculados.</p>';
+  }
 </script>
 
     <!-- =========================================================================
@@ -6564,7 +6606,7 @@ function loadResumen_03_Inspecciones() {
       UUID: document.getElementById('form-03-uuid').value,
       Area_Inspeccion: document.getElementById('insp-input-area').value,
       Tipo_Hallazgo: document.getElementById('insp-input-tipo').value,
-      Descripcion: document.getElementById('insp-input-desc').value,
+      Descripcion_Tecnica: document.getElementById('insp-input-desc').value,
       Responsable: document.getElementById('insp-input-responsable').value,
       Plazo: document.getElementById('insp-input-plazo').value
     };
@@ -6586,11 +6628,11 @@ function loadResumen_03_Inspecciones() {
       UUID: uuidField.value,
       Area_Inspeccion: area,
       Tipo_Hallazgo: tipo,
-      Descripcion: desc,
+      Descripcion_Tecnica: desc,
       Responsable: document.getElementById('insp-input-responsable').value,
       Plazo: document.getElementById('insp-input-plazo').value,
       Estado_Actual: 'Pendiente',
-      Timestamp: PWA_SKILLS.getPeruTime()
+      Fecha_Peru: PWA_SKILLS.getPeruTime(false)
     };
 
     // Firma digital
@@ -6628,6 +6670,41 @@ function loadResumen_03_Inspecciones() {
       console.error('Error al guardar inspección:', err);
       alert('Error al guardar. Revise la consola.');
     }
+  }
+
+  async function loadEdicion_03_Inspecciones(uuid) {
+    const uuidField = document.getElementById('form-03-uuid');
+    const cont = document.getElementById('dynamic-rows-container');
+    const vacioHTML = '<div class="text-center py-8 border border-dashed border-outline-variant rounded-xl text-secondary text-[11px]">Haga clic en &quot;+ Agregar&quot; para registrar hallazgos específicos.</div>';
+
+    if (uuid && uuid !== 'CURRENT') {
+      const r = (window._inspData || []).find(x => String(x.UUID) === String(uuid));
+      if (r) {
+        uuidField.value = r.UUID;
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+        set('insp-input-area', r.Area_Inspeccion);
+        set('insp-input-tipo', r.Tipo_Hallazgo);
+        set('insp-input-desc', r.Descripcion_Tecnica);
+        set('insp-input-responsable', r.Responsable);
+        set('insp-input-plazo', r.Plazo);
+
+        // Los hallazgos no vienen en el listado (READ_DB solo trae el padre):
+        // sin pedirlos aparte, guardar sin querer los borraba.
+        if (cont) cont.innerHTML = '';
+        const hijos = await DataService.readChildren('03_Inspecciones', r.UUID);
+        hijos.forEach(h => PWA_SKILLS.addDynamicRow('dynamic-rows-container', SUBCONFIG_03_INSPECCIONES.Config_Modular.Relational_Fields, h));
+        if (!hijos.length && cont) cont.innerHTML = vacioHTML;
+        return;
+      }
+    }
+
+    uuidField.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    document.getElementById('insp-input-area').selectedIndex = 0;
+    document.getElementById('insp-input-tipo').selectedIndex = 0;
+    document.getElementById('insp-input-desc').value = '';
+    document.getElementById('insp-input-responsable').value = '';
+    document.getElementById('insp-input-plazo').value = '';
+    if (cont) cont.innerHTML = vacioHTML;
   }
 
   function clearModuleSignature(moduleID) {
@@ -6799,7 +6876,7 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (idEl) idEl.innerText = `INSP-${String(uuid).substring(0, 8).toUpperCase()}`;
 
     const dateEl = document.getElementById('insp-detail-date');
-    if (dateEl) dateEl.innerText = insp.Timestamp ? insp.Timestamp.split('T')[0] : '--';
+    if (dateEl) dateEl.innerText = insp.Fecha_Peru || '--';
 
     const areaEl = document.getElementById('insp-detail-area');
     if (areaEl) areaEl.innerText = insp.Area_Inspeccion || '--';
@@ -6808,7 +6885,7 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (tipoEl) tipoEl.innerText = insp.Tipo_Hallazgo || '--';
 
     const descEl = document.getElementById('insp-detail-desc');
-    if (descEl) descEl.innerText = insp.Descripcion || '--';
+    if (descEl) descEl.innerText = insp.Descripcion_Tecnica || '--';
 
     const badge = document.getElementById('insp-detail-badge');
     if (badge) {
@@ -9510,7 +9587,7 @@ async function incGuardar() {
 }
 
 /** Prepara el formulario: alta nueva o edición de un registro existente */
-function loadEdicion_05_Incidentes(uuid) {
+async function loadEdicion_05_Incidentes(uuid) {
   window._incFotos = [];
   const campo = document.getElementById('inc-uuid');
   const titulo = document.getElementById('inc-form-titulo');
@@ -9540,6 +9617,16 @@ function loadEdicion_05_Incidentes(uuid) {
       set('inc-gravedad', r.Gravedad);
       const btn = document.querySelector('#main-container .inc-grav-btn[data-value="' + r.Gravedad + '"]');
       if (btn) incSetGravedad(btn, r.Gravedad);
+
+      // El plan de acción no viene en el listado (READ_DB solo trae el
+      // padre): sin pedirlo aparte, guardar sin querer lo borraba.
+      const cont = document.querySelector('#main-container #inc-acciones');
+      const vacio = document.getElementById('inc-acciones-vacio');
+      const acciones = await DataService.readChildren('05_Incidentes', r.UUID);
+      if (acciones.length && cont) {
+        if (vacio) vacio.remove();
+        acciones.forEach(a => PWA_SKILLS.addDynamicRow('inc-acciones', SUBCONFIG_05_INCIDENTES.Config_Modular.Relational_Fields, a));
+      }
       return;
     }
   }
@@ -10484,7 +10571,7 @@ async function capGuardar() {
   }
 }
 
-function loadEdicion_06_Capacitaciones(uuid) {
+async function loadEdicion_06_Capacitaciones(uuid) {
   window._capFotos = [];
   const campo  = document.getElementById('cap-uuid');
   const titulo = document.getElementById('cap-form-titulo');
@@ -10505,6 +10592,16 @@ function loadEdicion_06_Capacitaciones(uuid) {
       set('cap-evaluacion', r.Evaluacion);      set('cap-nota-minima', r.Nota_Minima);
       set('cap-observaciones', r.Observaciones);
       capCalcularVencimiento();
+
+      // La lista de asistentes no viene en el listado (READ_DB solo trae el
+      // padre): sin pedirla aparte, guardar sin querer la borraba.
+      const vacio = document.querySelector('#main-container #cap-asistentes-vacio');
+      const asistentes = await DataService.readChildren('06_Capacitaciones', r.UUID);
+      if (asistentes.length) {
+        if (vacio) vacio.remove();
+        asistentes.forEach(a => PWA_SKILLS.addDynamicRow('cap-asistentes', SUBCONFIG_06_CAPACITACIONES.Config_Modular.Relational_Fields, a));
+        capActualizarConteo();
+      }
       return;
     }
   }
@@ -11470,10 +11567,10 @@ async function ipcGuardar() {
   }
 }
 
-function loadEdicion_07_IPERC(uuid) {
+async function loadEdicion_07_IPERC(uuid) {
   ipcPintarLeyenda();
-  PWA_SKILLS.loadRelationalOptions('ipc-elaborado', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('ipc-revisado', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('ipc-elaborado', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('ipc-revisado', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
   setTimeout(() => PWA_SKILLS.initSignaturePad('ipc-firma'), 120);
 
@@ -11500,11 +11597,14 @@ function loadEdicion_07_IPERC(uuid) {
       set('ipc-fecha', r.Fecha_Elaboracion); set('ipc-revision', r.Fecha_Revision);
       set('ipc-participantes', r.Participantes); set('ipc-estado', r.Estado);
       set('ipc-observaciones', r.Observaciones);
+      set('ipc-elaborado', r.Elaborado_Por);      set('ipc-revisado', r.Revisado_Por);
 
-      // Reconstruir las filas de peligros si vinieron anidadas
+      // Los peligros no vienen en el listado (READ_DB solo trae el padre):
+      // hay que pedirlos aparte. Sin esto, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #ipc-peligros');
       if (cont2) cont2.innerHTML = '';
-      (r._peligros || []).forEach(p => ipcAgregarPeligro(p));
+      const peligros = await DataService.readChildren('07_IPERC', r.UUID);
+      peligros.forEach(p => ipcAgregarPeligro(p));
       ipcRecalcular();
       return;
     }
@@ -12617,13 +12717,13 @@ async function ptrGuardar() {
   }
 }
 
-function loadEdicion_08_PETAR(uuid) {
-  PWA_SKILLS.loadRelationalOptions('ptr-ejecutante', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('ptr-supervisor', '01_Usuarios', 'Nombre_Completo', 'DNI',
+async function loadEdicion_08_PETAR(uuid) {
+  await PWA_SKILLS.loadRelationalOptions('ptr-ejecutante', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('ptr-supervisor', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
-  PWA_SKILLS.loadRelationalOptions('ptr-aprobador', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('ptr-aprobador', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
-  PWA_SKILLS.loadRelationalOptions('ptr-iperc', '07_IPERC', 'Proceso', 'UUID');
+  await PWA_SKILLS.loadRelationalOptions('ptr-iperc', '07_IPERC', 'Proceso', 'UUID');
 
   setTimeout(() => {
     PWA_SKILLS.initSignaturePad('ptr-firma-sol');
@@ -12654,10 +12754,16 @@ function loadEdicion_08_PETAR(uuid) {
       set('ptr-fin', r.Hora_Fin);        set('ptr-empresa', r.Empresa);
       set('ptr-num', r.Num_Trabajadores);set('ptr-estado', r.Estado);
       set('ptr-hora-cierre', r.Hora_Cierre); set('ptr-observaciones', r.Observaciones);
+      set('ptr-ejecutante', r.Ejecutante_DNI); set('ptr-supervisor', r.Supervisor_DNI);
+      set('ptr-aprobador', r.Aprobado_Por);    set('ptr-iperc', r.IPERC_Referencia);
+      set('ptr-fecha-aprobacion', r.Fecha_Aprobacion);
 
+      // Los controles no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #ptr-controles');
       if (cont2) cont2.innerHTML = '';
-      (r._controles || []).forEach(c =>
+      const controles = await DataService.readChildren('08_PETAR', r.UUID);
+      controles.forEach(c =>
         PWA_SKILLS.addDynamicRow('ptr-controles', SUBCONFIG_08_PETAR.Config_Modular.Relational_Fields, c));
       ptrRecalcularCheck();
       ptrActualizarVentana();
@@ -13654,10 +13760,10 @@ async function eppGuardar() {
   }
 }
 
-function loadEdicion_09_EPP(uuid) {
+async function loadEdicion_09_EPP(uuid) {
   window._eppFotos = [];
-  PWA_SKILLS.loadRelationalOptions('epp-trabajador', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('epp-entregado', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('epp-trabajador', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('epp-entregado', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
   setTimeout(() => PWA_SKILLS.initSignaturePad('epp-firma'), 150);
 
@@ -13688,14 +13794,18 @@ function loadEdicion_09_EPP(uuid) {
       if (titulo) titulo.textContent = 'Editar Cargo';
       campo.value = r.UUID;
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
-      set('epp-nombre', r.Nombre_Trabajador); set('epp-area', r.Area);
-      set('epp-puesto', r.Puesto);            set('epp-motivo', r.Tipo_Entrega);
-      set('epp-fecha', r.Fecha_Entrega);      set('epp-estado', r.Estado);
+      set('epp-trabajador', r.Trabajador_DNI); set('epp-nombre', r.Nombre_Trabajador);
+      set('epp-area', r.Area);                 set('epp-puesto', r.Puesto);
+      set('epp-motivo', r.Tipo_Entrega);       set('epp-fecha', r.Fecha_Entrega);
+      set('epp-entregado', r.Entregado_Por);   set('epp-estado', r.Estado);
       set('epp-observaciones', r.Observaciones);
 
+      // Los ítems no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #epp-items');
       if (cont2) cont2.innerHTML = '';
-      (r._items || []).forEach(it => eppAgregarItem(it));
+      const items = await DataService.readChildren('09_EPP', r.UUID);
+      items.forEach(it => eppAgregarItem(it));
       eppRecalcular();
       return;
     }
@@ -14635,11 +14745,11 @@ async function chlGuardar() {
   }
 }
 
-function loadEdicion_10_Charlas(uuid) {
+async function loadEdicion_10_Charlas(uuid) {
   window._chlFotos = [];
   window._chlExpositorNombre = '';
   chlPintarSugerencias();
-  PWA_SKILLS.loadRelationalOptions('chl-expositor-sel', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('chl-expositor-sel', '01_Usuarios', 'Nombre_Completo', 'DNI');
   setTimeout(() => PWA_SKILLS.initSignaturePad('chl-firma'), 150);
 
   const campo  = document.getElementById('chl-uuid');
@@ -14656,12 +14766,15 @@ function loadEdicion_10_Charlas(uuid) {
       set('chl-turno', r.Turno);          set('chl-area', r.Area);
       set('chl-lugar', r.Lugar);          set('chl-duracion', r.Duracion_Min);
       set('chl-puntos', r.Puntos_Tratados); set('chl-compromisos', r.Compromisos);
-      set('chl-estado', r.Estado);
+      set('chl-estado', r.Estado);          set('chl-expositor-sel', r.Expositor_DNI);
       window._chlExpositorNombre = r.Expositor || '';
 
+      // Los asistentes no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont = document.querySelector('#main-container #chl-asistentes');
       if (cont) cont.innerHTML = '';
-      (r._asistentes || []).forEach(a => chlAgregarAsistente(a));
+      const asistentes = await DataService.readChildren('10_Charlas', r.UUID);
+      asistentes.forEach(a => chlAgregarAsistente(a));
       chlActualizarConteo();
       return;
     }
@@ -15164,7 +15277,13 @@ const SupabaseProvider = {
     if (!cfg || !cfg.Variables) return datos;
     const out = {};
     Object.keys(datos).forEach(campo => {
-      if (cfg.Variables[campo]) out[campo.toLowerCase()] = datos[campo];
+      const def = cfg.Variables[campo];
+      if (!def) return;
+      let valor = datos[campo];
+      // Postgres rechaza '' para columnas date/timestamp (campos Date opcionales
+      // dejados en blanco): sin esto, el registro entero fallaba al guardar.
+      if (def.type === 'Date' && valor === '') valor = null;
+      out[campo.toLowerCase()] = valor;
     });
     return out;
   },
@@ -15179,10 +15298,15 @@ const SupabaseProvider = {
 
   /** Objeto de fila hija (PARENT_UUID + campos del subconfig) → fila para Postgres */
   _hijoAColumnas(modulo, datos) {
-    const nombres = new Set(this._relationalFields(modulo).map(c => c.name));
+    const campos = this._relationalFields(modulo);
+    const tipos = {}; campos.forEach(c => { tipos[c.name] = c.type; });
     const out = {};
     Object.keys(datos).forEach(campo => {
-      if (campo === 'PARENT_UUID' || nombres.has(campo)) out[campo.toLowerCase()] = datos[campo];
+      if (campo !== 'PARENT_UUID' && !(campo in tipos)) return;
+      let valor = datos[campo];
+      // Mismo caso que _aColumnas: '' no es una fecha válida para Postgres.
+      if (tipos[campo] === 'date' && valor === '') valor = null;
+      out[campo.toLowerCase()] = valor;
     });
     return out;
   },
@@ -15484,10 +15608,27 @@ const SupabaseProvider = {
   },
 
   /**
+   * Filas hijas de un registro puntual. READ_DB/read() nunca las trae (por
+   * diseño: el listado solo pinta la fila principal), así que el formulario
+   * de Edición debe pedirlas aparte antes de reconstruir sus filas
+   * dinámicas — si no, _guardar() las borra al re-sincronizar (ver abajo).
+   */
+  async leerHijos(modulo, parentUuid) {
+    const childTable = this._childTable(modulo);
+    if (!childTable || !parentUuid) return [];
+    const r = await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(parentUuid)}&select=*`);
+    if (r.status !== 'OK') return [];
+    return (r._raw || []).map(f => this._hijoAFrontend(modulo, f));
+  },
+
+  /**
    * Guarda un registro (alta o edición: mismo camino, como en Sheets) y
    * reemplaza sus filas hijas. "Reemplazar" y no "acumular" es intencional:
-   * el formulario siempre manda el set completo de filas dinámicas vigentes,
-   * así que borrar-e-insertar evita duplicados en cada re-edición.
+   * el formulario manda el set completo de filas dinámicas vigentes — pero
+   * eso solo es cierto si el formulario las cargó primero con leerHijos()
+   * al editar. Si el llamador manda un array vacío porque nunca las pidió,
+   * esto las borra de verdad. Toda vista de Edición con tabla hija DEBE
+   * llamar a DataService.readChildren() antes de reconstruir sus filas.
    */
   async _guardar(modulo, datosCrudos, hijosCrudos) {
     if (modulo === '01_Usuarios') return this._guardarUsuario(datosCrudos);
@@ -15586,6 +15727,10 @@ const DataService = {
   update:     (module, data)     => DataService.provider.update(module, data),
   delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
+  // Sheets no tiene equivalente (Code.gs no expone "leer hijos de un padre");
+  // en ese proveedor se resuelve vacío en vez de romper la vista de Edición.
+  readChildren: (module, uuid)   => DataService.provider.leerHijos
+    ? DataService.provider.leerHijos(module, uuid) : Promise.resolve([]),
 };
 </script>
 

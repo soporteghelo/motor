@@ -426,13 +426,13 @@ async function ptrGuardar() {
   }
 }
 
-function loadEdicion_08_PETAR(uuid) {
-  PWA_SKILLS.loadRelationalOptions('ptr-ejecutante', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('ptr-supervisor', '01_Usuarios', 'Nombre_Completo', 'DNI',
+async function loadEdicion_08_PETAR(uuid) {
+  await PWA_SKILLS.loadRelationalOptions('ptr-ejecutante', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('ptr-supervisor', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
-  PWA_SKILLS.loadRelationalOptions('ptr-aprobador', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('ptr-aprobador', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
-  PWA_SKILLS.loadRelationalOptions('ptr-iperc', '07_IPERC', 'Proceso', 'UUID');
+  await PWA_SKILLS.loadRelationalOptions('ptr-iperc', '07_IPERC', 'Proceso', 'UUID');
 
   setTimeout(() => {
     PWA_SKILLS.initSignaturePad('ptr-firma-sol');
@@ -463,10 +463,16 @@ function loadEdicion_08_PETAR(uuid) {
       set('ptr-fin', r.Hora_Fin);        set('ptr-empresa', r.Empresa);
       set('ptr-num', r.Num_Trabajadores);set('ptr-estado', r.Estado);
       set('ptr-hora-cierre', r.Hora_Cierre); set('ptr-observaciones', r.Observaciones);
+      set('ptr-ejecutante', r.Ejecutante_DNI); set('ptr-supervisor', r.Supervisor_DNI);
+      set('ptr-aprobador', r.Aprobado_Por);    set('ptr-iperc', r.IPERC_Referencia);
+      set('ptr-fecha-aprobacion', r.Fecha_Aprobacion);
 
+      // Los controles no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #ptr-controles');
       if (cont2) cont2.innerHTML = '';
-      (r._controles || []).forEach(c =>
+      const controles = await DataService.readChildren('08_PETAR', r.UUID);
+      controles.forEach(c =>
         PWA_SKILLS.addDynamicRow('ptr-controles', SUBCONFIG_08_PETAR.Config_Modular.Relational_Fields, c));
       ptrRecalcularCheck();
       ptrActualizarVentana();

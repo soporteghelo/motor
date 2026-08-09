@@ -328,11 +328,11 @@ async function chlGuardar() {
   }
 }
 
-function loadEdicion_10_Charlas(uuid) {
+async function loadEdicion_10_Charlas(uuid) {
   window._chlFotos = [];
   window._chlExpositorNombre = '';
   chlPintarSugerencias();
-  PWA_SKILLS.loadRelationalOptions('chl-expositor-sel', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('chl-expositor-sel', '01_Usuarios', 'Nombre_Completo', 'DNI');
   setTimeout(() => PWA_SKILLS.initSignaturePad('chl-firma'), 150);
 
   const campo  = document.getElementById('chl-uuid');
@@ -349,12 +349,15 @@ function loadEdicion_10_Charlas(uuid) {
       set('chl-turno', r.Turno);          set('chl-area', r.Area);
       set('chl-lugar', r.Lugar);          set('chl-duracion', r.Duracion_Min);
       set('chl-puntos', r.Puntos_Tratados); set('chl-compromisos', r.Compromisos);
-      set('chl-estado', r.Estado);
+      set('chl-estado', r.Estado);          set('chl-expositor-sel', r.Expositor_DNI);
       window._chlExpositorNombre = r.Expositor || '';
 
+      // Los asistentes no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont = document.querySelector('#main-container #chl-asistentes');
       if (cont) cont.innerHTML = '';
-      (r._asistentes || []).forEach(a => chlAgregarAsistente(a));
+      const asistentes = await DataService.readChildren('10_Charlas', r.UUID);
+      asistentes.forEach(a => chlAgregarAsistente(a));
       chlActualizarConteo();
       return;
     }

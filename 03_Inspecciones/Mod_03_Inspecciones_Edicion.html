@@ -162,7 +162,7 @@
       UUID: document.getElementById('form-03-uuid').value,
       Area_Inspeccion: document.getElementById('insp-input-area').value,
       Tipo_Hallazgo: document.getElementById('insp-input-tipo').value,
-      Descripcion: document.getElementById('insp-input-desc').value,
+      Descripcion_Tecnica: document.getElementById('insp-input-desc').value,
       Responsable: document.getElementById('insp-input-responsable').value,
       Plazo: document.getElementById('insp-input-plazo').value
     };
@@ -184,11 +184,11 @@
       UUID: uuidField.value,
       Area_Inspeccion: area,
       Tipo_Hallazgo: tipo,
-      Descripcion: desc,
+      Descripcion_Tecnica: desc,
       Responsable: document.getElementById('insp-input-responsable').value,
       Plazo: document.getElementById('insp-input-plazo').value,
       Estado_Actual: 'Pendiente',
-      Timestamp: PWA_SKILLS.getPeruTime()
+      Fecha_Peru: PWA_SKILLS.getPeruTime(false)
     };
 
     // Firma digital
@@ -226,6 +226,41 @@
       console.error('Error al guardar inspección:', err);
       alert('Error al guardar. Revise la consola.');
     }
+  }
+
+  async function loadEdicion_03_Inspecciones(uuid) {
+    const uuidField = document.getElementById('form-03-uuid');
+    const cont = document.getElementById('dynamic-rows-container');
+    const vacioHTML = '<div class="text-center py-8 border border-dashed border-outline-variant rounded-xl text-secondary text-[11px]">Haga clic en &quot;+ Agregar&quot; para registrar hallazgos específicos.</div>';
+
+    if (uuid && uuid !== 'CURRENT') {
+      const r = (window._inspData || []).find(x => String(x.UUID) === String(uuid));
+      if (r) {
+        uuidField.value = r.UUID;
+        const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+        set('insp-input-area', r.Area_Inspeccion);
+        set('insp-input-tipo', r.Tipo_Hallazgo);
+        set('insp-input-desc', r.Descripcion_Tecnica);
+        set('insp-input-responsable', r.Responsable);
+        set('insp-input-plazo', r.Plazo);
+
+        // Los hallazgos no vienen en el listado (READ_DB solo trae el padre):
+        // sin pedirlos aparte, guardar sin querer los borraba.
+        if (cont) cont.innerHTML = '';
+        const hijos = await DataService.readChildren('03_Inspecciones', r.UUID);
+        hijos.forEach(h => PWA_SKILLS.addDynamicRow('dynamic-rows-container', SUBCONFIG_03_INSPECCIONES.Config_Modular.Relational_Fields, h));
+        if (!hijos.length && cont) cont.innerHTML = vacioHTML;
+        return;
+      }
+    }
+
+    uuidField.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    document.getElementById('insp-input-area').selectedIndex = 0;
+    document.getElementById('insp-input-tipo').selectedIndex = 0;
+    document.getElementById('insp-input-desc').value = '';
+    document.getElementById('insp-input-responsable').value = '';
+    document.getElementById('insp-input-plazo').value = '';
+    if (cont) cont.innerHTML = vacioHTML;
   }
 
   function clearModuleSignature(moduleID) {

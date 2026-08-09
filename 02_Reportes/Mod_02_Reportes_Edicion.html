@@ -164,4 +164,46 @@
       alert('Error al guardar. Revise la consola.');
     }
   }
+
+  async function loadEdicion_02_Reportes(uuid) {
+    const uuidField = document.getElementById('form-02-uuid');
+    const categoria = document.getElementById('select-categoria-reporte');
+    const otro      = document.getElementById('input-categoria-otro');
+    const severidad = document.querySelector('#main-container [name="Nivel_Severidad"]');
+    const cont      = document.getElementById('report-dynamic-rows');
+
+    if (uuid && uuid !== 'CURRENT') {
+      const r = (window._repData || []).find(x => String(x.UUID) === String(uuid));
+      if (r) {
+        uuidField.value = r.UUID;
+
+        if (categoria) {
+          const existe = Array.from(categoria.options).some(o => o.value === r.Categoria_Reporte);
+          if (existe) {
+            categoria.value = r.Categoria_Reporte;
+            if (otro) otro.style.display = 'none';
+          } else {
+            categoria.value = '__OTHER__';
+            if (otro) { otro.style.display = ''; otro.value = r.Categoria_Reporte || ''; }
+          }
+        }
+        if (severidad) severidad.value = r.Nivel_Severidad || severidad.value;
+
+        // Las observaciones no vienen en el listado (READ_DB solo trae el
+        // padre): sin pedirlas aparte, guardar sin querer las borraba.
+        if (cont) cont.innerHTML = '';
+        const hijos = await DataService.readChildren('02_Reportes', r.UUID);
+        hijos.forEach(h => PWA_SKILLS.addDynamicRow('report-dynamic-rows', SUBCONFIG_02_REPORTES.Config_Modular.Relational_Fields, h));
+        if (!hijos.length && cont) {
+          cont.innerHTML = '<p class="text-center py-6 border border-dashed border-outline-variant rounded-xl text-secondary text-[10px] italic">Presione "+ Nueva Nota" para añadir hallazgos específicos vinculados.</p>';
+        }
+        return;
+      }
+    }
+
+    uuidField.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    if (categoria) { categoria.selectedIndex = 0; if (otro) { otro.style.display = 'none'; otro.value = ''; } }
+    if (severidad) severidad.selectedIndex = 0;
+    if (cont) cont.innerHTML = '<p class="text-center py-6 border border-dashed border-outline-variant rounded-xl text-secondary text-[10px] italic">Presione "+ Nueva Nota" para añadir hallazgos específicos vinculados.</p>';
+  }
 </script>

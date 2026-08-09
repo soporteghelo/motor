@@ -153,7 +153,13 @@ const SupabaseProvider = {
     if (!cfg || !cfg.Variables) return datos;
     const out = {};
     Object.keys(datos).forEach(campo => {
-      if (cfg.Variables[campo]) out[campo.toLowerCase()] = datos[campo];
+      const def = cfg.Variables[campo];
+      if (!def) return;
+      let valor = datos[campo];
+      // Postgres rechaza '' para columnas date/timestamp (campos Date opcionales
+      // dejados en blanco): sin esto, el registro entero fallaba al guardar.
+      if (def.type === 'Date' && valor === '') valor = null;
+      out[campo.toLowerCase()] = valor;
     });
     return out;
   },
@@ -168,10 +174,15 @@ const SupabaseProvider = {
 
   /** Objeto de fila hija (PARENT_UUID + campos del subconfig) → fila para Postgres */
   _hijoAColumnas(modulo, datos) {
-    const nombres = new Set(this._relationalFields(modulo).map(c => c.name));
+    const campos = this._relationalFields(modulo);
+    const tipos = {}; campos.forEach(c => { tipos[c.name] = c.type; });
     const out = {};
     Object.keys(datos).forEach(campo => {
-      if (campo === 'PARENT_UUID' || nombres.has(campo)) out[campo.toLowerCase()] = datos[campo];
+      if (campo !== 'PARENT_UUID' && !(campo in tipos)) return;
+      let valor = datos[campo];
+      // Mismo caso que _aColumnas: '' no es una fecha válida para Postgres.
+      if (tipos[campo] === 'date' && valor === '') valor = null;
+      out[campo.toLowerCase()] = valor;
     });
     return out;
   },
@@ -473,10 +484,27 @@ const SupabaseProvider = {
   },
 
   /**
+   * Filas hijas de un registro puntual. READ_DB/read() nunca las trae (por
+   * diseño: el listado solo pinta la fila principal), así que el formulario
+   * de Edición debe pedirlas aparte antes de reconstruir sus filas
+   * dinámicas — si no, _guardar() las borra al re-sincronizar (ver abajo).
+   */
+  async leerHijos(modulo, parentUuid) {
+    const childTable = this._childTable(modulo);
+    if (!childTable || !parentUuid) return [];
+    const r = await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(parentUuid)}&select=*`);
+    if (r.status !== 'OK') return [];
+    return (r._raw || []).map(f => this._hijoAFrontend(modulo, f));
+  },
+
+  /**
    * Guarda un registro (alta o edición: mismo camino, como en Sheets) y
    * reemplaza sus filas hijas. "Reemplazar" y no "acumular" es intencional:
-   * el formulario siempre manda el set completo de filas dinámicas vigentes,
-   * así que borrar-e-insertar evita duplicados en cada re-edición.
+   * el formulario manda el set completo de filas dinámicas vigentes — pero
+   * eso solo es cierto si el formulario las cargó primero con leerHijos()
+   * al editar. Si el llamador manda un array vacío porque nunca las pidió,
+   * esto las borra de verdad. Toda vista de Edición con tabla hija DEBE
+   * llamar a DataService.readChildren() antes de reconstruir sus filas.
    */
   async _guardar(modulo, datosCrudos, hijosCrudos) {
     if (modulo === '01_Usuarios') return this._guardarUsuario(datosCrudos);
@@ -575,5 +603,9 @@ const DataService = {
   update:     (module, data)     => DataService.provider.update(module, data),
   delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
+  // Sheets no tiene equivalente (Code.gs no expone "leer hijos de un padre");
+  // en ese proveedor se resuelve vacío en vez de romper la vista de Edición.
+  readChildren: (module, uuid)   => DataService.provider.leerHijos
+    ? DataService.provider.leerHijos(module, uuid) : Promise.resolve([]),
 };
 </script>

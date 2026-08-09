@@ -373,10 +373,10 @@ async function eppGuardar() {
   }
 }
 
-function loadEdicion_09_EPP(uuid) {
+async function loadEdicion_09_EPP(uuid) {
   window._eppFotos = [];
-  PWA_SKILLS.loadRelationalOptions('epp-trabajador', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('epp-entregado', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('epp-trabajador', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('epp-entregado', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
   setTimeout(() => PWA_SKILLS.initSignaturePad('epp-firma'), 150);
 
@@ -407,14 +407,18 @@ function loadEdicion_09_EPP(uuid) {
       if (titulo) titulo.textContent = 'Editar Cargo';
       campo.value = r.UUID;
       const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
-      set('epp-nombre', r.Nombre_Trabajador); set('epp-area', r.Area);
-      set('epp-puesto', r.Puesto);            set('epp-motivo', r.Tipo_Entrega);
-      set('epp-fecha', r.Fecha_Entrega);      set('epp-estado', r.Estado);
+      set('epp-trabajador', r.Trabajador_DNI); set('epp-nombre', r.Nombre_Trabajador);
+      set('epp-area', r.Area);                 set('epp-puesto', r.Puesto);
+      set('epp-motivo', r.Tipo_Entrega);       set('epp-fecha', r.Fecha_Entrega);
+      set('epp-entregado', r.Entregado_Por);   set('epp-estado', r.Estado);
       set('epp-observaciones', r.Observaciones);
 
+      // Los ítems no vienen en el listado (READ_DB solo trae el padre):
+      // sin pedirlos aparte, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #epp-items');
       if (cont2) cont2.innerHTML = '';
-      (r._items || []).forEach(it => eppAgregarItem(it));
+      const items = await DataService.readChildren('09_EPP', r.UUID);
+      items.forEach(it => eppAgregarItem(it));
       eppRecalcular();
       return;
     }

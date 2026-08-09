@@ -354,7 +354,7 @@ async function incGuardar() {
 }
 
 /** Prepara el formulario: alta nueva o edición de un registro existente */
-function loadEdicion_05_Incidentes(uuid) {
+async function loadEdicion_05_Incidentes(uuid) {
   window._incFotos = [];
   const campo = document.getElementById('inc-uuid');
   const titulo = document.getElementById('inc-form-titulo');
@@ -384,6 +384,16 @@ function loadEdicion_05_Incidentes(uuid) {
       set('inc-gravedad', r.Gravedad);
       const btn = document.querySelector('#main-container .inc-grav-btn[data-value="' + r.Gravedad + '"]');
       if (btn) incSetGravedad(btn, r.Gravedad);
+
+      // El plan de acción no viene en el listado (READ_DB solo trae el
+      // padre): sin pedirlo aparte, guardar sin querer lo borraba.
+      const cont = document.querySelector('#main-container #inc-acciones');
+      const vacio = document.getElementById('inc-acciones-vacio');
+      const acciones = await DataService.readChildren('05_Incidentes', r.UUID);
+      if (acciones.length && cont) {
+        if (vacio) vacio.remove();
+        acciones.forEach(a => PWA_SKILLS.addDynamicRow('inc-acciones', SUBCONFIG_05_INCIDENTES.Config_Modular.Relational_Fields, a));
+      }
       return;
     }
   }

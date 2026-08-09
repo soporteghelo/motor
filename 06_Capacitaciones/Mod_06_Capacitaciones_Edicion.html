@@ -331,7 +331,7 @@ async function capGuardar() {
   }
 }
 
-function loadEdicion_06_Capacitaciones(uuid) {
+async function loadEdicion_06_Capacitaciones(uuid) {
   window._capFotos = [];
   const campo  = document.getElementById('cap-uuid');
   const titulo = document.getElementById('cap-form-titulo');
@@ -352,6 +352,16 @@ function loadEdicion_06_Capacitaciones(uuid) {
       set('cap-evaluacion', r.Evaluacion);      set('cap-nota-minima', r.Nota_Minima);
       set('cap-observaciones', r.Observaciones);
       capCalcularVencimiento();
+
+      // La lista de asistentes no viene en el listado (READ_DB solo trae el
+      // padre): sin pedirla aparte, guardar sin querer la borraba.
+      const vacio = document.querySelector('#main-container #cap-asistentes-vacio');
+      const asistentes = await DataService.readChildren('06_Capacitaciones', r.UUID);
+      if (asistentes.length) {
+        if (vacio) vacio.remove();
+        asistentes.forEach(a => PWA_SKILLS.addDynamicRow('cap-asistentes', SUBCONFIG_06_CAPACITACIONES.Config_Modular.Relational_Fields, a));
+        capActualizarConteo();
+      }
       return;
     }
   }

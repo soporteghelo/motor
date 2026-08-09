@@ -352,10 +352,10 @@ async function ipcGuardar() {
   }
 }
 
-function loadEdicion_07_IPERC(uuid) {
+async function loadEdicion_07_IPERC(uuid) {
   ipcPintarLeyenda();
-  PWA_SKILLS.loadRelationalOptions('ipc-elaborado', '01_Usuarios', 'Nombre_Completo', 'DNI');
-  PWA_SKILLS.loadRelationalOptions('ipc-revisado', '01_Usuarios', 'Nombre_Completo', 'DNI',
+  await PWA_SKILLS.loadRelationalOptions('ipc-elaborado', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  await PWA_SKILLS.loadRelationalOptions('ipc-revisado', '01_Usuarios', 'Nombre_Completo', 'DNI',
     { column: 'Rol', value: 'Supervisor' });
   setTimeout(() => PWA_SKILLS.initSignaturePad('ipc-firma'), 120);
 
@@ -382,11 +382,14 @@ function loadEdicion_07_IPERC(uuid) {
       set('ipc-fecha', r.Fecha_Elaboracion); set('ipc-revision', r.Fecha_Revision);
       set('ipc-participantes', r.Participantes); set('ipc-estado', r.Estado);
       set('ipc-observaciones', r.Observaciones);
+      set('ipc-elaborado', r.Elaborado_Por);      set('ipc-revisado', r.Revisado_Por);
 
-      // Reconstruir las filas de peligros si vinieron anidadas
+      // Los peligros no vienen en el listado (READ_DB solo trae el padre):
+      // hay que pedirlos aparte. Sin esto, guardar sin querer los borraba.
       const cont2 = document.querySelector('#main-container #ipc-peligros');
       if (cont2) cont2.innerHTML = '';
-      (r._peligros || []).forEach(p => ipcAgregarPeligro(p));
+      const peligros = await DataService.readChildren('07_IPERC', r.UUID);
+      peligros.forEach(p => ipcAgregarPeligro(p));
       ipcRecalcular();
       return;
     }
