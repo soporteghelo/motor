@@ -1,131 +1,26 @@
 <script>
 /**
  * =========================================================================
- * PLANTILLAS PDF — El administrador las edita en Google Docs
+ * PLANTILLAS PDF — formato interno (bloques → HTML → impresión del navegador)
  * =========================================================================
  * ARCHIVO: PDF_Templates.js.html
  *
  * CÓMO FUNCIONA
- * Cada módulo se vincula a un Google Doc que hace de plantilla. El admin lo
- * abre en Google Docs —editor que ya sabe usar— y le da el formato que
- * quiera: logo, colores, tablas, tipografías. Los datos se insertan donde
- * escriba marcadores con la forma  <<[Nombre_Del_Campo]>>.
+ * El PDF se arma 100% en el cliente: `plantillaBase()` deriva los bloques
+ * del subconfig del módulo (datos, tabla de detalle, imágenes, firmas),
+ * `renderHTML()` los convierte en HTML imprimible y `exportar()` abre una
+ * ventana con `window.print()` (el propio diálogo "Guardar como PDF" del
+ * navegador). No depende de ningún servicio externo — funciona igual
+ * online, offline y con cualquier proveedor de datos (Sheets o Supabase).
  *
- * Al exportar, el backend copia la plantilla, sustituye los marcadores
- * (preservando el formato del documento), repite las filas de detalle,
- * inserta firmas e imágenes y devuelve el PDF.
- *
- * DÓNDE SE GUARDA EL VÍNCULO
- * Pestaña `_PLANTILLA_PDF` del Spreadsheet de cada módulo, fila DOC_ID.
- * localStorage queda como caché para no consultar el servidor cada vez.
- *
- * RESPALDO
- * Si un módulo todavía no tiene plantilla, se imprime con un formato interno
- * por defecto (`plantillaBase` + `renderHTML`) para que el botón "Descargar
- * PDF" nunca se quede sin hacer nada. Ese formato NO es editable: para
- * personalizarlo hay que crear la plantilla de Google Docs.
+ * Este formato reemplaza al anterior gestor de plantillas de Google Docs
+ * (retirado: dependía 100% de Drive/Docs). No es editable visualmente por
+ * el admin; para cambiar el diseño hay que editar `plantillaBase()` o
+ * `CSS` en este archivo.
  * =========================================================================
  */
 
 const PDF_TEMPLATE = {
-
-  STORAGE_KEY: 'pwa_pdf_doc_templates',
-
-  // -----------------------------------------------------------------------
-  // VÍNCULO CON LA PLANTILLA DE GOOGLE DOCS
-  // -----------------------------------------------------------------------
-  _cache: function() {
-    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY)) || {}; }
-    catch (e) { return {}; }
-  },
-
-  /** ID del Doc vinculado al módulo (cadena vacía si no hay) */
-  docId: function(modulo) {
-    return (this._cache()[modulo] || {}).docId || '';
-  },
-
-  docUrl: function(modulo) {
-    const id = this.docId(modulo);
-    return id ? 'https://docs.google.com/document/d/' + id + '/edit' : '';
-  },
-
-  /** Guarda el vínculo localmente y en la base de datos */
-  vincular: function(modulo, docId) {
-    const c = this._cache();
-    c[modulo] = { docId: String(docId || '').trim(), fecha: new Date().toISOString() };
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
-
-    if (typeof DataService === 'undefined' || !DataService.saveTemplate) {
-      return Promise.resolve({ remoto: false, msg: 'Guardado solo en este dispositivo.' });
-    }
-    return DataService.saveTemplate(modulo, c[modulo].docId)
-      .then(r => (r && r.status === 'OK')
-        ? { remoto: true,  msg: 'Plantilla vinculada para toda la organización.' }
-        : { remoto: false, msg: (r && r.msg) || 'No se pudo guardar el vínculo en la base de datos.' })
-      .catch(e => ({ remoto: false, msg: 'Sin conexión con el servidor: ' + (e.message || e) }));
-  },
-
-  /** Trae el vínculo vigente desde la base de datos */
-  sincronizar: function(modulo) {
-    if (typeof DataService === 'undefined' || !DataService.readTemplate) {
-      return Promise.resolve({ origen: 'local', docId: this.docId(modulo) });
-    }
-    return DataService.readTemplate(modulo).then(r => {
-      const id = (r && r.status === 'OK' && r.payload) ? String(r.payload.DOC_ID || '').trim() : '';
-      if (id) {
-        const c = this._cache();
-        c[modulo] = { docId: id, fecha: new Date().toISOString() };
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
-        return { origen: 'bd', docId: id };
-      }
-      return { origen: 'local', docId: this.docId(modulo) };
-    }).catch(() => ({ origen: 'local', docId: this.docId(modulo) }));
-  },
-
-  /**
-   * Pide al servidor que cree el Google Doc base del módulo, ya armado con
-   * todos los campos. El admin nunca parte de una hoja en blanco.
-   */
-  crearPlantillaBase: function(modulo) {
-    const campos  = this.camposDe(modulo);
-    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
-    const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
-
-    return new Promise((resolve, reject) => {
-      if (typeof google === 'undefined' || !google.script) {
-        reject(new Error('Esta acción necesita conexión con Google Apps Script.'));
-        return;
-      }
-      google.script.run
-        .withSuccessHandler(res => {
-          try { resolve(typeof res === 'string' ? JSON.parse(res) : res); }
-          catch (e) { reject(new Error('Respuesta inválida del servidor.')); }
-        })
-        .withFailureHandler(err => reject(err))
-        .serverRouter(JSON.stringify({
-          action: 'CREATE_DOC_TEMPLATE',
-          moduleName: modulo,
-          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
-          titulo:  'Informe de ' + String(modulo).replace(/^\d+_/, '').replace(/_/g, ' '),
-          empresa: ajustes.App_Empresa || '',
-          campos:       campos.texto.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
-          camposHijos:  campos.hijos.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
-          camposFirma:  campos.media.filter(c => c.tipo === 'Signature')
-                                    .map(c => ({ clave: c.clave, etiqueta: c.etiqueta }))
-        }));
-    });
-  },
-
-  /** Lista de marcadores que el admin puede pegar en el Doc */
-  marcadores: function(modulo) {
-    const c = this.camposDe(modulo);
-    return {
-      registro: c.texto.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      media:    c.media.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      detalle:  c.hijos.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      especiales: [{ etiqueta: 'Fecha de emisión', marcador: '<<[__FECHA__]>>' }]
-    };
-  },
 
   // -----------------------------------------------------------------------
   // LECTURA DEL ESQUEMA DEL MÓDULO
@@ -458,62 +353,11 @@ const PDF_TEMPLATE = {
   },
 
   /**
-   * Exporta el registro visible usando la plantilla del módulo.
+   * Exporta el registro visible con el formato interno.
    * Si no se encuentra el registro en caché, cae a los datos de ejemplo para
    * que el usuario al menos vea el formato (y se le avisa).
    */
   exportarRegistro: function(modulo, uuid, titulo) {
-    const docId = this.docId(modulo);
-
-    // 1. CON plantilla de Google Docs → la genera el servidor con el diseño
-    //    que el administrador preparó en el Doc.
-    if (docId && typeof google !== 'undefined' && google.script) {
-      const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
-      const modular = cfg.Config_Modular || {};
-
-      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Generando PDF con la plantilla…', 'info', 2500);
-
-      google.script.run
-        .withSuccessHandler(res => {
-          let r; try { r = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { r = {}; }
-          if (r.status === 'OK' && r.pdfUrl) {
-            window.open(r.pdfUrl, '_blank');
-            if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('PDF generado y guardado en Drive.', 'success', 3200);
-          } else if (r.status === 'NO_TEMPLATE') {
-            this._exportarRespaldo(modulo, uuid, titulo);
-          } else {
-            if (typeof PWA_SKILLS !== 'undefined') {
-              PWA_SKILLS.toast('No se pudo generar el PDF: ' + (r.msg || 'error del servidor') +
-                               '. Se usa el formato interno.', 'warning', 5000);
-            }
-            this._exportarRespaldo(modulo, uuid, titulo);
-          }
-        })
-        .withFailureHandler(() => {
-          if (typeof PWA_SKILLS !== 'undefined') {
-            PWA_SKILLS.toast('Sin conexión con el servidor. Se imprime con el formato interno.', 'warning', 4500);
-          }
-          this._exportarRespaldo(modulo, uuid, titulo);
-        })
-        .serverRouter(JSON.stringify({
-          action: 'GENERATE_PDF',
-          moduleName: modulo,
-          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
-          uuid: uuid,
-          docId: docId,
-          childTable:    modular.CHILD_TABLE  || '',
-          relationalKey: modular.RELATIONAL_KEY || 'UUID',
-          subconfig: { Variables: cfg.Variables || {} }
-        }));
-      return true;
-    }
-
-    // 2. SIN plantilla → formato interno, para que el botón siempre responda
-    return this._exportarRespaldo(modulo, uuid, titulo);
-  },
-
-  /** Formato por defecto (no editable). Se usa mientras no haya plantilla de Docs. */
-  _exportarRespaldo: function(modulo, uuid, titulo) {
     let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
     let hijos = [];
 

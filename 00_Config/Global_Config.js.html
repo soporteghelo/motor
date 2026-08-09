@@ -106,7 +106,9 @@ const AppState = {
     EmpresaId:     localStorage.getItem('pwa_empresa_id')     || null,
     EmpresaNombre: localStorage.getItem('pwa_empresa_nombre') || '',
     // JWT de Supabase Auth: lleva rol y empresa_id en app_metadata
-    SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')   || null
+    SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')      || null,
+    // Renueva el JWT cuando expira (1h) sin forzar un nuevo login
+    SupabaseRefreshToken: localStorage.getItem('pwa_supabase_refresh') || null
   },
 
   // --- MOTOR DE COMPORTAMIENTO ---
@@ -121,23 +123,15 @@ const AppState = {
   activeModule: null,
 
   // --- PROVEEDOR DE BASE DE DATOS ---
-  // 'sheets' → Google Sheets via Apps Script (default)
-  // 'supabase' → Supabase REST API (migrar cuando la app escale)
-  DB_PROVIDER: 'sheets',
+  // 'sheets' → Google Sheets via Apps Script (legado, ya no es el default)
+  // 'supabase' → Supabase REST API (fuente de datos única de la app)
+  DB_PROVIDER: 'supabase',
 
-  // --- CONFIGURACIÓN SUPABASE (completar al migrar) ---
+  // --- CONFIGURACIÓN SUPABASE ---
   Supabase: {
     URL:            'https://fkelhhfptckarqgknkfh.supabase.co',
     ANON_KEY:       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZWxoaGZwdGNrYXJxZ2tua2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxOTM5MjcsImV4cCI6MjEwMTc2OTkyN30.joWcmZIHws6eOf3I-o6hEXFAQMq9juEJdWaKVqPdl4c',   // clave pública: es segura porque RLS está activo
-    PROJECT_REF:    'fkelhhfptckarqgknkfh',
-    USE_SNAKE_CASE: true,      // el esquema generado usa snake_case
-    // Mapeo de campos de fecha/hora por módulo (para filtros delta)
-    TS_FIELDS: {
-      '01_Usuarios':        'Fecha_Registro',
-      '02_Reportes':        'Fecha_Registro',
-      '03_Inspecciones':    'Fecha_Peru',
-      '04_Configuraciones': 'Ultima_Actualizacion'
-    }
+    PROJECT_REF:    'fkelhhfptckarqgknkfh'
   },
 
   // --- MÉTODOS DE ESTADO ---
@@ -157,6 +151,7 @@ const AppState = {
     guardar('pwa_empresa_id',      this.User.EmpresaId);
     guardar('pwa_empresa_nombre',  this.User.EmpresaNombre);
     guardar('pwa_supabase_jwt',    this.User.SupabaseJWT);
+    guardar('pwa_supabase_refresh', this.User.SupabaseRefreshToken);
 
     if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
   },

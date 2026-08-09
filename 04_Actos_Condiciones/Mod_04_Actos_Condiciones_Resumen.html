@@ -226,21 +226,17 @@ function loadResumen_04_Actos_Condiciones() {
     });
   }
 
-  // Intentar cargar desde servidor (solo en producción)
-  if (typeof google !== 'undefined' && google.script) {
-    google.script.run
-      .withSuccessHandler(function(res) {
-        const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-        if (parsed.status === 'OK' && Array.isArray(parsed.payload) && parsed.payload.length > 0) {
-          // Alcance por rol antes de pintar (la restricción real la aplica RLS)
-          window._actData = (typeof PERMISOS !== 'undefined')
-            ? PERMISOS.filtrarDatos('04_Actos_Condiciones', parsed.payload) : parsed.payload;
-          renderActosTable(window._actData);
-          localStorage.setItem('refdata_04_Actos_Condiciones', JSON.stringify(window._actData));
-        }
-      })
-      .withFailureHandler(function() { /* usa datos demo */ })
-      .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '04_Actos_Condiciones' }));
-  }
+  // Intentar cargar desde el proveedor activo (Sheets o Supabase)
+  DataService.read('04_Actos_Condiciones')
+    .then(function(parsed) {
+      if (parsed.status === 'OK' && Array.isArray(parsed.payload) && parsed.payload.length > 0) {
+        // Alcance por rol antes de pintar (la restricción real la aplica RLS)
+        window._actData = (typeof PERMISOS !== 'undefined')
+          ? PERMISOS.filtrarDatos('04_Actos_Condiciones', parsed.payload) : parsed.payload;
+        renderActosTable(window._actData);
+        localStorage.setItem('refdata_04_Actos_Condiciones', JSON.stringify(window._actData));
+      }
+    })
+    .catch(function() { /* usa datos demo */ });
 }
 </script>

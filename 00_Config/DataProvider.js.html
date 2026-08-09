@@ -11,9 +11,9 @@
 //     AppState.DB_PROVIDER = 'supabase';  ← Supabase REST API
 //
 // MIGRACIÓN A SUPABASE:
-//   1. Configura AppState.Supabase.URL y AppState.Supabase.ANON_KEY
-//   2. Ejecuta: node tools/migrate_to_supabase.js  (crea el schema SQL)
-//   3. Pega el SQL en el editor de Supabase
+//   1. node tools/gen_supabase.js  (genera supabase_01_schema.sql .. 04_seed.sql)
+//   2. Pega esos SQL y tools/supabase_05_login.sql en el editor de Supabase, en orden
+//   3. Configura AppState.Supabase.URL y ANON_KEY en Global_Config.js.html
 //   4. Cambia AppState.DB_PROVIDER a 'supabase' en Global_Config.js.html
 //   5. Ejecuta node generate_preview.js y despliega
 // =========================================================================
@@ -54,16 +54,6 @@ const SheetsProvider = {
     });
   },
 
-  readTemplate(module) {
-    return this._call({ action: 'READ_TEMPLATE', moduleName: module });
-  },
-  saveTemplate(module, docId) {
-    return this._call({
-      action: 'SAVE_TEMPLATE', moduleName: module, docId: docId,
-      autor: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.Nombre : ''
-    });
-  },
-
   auth(dni, hash) {
     return this._call({ action: 'LOGIN_AUTH', userDNI: dni, userPassHash: hash });
   },
@@ -94,51 +84,117 @@ const SheetsProvider = {
       dataArray: items.map(i => ({ ...i.payload, _action: i.action })),
       childDataArray: items.flatMap(i => i.childPayload || [])
     });
-  },
-  getConfig() {
-    return this._call({ action: 'GET_CONFIG' });
-  },
-  saveConfig(settings) {
-    return this._call({ action: 'SAVE_CONFIG', settings });
   }
 };
 
 
 // ── SupabaseProvider ── Llamadas directas a Supabase PostgREST API
+//
+// CLAVE DE TRADUCCIÓN DE NOMBRES
+// Los subconfigs usan claves PascalCase ("Fecha_Emision", "Auditor_DNI")
+// porque así nacieron pensados para columnas de Sheets. Las tablas reales
+// de Postgres (ver tools/supabase_01_schema.sql) son snake_case en
+// minúscula. La correspondencia es, en casi todos los casos, un simple
+// `.toLowerCase()` de la clave del subconfig — así que en vez de mantener
+// un diccionario a mano por módulo, _aColumnas()/_aFrontend() lo derivan
+// del propio subconfig (Variables / Relational_Fields) en cada llamada.
+// Es la única fuente de verdad: si mañana se agrega un campo al formulario,
+// el mapeo lo recoge solo.
+//
+// "01_Usuarios" es la excepción: su tabla no es un volcado 1:1 del
+// subconfig, sino un perfil reducido enlazado a Supabase Auth (ver
+// supabase_01_schema.sql). Se maneja aparte en _usuarioAFrontend/_guardarUsuario.
 const SupabaseProvider = {
   get _url()  { return (AppState.Supabase || {}).URL      || ''; },
   get _key()  { return (AppState.Supabase || {}).ANON_KEY || ''; },
-  get _snake(){ return (AppState.Supabase || {}).USE_SNAKE_CASE === true; },
 
   _headers(extra = {}) {
     return {
       'Content-Type': 'application/json',
       'apikey': this._key,
-      'Authorization': `Bearer ${AppState.User?.SupabaseJWT || this._key}`,
+      'Authorization': `Bearer ${(AppState.User && AppState.User.SupabaseJWT) || this._key}`,
       ...extra
     };
   },
 
-  // Convierte '02_Reportes' → 'reportes' (o mantiene la mayúscula según config)
+  // '02_Reportes' → 'reportes'  (el esquema generado siempre usa snake_case)
   _table(module) {
-    const base = module.replace(/^\d+_/, '');
-    return this._snake ? base.toLowerCase() : base;
+    return String(module).replace(/^\d+_/, '').toLowerCase();
   },
 
-  // Campo de timestamp para ordenar (configurable por módulo)
-  _tsField(module) {
-    const map = (AppState.Supabase || {}).TS_FIELDS || {};
-    return map[module] || 'Fecha_Registro';
+  _subconfig(modulo) {
+    const key = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    return (typeof window !== 'undefined' && window[key]) || null;
   },
 
-  async _fetch(path, options = {}) {
+  /** Nombre real de la tabla hija: '<tabla_padre>_<child_table_en_minuscula>' */
+  _childTable(modulo) {
+    const cfg = this._subconfig(modulo);
+    const child = cfg && cfg.Config_Modular && cfg.Config_Modular.CHILD_TABLE;
+    return child ? `${this._table(modulo)}_${String(child).toLowerCase()}` : null;
+  },
+
+  /** Fila de Postgres (columnas snake_case) → objeto con las claves PascalCase del subconfig */
+  _aFrontend(modulo, fila) {
+    const cfg = this._subconfig(modulo);
+    if (!cfg || !cfg.Variables || !fila) return fila;
+    const out = {};
+    Object.keys(cfg.Variables).forEach(campo => {
+      const col = campo.toLowerCase();
+      if (fila[col] !== undefined) out[campo] = fila[col];
+    });
+    ['empresa_id', 'creado_por_dni', 'creado_en'].forEach(c => { if (fila[c] !== undefined) out[c] = fila[c]; });
+    return out;
+  },
+
+  /** Objeto con claves PascalCase del subconfig → fila para Postgres (snake_case) */
+  _aColumnas(modulo, datos) {
+    const cfg = this._subconfig(modulo);
+    if (!cfg || !cfg.Variables) return datos;
+    const out = {};
+    Object.keys(datos).forEach(campo => {
+      if (cfg.Variables[campo]) out[campo.toLowerCase()] = datos[campo];
+    });
+    return out;
+  },
+
+  /** Fila hija (Postgres) → objeto con los `name` declarados en Relational_Fields */
+  _hijoAFrontend(modulo, fila) {
+    const campos = this._relationalFields(modulo);
+    const out = {};
+    campos.forEach(c => { const col = c.name.toLowerCase(); if (fila[col] !== undefined) out[c.name] = fila[col]; });
+    return out;
+  },
+
+  /** Objeto de fila hija (PARENT_UUID + campos del subconfig) → fila para Postgres */
+  _hijoAColumnas(modulo, datos) {
+    const nombres = new Set(this._relationalFields(modulo).map(c => c.name));
+    const out = {};
+    Object.keys(datos).forEach(campo => {
+      if (campo === 'PARENT_UUID' || nombres.has(campo)) out[campo.toLowerCase()] = datos[campo];
+    });
+    return out;
+  },
+
+  _relationalFields(modulo) {
+    const cfg = this._subconfig(modulo);
+    return (cfg && cfg.Config_Modular && cfg.Config_Modular.Relational_Fields) || [];
+  },
+
+  async _fetch(path, options = {}, _reintentado) {
     const url = `${this._url}/rest/v1${path}`;
     try {
       const res = await fetch(url, {
         ...options,
         headers: { ...this._headers(), ...(options.headers || {}) }
       });
-      const body = res.status !== 204 ? await res.json() : null;
+      // El JWT de sesión dura 1 hora; si expiró, se intenta renovar UNA vez
+      // con el refresh_token antes de rendirse (evita cerrar sesión sola en
+      // medio de un turno de campo).
+      if (res.status === 401 && !_reintentado && await this._refrescarSesion()) {
+        return this._fetch(path, options, true);
+      }
+      const body = res.status !== 204 ? await res.json().catch(() => null) : null;
       if (!res.ok) {
         const msg = (body && (body.message || body.hint || body.details)) || `HTTP ${res.status}`;
         return { status: 'ERROR', msg };
@@ -147,6 +203,26 @@ const SupabaseProvider = {
     } catch (e) {
       return { status: 'ERROR', msg: 'Error de red: ' + e.message };
     }
+  },
+
+  /** Intenta renovar el JWT de Supabase Auth. true si lo consiguió. */
+  async _refrescarSesion() {
+    const rt = (AppState.User || {}).SupabaseRefreshToken;
+    if (!rt) return false;
+    try {
+      const res = await fetch(`${this._url}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: this._key },
+        body: JSON.stringify({ refresh_token: rt })
+      });
+      if (!res.ok) return false;
+      const body = await res.json();
+      AppState.User.SupabaseJWT = body.access_token;
+      AppState.User.SupabaseRefreshToken = body.refresh_token;
+      localStorage.setItem('pwa_supabase_jwt', body.access_token);
+      localStorage.setItem('pwa_supabase_refresh', body.refresh_token);
+      return true;
+    } catch (e) { return false; }
   },
 
   // ── Archivos: Supabase Storage sustituye a Google Drive ────────────────
@@ -271,138 +347,211 @@ const SupabaseProvider = {
     } catch (e) { return ''; }
   },
 
-  async auth(dni, hash) {
-    const table = this._table('01_Usuarios');
-    const r = await this._fetch(`/${table}?DNI=eq.${encodeURIComponent(dni)}&select=*`);
-    if (r.status !== 'OK') return r;
-    const users = r._raw;
-    if (!users || !users.length) return { status: 'ERROR', msg: 'Usuario no encontrado.' };
-    const u = users[0];
-    if (u.Password_Hash !== hash) return { status: 'ERROR', msg: 'Contraseña incorrecta.' };
-    if (u.Status === 'Cesado') return { status: 'CESADO', msg: 'Acceso revocado. Contacte al administrador.' };
+  /**
+   * Login por DNI contra Supabase Auth.
+   * Supabase identifica usuarios por email, no por DNI, así que primero se
+   * resuelve el email vía la función `login_email_de_dni` (SECURITY DEFINER,
+   * ver tools/supabase_05_login.sql) y luego se hace el login real — con la
+   * contraseña TAL CUAL la escribió el usuario, no un hash: Supabase la
+   * recibe por HTTPS y la hashea con bcrypt en su servidor, que es la
+   * práctica estándar (ver handleLogin() en App_Routing.js.html).
+   */
+  async auth(dni, password) {
+    let email;
+    try {
+      const rpc = await fetch(`${this._url}/rest/v1/rpc/login_email_de_dni`, {
+        method: 'POST', headers: this._headers(), body: JSON.stringify({ p_dni: dni })
+      });
+      email = rpc.ok ? await rpc.json() : null;
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión con el servidor.' };
+    }
+    if (!email) return { status: 'ERROR', msg: 'Usuario no encontrado.' };
+
+    let tokenBody;
+    try {
+      const tokenRes = await fetch(`${this._url}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: this._key },
+        body: JSON.stringify({ email, password })
+      });
+      tokenBody = await tokenRes.json().catch(() => ({}));
+      if (!tokenRes.ok) {
+        return { status: 'ERROR', msg: tokenBody.error_description || tokenBody.msg || 'Contraseña incorrecta.' };
+      }
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión con el servidor.' };
+    }
+
+    // Con el JWT recién emitido, RLS ya reconoce a este usuario (id = auth.uid())
+    const cabecerasSesion = { apikey: this._key, Authorization: `Bearer ${tokenBody.access_token}` };
+    const perfilRes = await fetch(`${this._url}/rest/v1/usuarios?dni=eq.${encodeURIComponent(dni)}&select=*`, { headers: cabecerasSesion });
+    const perfiles = await perfilRes.json().catch(() => []);
+    const perfil = Array.isArray(perfiles) ? perfiles[0] : null;
+    if (!perfil) return { status: 'ERROR', msg: 'Perfil de usuario no encontrado.' };
+
+    const estado = String(perfil.status || '').toLowerCase();
+    if (estado === 'cesado' || estado === 'inactivo') {
+      return { status: 'CESADO', msg: 'Acceso revocado. Contacte al administrador.' };
+    }
+
+    let empresaNombre = '';
+    if (perfil.empresa_id) {
+      const eRes = await fetch(`${this._url}/rest/v1/empresas?id=eq.${perfil.empresa_id}&select=nombre`, { headers: cabecerasSesion });
+      const eBody = await eRes.json().catch(() => []);
+      empresaNombre = (eBody && eBody[0] && eBody[0].nombre) || '';
+    }
+
     return {
       status: 'OK',
       userData: {
-        UUID:            u.UUID,
-        DNI:             u.DNI,
-        Nombre_Completo: u.Nombre_Completo,
-        Email:           u.Email,
-        Rol:             u.Rol,
-        Status:          u.Status
+        UUID: perfil.id, DNI: perfil.dni, Nombre_Completo: perfil.nombre, Email: perfil.email,
+        Rol: perfil.rol, Status: perfil.status,
+        EmpresaId: perfil.empresa_id || null, EmpresaNombre: empresaNombre,
+        SupabaseJWT: tokenBody.access_token, SupabaseRefreshToken: tokenBody.refresh_token
       }
     };
   },
 
-  async read(module) {
-    const tsField = this._tsField(module);
-    const r = await this._fetch(`/${this._table(module)}?order=${tsField}.desc.nullslast`);
-    if (r.status !== 'OK') return r;
-    return { status: 'OK', payload: r._raw || [], msg: (r._raw || []).length + ' registros' };
-  },
-
-  async readDelta(module, lastSync) {
-    const tsField = this._tsField(module);
-    const ts = encodeURIComponent(lastSync);
-    const r = await this._fetch(`/${this._table(module)}?${tsField}=gte.${ts}&order=${tsField}.asc`);
-    if (r.status !== 'OK') return r;
-    return { status: 'OK', payload: r._raw || [] };
-  },
-
-  async create(module, data) {
-    // 1. Los archivos van primero a Storage; en la fila queda su ruta
-    let fila;
-    try {
-      fila = await this.subirArchivosDe(module, data);
-    } catch (e) {
-      return { status: 'ERROR', msg: e.message };
-    }
-    // 2. Sello de empresa y autor: RLS los exige y son la base del alcance
-    fila.empresa_id     = (AppState.User || {}).EmpresaId || null;
-    fila.creado_por_dni = (AppState.User || {}).DNI || '';
-
-    const r = await this._fetch(`/${this._table(module)}`, {
-      method: 'POST',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify(fila)
-    });
-    return r.status === 'OK' ? { status: 'OK', uuid: fila.UUID } : r;
-  },
-
-  async update(module, data) {
-    const uuid = data.UUID;
-    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para actualizar.' };
-    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
-      method: 'PATCH',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify(data)
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
-  },
-
-  async delete(module, uuid) {
-    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para eliminar.' };
-    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
-      method: 'DELETE'
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
-  },
-
-  async syncQueue(module, items) {
-    let success = 0, errors = 0;
-    for (const item of items) {
-      const act = (item.action || 'INSERT').toUpperCase();
-      let r;
-      if      (act === 'DELETE') r = await this.delete(module, item.payload.UUID);
-      else if (act === 'UPDATE') r = await this.update(module, item.payload);
-      else                       r = await this.create(module, item.payload);
-      if (r.status === 'OK') success++; else errors++;
-    }
+  _usuarioAFrontend(fila) {
     return {
-      status: errors === 0 ? 'OK' : 'PARTIAL',
-      processed: items.length,
-      success,
-      errors
+      UUID: fila.id, DNI: fila.dni, Nombre_Completo: fila.nombre, Email: fila.email,
+      Rol: fila.rol, Status: fila.status, empresa_id: fila.empresa_id
     };
   },
 
-  async getConfig() {
-    const table = this._table('04_Configuraciones');
-    const r = await this._fetch(`/${table}?select=Clave,Valor`);
-    if (r.status !== 'OK') return r;
-    const cfg = {};
-    (r._raw || []).forEach(row => { if (row.Clave) cfg[row.Clave] = row.Valor; });
-    return { status: 'OK', payload: cfg };
+  /**
+   * "01_Usuarios" no admite alta desde el cliente: crear una cuenta real
+   * requiere la Admin API de Supabase Auth (service_role), que nunca debe
+   * exponerse al navegador. Por ahora el alta se hace con tools/seed_demo_data.js
+   * o manualmente; aquí solo se permite editar el perfil de alguien que ya existe.
+   */
+  async _guardarUsuario(datos) {
+    const existeRes = await this._fetch(`/usuarios?dni=eq.${encodeURIComponent(datos.DNI)}&select=id`);
+    const fila = (existeRes.status === 'OK' && existeRes._raw && existeRes._raw[0]) || null;
+    if (!fila) {
+      return { status: 'ERROR', msg: 'Crear usuarios nuevos todavía no está disponible desde la app: requiere un endpoint con privilegios de servidor. Pide a soporte que dé de alta la cuenta.' };
+    }
+    const cambios = {};
+    if (datos.Nombre_Completo !== undefined) cambios.nombre = datos.Nombre_Completo;
+    if (datos.Email    !== undefined) cambios.email  = datos.Email;
+    if (datos.Rol      !== undefined) cambios.rol    = String(datos.Rol).toLowerCase();
+    if (datos.Status   !== undefined) cambios.status = datos.Status;
+    if (!Object.keys(cambios).length) return { status: 'OK', uuid: fila.id };
+
+    const r = await this._fetch(`/usuarios?id=eq.${fila.id}`, {
+      method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(cambios)
+    });
+    return r.status === 'OK' ? { status: 'OK', uuid: fila.id } : r;
   },
 
-  async saveConfig(settings) {
-    const table = this._table('04_Configuraciones');
-    const rows = Object.keys(settings).map(k => ({ Clave: k, Valor: settings[k] }));
-    const r = await this._fetch(`/${table}`, {
+  async read(module) {
+    if (module === '01_Usuarios') {
+      const r = await this._fetch('/usuarios?select=*&order=creado_en.desc');
+      if (r.status !== 'OK') return r;
+      return { status: 'OK', payload: (r._raw || []).map(f => this._usuarioAFrontend(f)) };
+    }
+    // Orden por 'creado_en': es la única columna de fecha presente en TODAS
+    // las tablas (a diferencia de Fecha_Emision/Fecha_Peru/etc., que varían
+    // por módulo). No se leen tablas hijas aquí: tal como en Code.gs/READ_DB,
+    // el listado trae solo la fila principal.
+    const r = await this._fetch(`/${this._table(module)}?select=*&order=creado_en.desc`);
+    if (r.status !== 'OK') return r;
+    const filas = (r._raw || []).map(f => this._aFrontend(module, f));
+    return { status: 'OK', payload: filas, msg: filas.length + ' registros' };
+  },
+
+  async readDelta(module, lastSync) {
+    if (module === '01_Usuarios') return this.read(module);
+    const ts = encodeURIComponent(lastSync);
+    const r = await this._fetch(`/${this._table(module)}?creado_en=gte.${ts}&select=*&order=creado_en.asc`);
+    if (r.status !== 'OK') return r;
+    return { status: 'OK', payload: (r._raw || []).map(f => this._aFrontend(module, f)) };
+  },
+
+  /**
+   * Guarda un registro (alta o edición: mismo camino, como en Sheets) y
+   * reemplaza sus filas hijas. "Reemplazar" y no "acumular" es intencional:
+   * el formulario siempre manda el set completo de filas dinámicas vigentes,
+   * así que borrar-e-insertar evita duplicados en cada re-edición.
+   */
+  async _guardar(modulo, datosCrudos, hijosCrudos) {
+    if (modulo === '01_Usuarios') return this._guardarUsuario(datosCrudos);
+
+    let datos;
+    try {
+      datos = await this.subirArchivosDe(modulo, datosCrudos);
+    } catch (e) {
+      return { status: 'ERROR', msg: e.message };
+    }
+
+    const empresaId = (AppState.User || {}).EmpresaId || null;
+    const dniAutor  = (AppState.User || {}).DNI || '';
+
+    const fila = this._aColumnas(modulo, datos);
+    fila.empresa_id     = empresaId;
+    fila.creado_por_dni = dniAutor;
+
+    // Upsert por UUID: una re-sincronización del mismo registro actualiza en
+    // vez de fallar por clave duplicada. OJO: como es un upsert, Postgres
+    // evalúa la política RLS de UPDATE si el UUID ya existe — un rol con
+    // canCreate:true pero canUpdate:false (ej. Trabajador en 02_Reportes)
+    // recibirá 403 si se reintenta el mismo UUID ya guardado (offline
+    // retry tras perder la respuesta de éxito). Es un caso extremo poco
+    // frecuente; se prefiere sobre la alternativa (ignore-duplicates), que
+    // impediría que Admin/Supervisor editen registros existentes.
+    const r = await this._fetch(`/${this._table(modulo)}?on_conflict=uuid`, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(rows)
+      body: JSON.stringify([fila])
     });
+    if (r.status !== 'OK') return r;
+
+    const childTable = this._childTable(modulo);
+    if (childTable && Array.isArray(hijosCrudos)) {
+      await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(datos.UUID)}`, { method: 'DELETE' });
+      if (hijosCrudos.length) {
+        const filasHijas = hijosCrudos.map(h => {
+          const fh = this._hijoAColumnas(modulo, h);
+          fh.empresa_id  = empresaId;
+          fh.parent_uuid = datos.UUID;
+          return fh;
+        });
+        const cr = await this._fetch(`/${childTable}`, {
+          method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(filasHijas)
+        });
+        if (cr.status !== 'OK') return { status: 'PARTIAL', msg: 'Registro guardado; fallaron los detalles: ' + cr.msg };
+      }
+    }
+    return { status: 'OK', uuid: datos.UUID };
+  },
+
+  create(module, data)  { return this._guardar(module, data, []); },
+  update(module, data)  { return this._guardar(module, data, []); },
+
+  async delete(module, uuid) {
+    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para eliminar.' };
+    const childTable = this._childTable(module);
+    if (childTable) await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(uuid)}`, { method: 'DELETE' });
+    const r = await this._fetch(`/${this._table(module)}?uuid=eq.${encodeURIComponent(uuid)}`, { method: 'DELETE' });
     return r.status === 'OK' ? { status: 'OK' } : r;
   },
 
-  // Plantillas PDF: tabla 'plantillas' con clave = módulo
-  async readTemplate(module) {
-    const r = await this._fetch(`/plantillas?Modulo=eq.${encodeURIComponent(module)}&select=*`);
-    if (r.status !== 'OK') return r;
-    const fila = (r._raw || [])[0];
-    return { status: 'OK', payload: fila ? { DOC_ID: fila.Doc_Id } : null };
-  },
-  async saveTemplate(module, docId) {
-    const r = await this._fetch('/plantillas', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify([{
-        Modulo: module, Doc_Id: docId,
-        Actualizado: new Date().toISOString(),
-        Autor: (AppState.User || {}).Nombre || ''
-      }])
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
+  /** Punto de entrada real de guardado: lo usa Offline_Engine tras cada flush de la cola. */
+  async syncQueue(module, items) {
+    let success = 0, errors = 0;
+    const mensajes = [];
+    for (const item of items) {
+      const r = await this._guardar(module, item.payload, item.childPayload || []);
+      if (r.status === 'OK') success++;
+      else { errors++; mensajes.push(r.msg); }
+    }
+    return {
+      status: errors === 0 ? 'OK' : (success > 0 ? 'PARTIAL' : 'ERROR'),
+      processed: items.length,
+      success, errors,
+      msg: mensajes.join('; ')
+    };
   }
 };
 
@@ -423,9 +572,5 @@ const DataService = {
   update:     (module, data)     => DataService.provider.update(module, data),
   delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
-  getConfig:  ()                 => DataService.provider.getConfig(),
-  saveConfig: (settings)         => DataService.provider.saveConfig(settings),
-  readTemplate: (module)              => DataService.provider.readTemplate(module),
-  saveTemplate: (module, docId)       => DataService.provider.saveTemplate(module, docId),
 };
 </script>

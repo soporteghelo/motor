@@ -3106,16 +3106,10 @@ async function loadDetail_01_Usuarios(dni) {
     if (cached) { try { allUsers = JSON.parse(cached); } catch(e) {} }
 
     if (!allUsers) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allUsers = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allUsers)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '01_Usuarios' }));
-      });
+      try {
+        const parsed = await DataService.read('01_Usuarios');
+        if (parsed.status === 'OK') { allUsers = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allUsers)); }
+      } catch (e) { /* se resuelve con la caché de sesión más abajo */ }
     }
 
     // La tabla puede enviar el UUID interno y las integraciones antiguas el DNI.
@@ -4373,16 +4367,10 @@ async function loadDetail_02_Reportes(uuid) {
     if (cached) { try { allReports = JSON.parse(cached); } catch(e) {} }
 
     if (!allReports) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allReports = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allReports)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '02_Reportes' }));
-      });
+      try {
+        const parsed = await DataService.read('02_Reportes');
+        if (parsed.status === 'OK') { allReports = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allReports)); }
+      } catch (e) { /* se resuelve abajo con "no encontrado" */ }
     }
 
     const report = allReports ? allReports.find(r => String(r.UUID) === String(uuid)) : null;
@@ -6041,16 +6029,10 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (cached) { try { allInsp = JSON.parse(cached); } catch(e) {} }
 
     if (!allInsp) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allInsp = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allInsp)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '03_Inspecciones' }));
-      });
+      try {
+        const parsed = await DataService.read('03_Inspecciones');
+        if (parsed.status === 'OK') { allInsp = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allInsp)); }
+      } catch (e) { /* se resuelve abajo con "no encontrado" */ }
     }
 
     const insp = allInsp ? allInsp.find(i => String(i.UUID) === String(uuid)) : null;
@@ -6426,7 +6408,6 @@ function loadResumen_04_Configuraciones() {
       <button onclick="switchCfgTab('sync')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="sync">Sincronización</button>
       <button onclick="switchCfgTab('seguridad')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="seguridad">Seguridad</button>
       <button onclick="switchCfgTab('modulos')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="modulos">Módulos</button>
-      <button onclick="switchCfgTab('pdf')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="pdf">PDF</button>
     </div>
 
     <!-- Tab: General -->
@@ -6569,95 +6550,12 @@ function loadResumen_04_Configuraciones() {
       </div>
     </div>
 
-    <!-- Tab: Plantilla PDF — gestor de plantillas de Google Docs -->
-    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-pdf">
-
-      <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
-        <div class="flex-1 min-w-[180px]">
-          <label class="block text-xs font-bold text-secondary mb-2" for="pdf-modulo">Documento a diseñar</label>
-          <select id="pdf-modulo" onchange="pdfCargarModulo(this.value)"
-            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-bold focus:border-primary outline-none">
-          </select>
-        </div>
-        <span id="pdf-estado" class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-surface-variant text-on-surface-variant"></span>
-      </div>
-
-      <!-- Sin plantilla: crear una desde cero -->
-      <div id="pdf-sin-plantilla" class="hidden">
-        <div class="rounded-xl border border-dashed border-outline-variant bg-surface-container-low p-4 text-center">
-          <span class="material-symbols-outlined text-[30px] text-primary mb-1 block" aria-hidden="true">description</span>
-          <p class="text-[12px] font-bold text-on-surface mb-1">Este módulo aún no tiene plantilla</p>
-          <p class="text-[11px] text-secondary mb-3 leading-relaxed">
-            Se creará un Google Doc con la cabecera y todos los campos ya puestos.
-            Lo abres, le das el formato de tu empresa y listo.
-          </p>
-          <button type="button" onclick="pdfCrearPlantilla()"
-            class="h-11 px-5 rounded-xl bg-primary text-on-primary text-[12px] font-bold hover:opacity-90 transition-all inline-flex items-center gap-2">
-            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">note_add</span>Crear plantilla base
-          </button>
-        </div>
-        <div class="mt-3">
-          <p class="text-[10px] font-black uppercase tracking-wider text-secondary mb-1.5">o vincula un documento que ya tengas</p>
-          <div class="flex gap-2">
-            <input id="pdf-doc-id" placeholder="Pega aquí el enlace o el ID del Google Doc"
-              class="flex-1 min-w-0 h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-[12px] focus:border-primary outline-none">
-            <button type="button" onclick="pdfVincularManual()"
-              class="h-11 px-4 rounded-xl border border-outline-variant text-[12px] font-bold text-primary hover:bg-primary/5 transition-colors whitespace-nowrap">Vincular</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Con plantilla: abrir, probar, cambiar -->
-      <div id="pdf-con-plantilla" class="hidden">
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-2.5 mb-3">
-          <span class="material-symbols-outlined text-[19px] text-emerald-700 shrink-0" aria-hidden="true">check_circle</span>
-          <div class="min-w-0">
-            <p class="text-[12px] font-bold text-emerald-800">Plantilla vinculada</p>
-            <p class="text-[10px] text-emerald-700 break-all" id="pdf-doc-ref"></p>
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2 mb-4">
-          <button type="button" onclick="pdfAbrirDoc()"
-            class="h-11 rounded-xl bg-primary text-on-primary text-[12px] font-bold hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
-            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">edit_document</span>Editar en Docs
-          </button>
-          <button type="button" onclick="pdfDesvincular()"
-            class="h-11 rounded-xl border border-outline-variant text-[12px] font-bold text-error hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5">
-            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">link_off</span>Desvincular
-          </button>
-        </div>
-      </div>
-
-      <!-- Chuleta de marcadores -->
-      <div class="mt-2">
-        <p class="text-[10px] font-black uppercase tracking-wider text-secondary mb-1">Campos disponibles</p>
-        <p class="text-[11px] text-secondary mb-2 leading-relaxed">
-          Escribe estos marcadores en el documento donde quieras que salga cada dato.
-          Toca uno para copiarlo.
-        </p>
-        <div id="pdf-marcadores" class="space-y-3"></div>
-      </div>
-    </div>
-
   </div>
 </div>
 
 <style>
 .cfg-tab { color: #505f76; }
 .cfg-tab.active { background: white; color: #000666; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-
-/* ── Gestor de plantillas PDF ── */
-.pdf-marcador {
-  display:inline-flex; align-items:center; gap:5px; margin:0 5px 5px 0; padding:6px 9px;
-  border-radius:9px; border:1px solid var(--ds-border); background:var(--ds-surface);
-  font-size:11px; font-weight:600; color:var(--ds-fg); cursor:pointer; min-height:34px;
-  transition:border-color 150ms, background 150ms;
-}
-.pdf-marcador:hover { border-color:var(--color-primary); background:rgba(0,6,102,.05); }
-.pdf-marcador code { font-family:'Courier New',monospace; font-size:10px; color:var(--color-primary); }
-.pdf-marcador.copiado { border-color:#10b981; background:rgba(16,185,129,.12); }
-.pdf-grupo-tit { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
-                 color:var(--ds-fg-muted); margin-bottom:5px; }
 </style>
 
 <script>
@@ -6668,179 +6566,6 @@ function switchCfgTab(tabName) {
   const panel = document.getElementById(`cfg-panel-${tabName}`);
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.remove('hidden');
-  if (tabName === 'pdf') pdfInit();
-}
-
-/* =========================================================================
-   GESTOR DE PLANTILLAS PDF (Google Docs)
-   =========================================================================
-   El administrador diseña el documento en Google Docs, que ya sabe usar.
-   Esta pantalla solo hace tres cosas: crear la plantilla base, vincularla y
-   darle la lista de marcadores para que sepa qué escribir.
-   ========================================================================= */
-
-function pdfInit() {
-  const sel = document.getElementById('pdf-modulo');
-  if (!sel || typeof PDF_TEMPLATE === 'undefined') return;
-
-  if (!sel.options.length) {
-    // Módulos detectados leyendo los subconfigs cargados (zero-touch)
-    const vistos = {};
-    Object.keys(window)
-      .filter(k => /^SUBCONFIG_\d/.test(k) && window[k] && window[k].Variables)
-      .map(k => (window[k].Config_Modular || {}).NombreInterno || k.replace('SUBCONFIG_', ''))
-      .filter(m => !/CONFIGURACIONES|ADMIN/i.test(m))
-      .forEach(m => {
-        if (vistos[m]) return; vistos[m] = 1;
-        const o = document.createElement('option');
-        o.value = m;
-        o.textContent = m.replace(/^\d+_/, '').replace(/_/g, ' ');
-        sel.appendChild(o);
-      });
-  }
-  if (sel.options.length) pdfCargarModulo(sel.value || sel.options[0].value);
-}
-
-function pdfCargarModulo(modulo) {
-  if (!modulo) return;
-  const sel = document.getElementById('pdf-modulo');
-  if (sel && sel.value !== modulo) sel.value = modulo;
-  window._pdfModulo = modulo;
-
-  pdfPintarMarcadores(modulo);
-  pdfPintarEstado('Comprobando…', 'bg-surface-variant text-on-surface-variant');
-
-  // El vínculo vigente es el de la base de datos, no el de este dispositivo
-  PDF_TEMPLATE.sincronizar(modulo).then(r => {
-    if (window._pdfModulo !== modulo) return;
-    pdfRefrescarVista(r.docId, r.origen === 'bd');
-  });
-}
-
-function pdfPintarEstado(txt, cls) {
-  const e = document.getElementById('pdf-estado');
-  if (e) { e.textContent = txt; e.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full ' + cls; }
-}
-
-function pdfRefrescarVista(docId, desdeBD) {
-  const sin = document.getElementById('pdf-sin-plantilla');
-  const con = document.getElementById('pdf-con-plantilla');
-  if (!sin || !con) return;
-  if (docId) {
-    sin.classList.add('hidden'); con.classList.remove('hidden');
-    const ref = document.getElementById('pdf-doc-ref');
-    if (ref) ref.textContent = docId;
-    pdfPintarEstado(desdeBD ? 'Vinculada en la BD' : 'Solo en este dispositivo',
-      desdeBD ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800');
-  } else {
-    sin.classList.remove('hidden'); con.classList.add('hidden');
-    pdfPintarEstado('Sin plantilla', 'bg-surface-variant text-on-surface-variant');
-  }
-}
-
-/** Chuleta: los marcadores que el admin puede pegar en el documento */
-function pdfPintarMarcadores(modulo) {
-  const cont = document.getElementById('pdf-marcadores');
-  if (!cont) return;
-  const m = PDF_TEMPLATE.marcadores(modulo);
-
-  const grupo = (titulo, lista, nota) => {
-    if (!lista.length) return '';
-    const botones = lista.map(x => {
-      const visible = x.marcador.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return '<button type="button" class="pdf-marcador" data-marcador="' + visible +
-             '" onclick="pdfCopiar(this)">' + x.etiqueta + ' <code>' + visible + '</code></button>';
-    }).join('');
-    return '<div><p class="pdf-grupo-tit">' + titulo +
-      (nota ? ' · <span style="text-transform:none;font-weight:600">' + nota + '</span>' : '') +
-      '</p><div>' + botones + '</div></div>';
-  };
-
-  cont.innerHTML =
-    grupo('Datos del registro', m.registro) +
-    grupo('Imágenes y firmas', m.media, 'se insertan como imagen') +
-    grupo('Tabla de detalle', m.detalle, 'úsalos en la última fila de una tabla') +
-    grupo('Especiales', m.especiales);
-}
-
-function pdfCopiar(btn) {
-  const texto = btn.getAttribute('data-marcador');
-  const marcar = () => {
-    btn.classList.add('copiado');
-    setTimeout(() => btn.classList.remove('copiado'), 1200);
-    PWA_SKILLS.toast('Copiado: ' + texto, 'success', 1800);
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(texto).then(marcar).catch(() => pdfCopiarRespaldo(texto, marcar));
-  } else {
-    pdfCopiarRespaldo(texto, marcar);
-  }
-}
-
-/** Respaldo para navegadores sin API de portapapeles (o sin HTTPS) */
-function pdfCopiarRespaldo(texto, ok) {
-  const ta = document.createElement('textarea');
-  ta.value = texto;
-  ta.style.cssText = 'position:fixed;opacity:0';
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand('copy'); ok(); }
-  catch (e) { PWA_SKILLS.toast('Copia manualmente: ' + texto, 'info', 4000); }
-  document.body.removeChild(ta);
-}
-
-function pdfCrearPlantilla() {
-  const mod = window._pdfModulo;
-  PWA_SKILLS.toast('Creando el documento en Google Docs…', 'info', 3000);
-
-  PDF_TEMPLATE.crearPlantillaBase(mod).then(r => {
-    if (!r || r.status !== 'OK' || !r.docId) {
-      PWA_SKILLS.toast('No se pudo crear la plantilla: ' + ((r && r.msg) || 'error del servidor'), 'error', 5000);
-      return;
-    }
-    return PDF_TEMPLATE.vincular(mod, r.docId).then(v => {
-      pdfRefrescarVista(r.docId, v.remoto);
-      PWA_SKILLS.toast('Plantilla creada. Se abrirá en Google Docs para que le des formato.', 'success', 4000);
-      if (r.docUrl) window.open(r.docUrl, '_blank');
-    });
-  }).catch(e => {
-    PWA_SKILLS.toast('Esta acción necesita conexión con el servidor. ' + (e.message || ''), 'error', 5000);
-  });
-}
-
-function pdfVincularManual() {
-  const campo = document.getElementById('pdf-doc-id');
-  const bruto = (campo.value || '').trim();
-  if (!bruto) { PWA_SKILLS.toast('Pega el enlace o el ID del documento.', 'warning'); campo.focus(); return; }
-
-  // Admite tanto el ID suelto como la URL completa de Google Docs
-  const m = bruto.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
-  const docId = m ? m[1] : bruto;
-  if (!/^[a-zA-Z0-9_-]{20,}$/.test(docId)) {
-    PWA_SKILLS.toast('Eso no parece un enlace ni un ID de Google Docs válido.', 'error', 4500);
-    return;
-  }
-
-  PDF_TEMPLATE.vincular(window._pdfModulo, docId).then(v => {
-    pdfRefrescarVista(docId, v.remoto);
-    PWA_SKILLS.toast(v.remoto
-      ? 'Plantilla vinculada para toda la organización.'
-      : 'Vinculada solo en este dispositivo. ' + v.msg,
-      v.remoto ? 'success' : 'warning', v.remoto ? 3500 : 5000);
-  });
-}
-
-function pdfAbrirDoc() {
-  const url = PDF_TEMPLATE.docUrl(window._pdfModulo);
-  if (url) window.open(url, '_blank');
-}
-
-function pdfDesvincular() {
-  if (!confirm('El módulo volverá al formato interno por defecto. El documento de Google Docs NO se borra. ¿Continuar?')) return;
-  PDF_TEMPLATE.vincular(window._pdfModulo, '').then(() => {
-    pdfRefrescarVista('', false);
-    PWA_SKILLS.toast('Plantilla desvinculada. Se usará el formato interno.', 'info', 3200);
-  });
 }
 
 function setCfgColor(hex) {
@@ -6907,8 +6632,6 @@ function submitAppSettings() {
   };
   saveAppSettings(settings);
 
-  // El vínculo de la plantilla PDF se guarda al vincularla, no aquí: en la
-  // pestaña PDF no queda nada pendiente que este botón pudiera perder.
   PWA_SKILLS.toast('Configuración guardada y aplicada.', 'success', 3200);
   changeInternalView('04_Configuraciones', 'Resumen');
   if (typeof loadResumen_04_Configuraciones === 'function') loadResumen_04_Configuraciones();
@@ -7483,22 +7206,18 @@ function loadResumen_04_Actos_Condiciones() {
     });
   }
 
-  // Intentar cargar desde servidor (solo en producción)
-  if (typeof google !== 'undefined' && google.script) {
-    google.script.run
-      .withSuccessHandler(function(res) {
-        const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-        if (parsed.status === 'OK' && Array.isArray(parsed.payload) && parsed.payload.length > 0) {
-          // Alcance por rol antes de pintar (la restricción real la aplica RLS)
-          window._actData = (typeof PERMISOS !== 'undefined')
-            ? PERMISOS.filtrarDatos('04_Actos_Condiciones', parsed.payload) : parsed.payload;
-          renderActosTable(window._actData);
-          localStorage.setItem('refdata_04_Actos_Condiciones', JSON.stringify(window._actData));
-        }
-      })
-      .withFailureHandler(function() { /* usa datos demo */ })
-      .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '04_Actos_Condiciones' }));
-  }
+  // Intentar cargar desde el proveedor activo (Sheets o Supabase)
+  DataService.read('04_Actos_Condiciones')
+    .then(function(parsed) {
+      if (parsed.status === 'OK' && Array.isArray(parsed.payload) && parsed.payload.length > 0) {
+        // Alcance por rol antes de pintar (la restricción real la aplica RLS)
+        window._actData = (typeof PERMISOS !== 'undefined')
+          ? PERMISOS.filtrarDatos('04_Actos_Condiciones', parsed.payload) : parsed.payload;
+        renderActosTable(window._actData);
+        localStorage.setItem('refdata_04_Actos_Condiciones', JSON.stringify(window._actData));
+      }
+    })
+    .catch(function() { /* usa datos demo */ });
 }
 </script>
 
@@ -14471,7 +14190,9 @@ const AppState = {
     EmpresaId:     localStorage.getItem('pwa_empresa_id')     || null,
     EmpresaNombre: localStorage.getItem('pwa_empresa_nombre') || '',
     // JWT de Supabase Auth: lleva rol y empresa_id en app_metadata
-    SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')   || null
+    SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')      || null,
+    // Renueva el JWT cuando expira (1h) sin forzar un nuevo login
+    SupabaseRefreshToken: localStorage.getItem('pwa_supabase_refresh') || null
   },
 
   // --- MOTOR DE COMPORTAMIENTO ---
@@ -14486,23 +14207,15 @@ const AppState = {
   activeModule: null,
 
   // --- PROVEEDOR DE BASE DE DATOS ---
-  // 'sheets' → Google Sheets via Apps Script (default)
-  // 'supabase' → Supabase REST API (migrar cuando la app escale)
-  DB_PROVIDER: 'sheets',
+  // 'sheets' → Google Sheets via Apps Script (legado, ya no es el default)
+  // 'supabase' → Supabase REST API (fuente de datos única de la app)
+  DB_PROVIDER: 'supabase',
 
-  // --- CONFIGURACIÓN SUPABASE (completar al migrar) ---
+  // --- CONFIGURACIÓN SUPABASE ---
   Supabase: {
     URL:            'https://fkelhhfptckarqgknkfh.supabase.co',
     ANON_KEY:       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZWxoaGZwdGNrYXJxZ2tua2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxOTM5MjcsImV4cCI6MjEwMTc2OTkyN30.joWcmZIHws6eOf3I-o6hEXFAQMq9juEJdWaKVqPdl4c',   // clave pública: es segura porque RLS está activo
-    PROJECT_REF:    'fkelhhfptckarqgknkfh',
-    USE_SNAKE_CASE: true,      // el esquema generado usa snake_case
-    // Mapeo de campos de fecha/hora por módulo (para filtros delta)
-    TS_FIELDS: {
-      '01_Usuarios':        'Fecha_Registro',
-      '02_Reportes':        'Fecha_Registro',
-      '03_Inspecciones':    'Fecha_Peru',
-      '04_Configuraciones': 'Ultima_Actualizacion'
-    }
+    PROJECT_REF:    'fkelhhfptckarqgknkfh'
   },
 
   // --- MÉTODOS DE ESTADO ---
@@ -14522,6 +14235,7 @@ const AppState = {
     guardar('pwa_empresa_id',      this.User.EmpresaId);
     guardar('pwa_empresa_nombre',  this.User.EmpresaNombre);
     guardar('pwa_supabase_jwt',    this.User.SupabaseJWT);
+    guardar('pwa_supabase_refresh', this.User.SupabaseRefreshToken);
 
     if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
   },
@@ -14546,9 +14260,9 @@ const AppState = {
 //     AppState.DB_PROVIDER = 'supabase';  ← Supabase REST API
 //
 // MIGRACIÓN A SUPABASE:
-//   1. Configura AppState.Supabase.URL y AppState.Supabase.ANON_KEY
-//   2. Ejecuta: node tools/migrate_to_supabase.js  (crea el schema SQL)
-//   3. Pega el SQL en el editor de Supabase
+//   1. node tools/gen_supabase.js  (genera supabase_01_schema.sql .. 04_seed.sql)
+//   2. Pega esos SQL y tools/supabase_05_login.sql en el editor de Supabase, en orden
+//   3. Configura AppState.Supabase.URL y ANON_KEY en Global_Config.js.html
 //   4. Cambia AppState.DB_PROVIDER a 'supabase' en Global_Config.js.html
 //   5. Ejecuta node generate_preview.js y despliega
 // =========================================================================
@@ -14589,16 +14303,6 @@ const SheetsProvider = {
     });
   },
 
-  readTemplate(module) {
-    return this._call({ action: 'READ_TEMPLATE', moduleName: module });
-  },
-  saveTemplate(module, docId) {
-    return this._call({
-      action: 'SAVE_TEMPLATE', moduleName: module, docId: docId,
-      autor: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.Nombre : ''
-    });
-  },
-
   auth(dni, hash) {
     return this._call({ action: 'LOGIN_AUTH', userDNI: dni, userPassHash: hash });
   },
@@ -14629,51 +14333,117 @@ const SheetsProvider = {
       dataArray: items.map(i => ({ ...i.payload, _action: i.action })),
       childDataArray: items.flatMap(i => i.childPayload || [])
     });
-  },
-  getConfig() {
-    return this._call({ action: 'GET_CONFIG' });
-  },
-  saveConfig(settings) {
-    return this._call({ action: 'SAVE_CONFIG', settings });
   }
 };
 
 
 // ── SupabaseProvider ── Llamadas directas a Supabase PostgREST API
+//
+// CLAVE DE TRADUCCIÓN DE NOMBRES
+// Los subconfigs usan claves PascalCase ("Fecha_Emision", "Auditor_DNI")
+// porque así nacieron pensados para columnas de Sheets. Las tablas reales
+// de Postgres (ver tools/supabase_01_schema.sql) son snake_case en
+// minúscula. La correspondencia es, en casi todos los casos, un simple
+// `.toLowerCase()` de la clave del subconfig — así que en vez de mantener
+// un diccionario a mano por módulo, _aColumnas()/_aFrontend() lo derivan
+// del propio subconfig (Variables / Relational_Fields) en cada llamada.
+// Es la única fuente de verdad: si mañana se agrega un campo al formulario,
+// el mapeo lo recoge solo.
+//
+// "01_Usuarios" es la excepción: su tabla no es un volcado 1:1 del
+// subconfig, sino un perfil reducido enlazado a Supabase Auth (ver
+// supabase_01_schema.sql). Se maneja aparte en _usuarioAFrontend/_guardarUsuario.
 const SupabaseProvider = {
   get _url()  { return (AppState.Supabase || {}).URL      || ''; },
   get _key()  { return (AppState.Supabase || {}).ANON_KEY || ''; },
-  get _snake(){ return (AppState.Supabase || {}).USE_SNAKE_CASE === true; },
 
   _headers(extra = {}) {
     return {
       'Content-Type': 'application/json',
       'apikey': this._key,
-      'Authorization': `Bearer ${AppState.User?.SupabaseJWT || this._key}`,
+      'Authorization': `Bearer ${(AppState.User && AppState.User.SupabaseJWT) || this._key}`,
       ...extra
     };
   },
 
-  // Convierte '02_Reportes' → 'reportes' (o mantiene la mayúscula según config)
+  // '02_Reportes' → 'reportes'  (el esquema generado siempre usa snake_case)
   _table(module) {
-    const base = module.replace(/^\d+_/, '');
-    return this._snake ? base.toLowerCase() : base;
+    return String(module).replace(/^\d+_/, '').toLowerCase();
   },
 
-  // Campo de timestamp para ordenar (configurable por módulo)
-  _tsField(module) {
-    const map = (AppState.Supabase || {}).TS_FIELDS || {};
-    return map[module] || 'Fecha_Registro';
+  _subconfig(modulo) {
+    const key = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    return (typeof window !== 'undefined' && window[key]) || null;
   },
 
-  async _fetch(path, options = {}) {
+  /** Nombre real de la tabla hija: '<tabla_padre>_<child_table_en_minuscula>' */
+  _childTable(modulo) {
+    const cfg = this._subconfig(modulo);
+    const child = cfg && cfg.Config_Modular && cfg.Config_Modular.CHILD_TABLE;
+    return child ? `${this._table(modulo)}_${String(child).toLowerCase()}` : null;
+  },
+
+  /** Fila de Postgres (columnas snake_case) → objeto con las claves PascalCase del subconfig */
+  _aFrontend(modulo, fila) {
+    const cfg = this._subconfig(modulo);
+    if (!cfg || !cfg.Variables || !fila) return fila;
+    const out = {};
+    Object.keys(cfg.Variables).forEach(campo => {
+      const col = campo.toLowerCase();
+      if (fila[col] !== undefined) out[campo] = fila[col];
+    });
+    ['empresa_id', 'creado_por_dni', 'creado_en'].forEach(c => { if (fila[c] !== undefined) out[c] = fila[c]; });
+    return out;
+  },
+
+  /** Objeto con claves PascalCase del subconfig → fila para Postgres (snake_case) */
+  _aColumnas(modulo, datos) {
+    const cfg = this._subconfig(modulo);
+    if (!cfg || !cfg.Variables) return datos;
+    const out = {};
+    Object.keys(datos).forEach(campo => {
+      if (cfg.Variables[campo]) out[campo.toLowerCase()] = datos[campo];
+    });
+    return out;
+  },
+
+  /** Fila hija (Postgres) → objeto con los `name` declarados en Relational_Fields */
+  _hijoAFrontend(modulo, fila) {
+    const campos = this._relationalFields(modulo);
+    const out = {};
+    campos.forEach(c => { const col = c.name.toLowerCase(); if (fila[col] !== undefined) out[c.name] = fila[col]; });
+    return out;
+  },
+
+  /** Objeto de fila hija (PARENT_UUID + campos del subconfig) → fila para Postgres */
+  _hijoAColumnas(modulo, datos) {
+    const nombres = new Set(this._relationalFields(modulo).map(c => c.name));
+    const out = {};
+    Object.keys(datos).forEach(campo => {
+      if (campo === 'PARENT_UUID' || nombres.has(campo)) out[campo.toLowerCase()] = datos[campo];
+    });
+    return out;
+  },
+
+  _relationalFields(modulo) {
+    const cfg = this._subconfig(modulo);
+    return (cfg && cfg.Config_Modular && cfg.Config_Modular.Relational_Fields) || [];
+  },
+
+  async _fetch(path, options = {}, _reintentado) {
     const url = `${this._url}/rest/v1${path}`;
     try {
       const res = await fetch(url, {
         ...options,
         headers: { ...this._headers(), ...(options.headers || {}) }
       });
-      const body = res.status !== 204 ? await res.json() : null;
+      // El JWT de sesión dura 1 hora; si expiró, se intenta renovar UNA vez
+      // con el refresh_token antes de rendirse (evita cerrar sesión sola en
+      // medio de un turno de campo).
+      if (res.status === 401 && !_reintentado && await this._refrescarSesion()) {
+        return this._fetch(path, options, true);
+      }
+      const body = res.status !== 204 ? await res.json().catch(() => null) : null;
       if (!res.ok) {
         const msg = (body && (body.message || body.hint || body.details)) || `HTTP ${res.status}`;
         return { status: 'ERROR', msg };
@@ -14682,6 +14452,26 @@ const SupabaseProvider = {
     } catch (e) {
       return { status: 'ERROR', msg: 'Error de red: ' + e.message };
     }
+  },
+
+  /** Intenta renovar el JWT de Supabase Auth. true si lo consiguió. */
+  async _refrescarSesion() {
+    const rt = (AppState.User || {}).SupabaseRefreshToken;
+    if (!rt) return false;
+    try {
+      const res = await fetch(`${this._url}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: this._key },
+        body: JSON.stringify({ refresh_token: rt })
+      });
+      if (!res.ok) return false;
+      const body = await res.json();
+      AppState.User.SupabaseJWT = body.access_token;
+      AppState.User.SupabaseRefreshToken = body.refresh_token;
+      localStorage.setItem('pwa_supabase_jwt', body.access_token);
+      localStorage.setItem('pwa_supabase_refresh', body.refresh_token);
+      return true;
+    } catch (e) { return false; }
   },
 
   // ── Archivos: Supabase Storage sustituye a Google Drive ────────────────
@@ -14806,138 +14596,211 @@ const SupabaseProvider = {
     } catch (e) { return ''; }
   },
 
-  async auth(dni, hash) {
-    const table = this._table('01_Usuarios');
-    const r = await this._fetch(`/${table}?DNI=eq.${encodeURIComponent(dni)}&select=*`);
-    if (r.status !== 'OK') return r;
-    const users = r._raw;
-    if (!users || !users.length) return { status: 'ERROR', msg: 'Usuario no encontrado.' };
-    const u = users[0];
-    if (u.Password_Hash !== hash) return { status: 'ERROR', msg: 'Contraseña incorrecta.' };
-    if (u.Status === 'Cesado') return { status: 'CESADO', msg: 'Acceso revocado. Contacte al administrador.' };
+  /**
+   * Login por DNI contra Supabase Auth.
+   * Supabase identifica usuarios por email, no por DNI, así que primero se
+   * resuelve el email vía la función `login_email_de_dni` (SECURITY DEFINER,
+   * ver tools/supabase_05_login.sql) y luego se hace el login real — con la
+   * contraseña TAL CUAL la escribió el usuario, no un hash: Supabase la
+   * recibe por HTTPS y la hashea con bcrypt en su servidor, que es la
+   * práctica estándar (ver handleLogin() en App_Routing.js.html).
+   */
+  async auth(dni, password) {
+    let email;
+    try {
+      const rpc = await fetch(`${this._url}/rest/v1/rpc/login_email_de_dni`, {
+        method: 'POST', headers: this._headers(), body: JSON.stringify({ p_dni: dni })
+      });
+      email = rpc.ok ? await rpc.json() : null;
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión con el servidor.' };
+    }
+    if (!email) return { status: 'ERROR', msg: 'Usuario no encontrado.' };
+
+    let tokenBody;
+    try {
+      const tokenRes = await fetch(`${this._url}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: this._key },
+        body: JSON.stringify({ email, password })
+      });
+      tokenBody = await tokenRes.json().catch(() => ({}));
+      if (!tokenRes.ok) {
+        return { status: 'ERROR', msg: tokenBody.error_description || tokenBody.msg || 'Contraseña incorrecta.' };
+      }
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión con el servidor.' };
+    }
+
+    // Con el JWT recién emitido, RLS ya reconoce a este usuario (id = auth.uid())
+    const cabecerasSesion = { apikey: this._key, Authorization: `Bearer ${tokenBody.access_token}` };
+    const perfilRes = await fetch(`${this._url}/rest/v1/usuarios?dni=eq.${encodeURIComponent(dni)}&select=*`, { headers: cabecerasSesion });
+    const perfiles = await perfilRes.json().catch(() => []);
+    const perfil = Array.isArray(perfiles) ? perfiles[0] : null;
+    if (!perfil) return { status: 'ERROR', msg: 'Perfil de usuario no encontrado.' };
+
+    const estado = String(perfil.status || '').toLowerCase();
+    if (estado === 'cesado' || estado === 'inactivo') {
+      return { status: 'CESADO', msg: 'Acceso revocado. Contacte al administrador.' };
+    }
+
+    let empresaNombre = '';
+    if (perfil.empresa_id) {
+      const eRes = await fetch(`${this._url}/rest/v1/empresas?id=eq.${perfil.empresa_id}&select=nombre`, { headers: cabecerasSesion });
+      const eBody = await eRes.json().catch(() => []);
+      empresaNombre = (eBody && eBody[0] && eBody[0].nombre) || '';
+    }
+
     return {
       status: 'OK',
       userData: {
-        UUID:            u.UUID,
-        DNI:             u.DNI,
-        Nombre_Completo: u.Nombre_Completo,
-        Email:           u.Email,
-        Rol:             u.Rol,
-        Status:          u.Status
+        UUID: perfil.id, DNI: perfil.dni, Nombre_Completo: perfil.nombre, Email: perfil.email,
+        Rol: perfil.rol, Status: perfil.status,
+        EmpresaId: perfil.empresa_id || null, EmpresaNombre: empresaNombre,
+        SupabaseJWT: tokenBody.access_token, SupabaseRefreshToken: tokenBody.refresh_token
       }
     };
   },
 
-  async read(module) {
-    const tsField = this._tsField(module);
-    const r = await this._fetch(`/${this._table(module)}?order=${tsField}.desc.nullslast`);
-    if (r.status !== 'OK') return r;
-    return { status: 'OK', payload: r._raw || [], msg: (r._raw || []).length + ' registros' };
-  },
-
-  async readDelta(module, lastSync) {
-    const tsField = this._tsField(module);
-    const ts = encodeURIComponent(lastSync);
-    const r = await this._fetch(`/${this._table(module)}?${tsField}=gte.${ts}&order=${tsField}.asc`);
-    if (r.status !== 'OK') return r;
-    return { status: 'OK', payload: r._raw || [] };
-  },
-
-  async create(module, data) {
-    // 1. Los archivos van primero a Storage; en la fila queda su ruta
-    let fila;
-    try {
-      fila = await this.subirArchivosDe(module, data);
-    } catch (e) {
-      return { status: 'ERROR', msg: e.message };
-    }
-    // 2. Sello de empresa y autor: RLS los exige y son la base del alcance
-    fila.empresa_id     = (AppState.User || {}).EmpresaId || null;
-    fila.creado_por_dni = (AppState.User || {}).DNI || '';
-
-    const r = await this._fetch(`/${this._table(module)}`, {
-      method: 'POST',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify(fila)
-    });
-    return r.status === 'OK' ? { status: 'OK', uuid: fila.UUID } : r;
-  },
-
-  async update(module, data) {
-    const uuid = data.UUID;
-    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para actualizar.' };
-    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
-      method: 'PATCH',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify(data)
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
-  },
-
-  async delete(module, uuid) {
-    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para eliminar.' };
-    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
-      method: 'DELETE'
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
-  },
-
-  async syncQueue(module, items) {
-    let success = 0, errors = 0;
-    for (const item of items) {
-      const act = (item.action || 'INSERT').toUpperCase();
-      let r;
-      if      (act === 'DELETE') r = await this.delete(module, item.payload.UUID);
-      else if (act === 'UPDATE') r = await this.update(module, item.payload);
-      else                       r = await this.create(module, item.payload);
-      if (r.status === 'OK') success++; else errors++;
-    }
+  _usuarioAFrontend(fila) {
     return {
-      status: errors === 0 ? 'OK' : 'PARTIAL',
-      processed: items.length,
-      success,
-      errors
+      UUID: fila.id, DNI: fila.dni, Nombre_Completo: fila.nombre, Email: fila.email,
+      Rol: fila.rol, Status: fila.status, empresa_id: fila.empresa_id
     };
   },
 
-  async getConfig() {
-    const table = this._table('04_Configuraciones');
-    const r = await this._fetch(`/${table}?select=Clave,Valor`);
-    if (r.status !== 'OK') return r;
-    const cfg = {};
-    (r._raw || []).forEach(row => { if (row.Clave) cfg[row.Clave] = row.Valor; });
-    return { status: 'OK', payload: cfg };
+  /**
+   * "01_Usuarios" no admite alta desde el cliente: crear una cuenta real
+   * requiere la Admin API de Supabase Auth (service_role), que nunca debe
+   * exponerse al navegador. Por ahora el alta se hace con tools/seed_demo_data.js
+   * o manualmente; aquí solo se permite editar el perfil de alguien que ya existe.
+   */
+  async _guardarUsuario(datos) {
+    const existeRes = await this._fetch(`/usuarios?dni=eq.${encodeURIComponent(datos.DNI)}&select=id`);
+    const fila = (existeRes.status === 'OK' && existeRes._raw && existeRes._raw[0]) || null;
+    if (!fila) {
+      return { status: 'ERROR', msg: 'Crear usuarios nuevos todavía no está disponible desde la app: requiere un endpoint con privilegios de servidor. Pide a soporte que dé de alta la cuenta.' };
+    }
+    const cambios = {};
+    if (datos.Nombre_Completo !== undefined) cambios.nombre = datos.Nombre_Completo;
+    if (datos.Email    !== undefined) cambios.email  = datos.Email;
+    if (datos.Rol      !== undefined) cambios.rol    = String(datos.Rol).toLowerCase();
+    if (datos.Status   !== undefined) cambios.status = datos.Status;
+    if (!Object.keys(cambios).length) return { status: 'OK', uuid: fila.id };
+
+    const r = await this._fetch(`/usuarios?id=eq.${fila.id}`, {
+      method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(cambios)
+    });
+    return r.status === 'OK' ? { status: 'OK', uuid: fila.id } : r;
   },
 
-  async saveConfig(settings) {
-    const table = this._table('04_Configuraciones');
-    const rows = Object.keys(settings).map(k => ({ Clave: k, Valor: settings[k] }));
-    const r = await this._fetch(`/${table}`, {
+  async read(module) {
+    if (module === '01_Usuarios') {
+      const r = await this._fetch('/usuarios?select=*&order=creado_en.desc');
+      if (r.status !== 'OK') return r;
+      return { status: 'OK', payload: (r._raw || []).map(f => this._usuarioAFrontend(f)) };
+    }
+    // Orden por 'creado_en': es la única columna de fecha presente en TODAS
+    // las tablas (a diferencia de Fecha_Emision/Fecha_Peru/etc., que varían
+    // por módulo). No se leen tablas hijas aquí: tal como en Code.gs/READ_DB,
+    // el listado trae solo la fila principal.
+    const r = await this._fetch(`/${this._table(module)}?select=*&order=creado_en.desc`);
+    if (r.status !== 'OK') return r;
+    const filas = (r._raw || []).map(f => this._aFrontend(module, f));
+    return { status: 'OK', payload: filas, msg: filas.length + ' registros' };
+  },
+
+  async readDelta(module, lastSync) {
+    if (module === '01_Usuarios') return this.read(module);
+    const ts = encodeURIComponent(lastSync);
+    const r = await this._fetch(`/${this._table(module)}?creado_en=gte.${ts}&select=*&order=creado_en.asc`);
+    if (r.status !== 'OK') return r;
+    return { status: 'OK', payload: (r._raw || []).map(f => this._aFrontend(module, f)) };
+  },
+
+  /**
+   * Guarda un registro (alta o edición: mismo camino, como en Sheets) y
+   * reemplaza sus filas hijas. "Reemplazar" y no "acumular" es intencional:
+   * el formulario siempre manda el set completo de filas dinámicas vigentes,
+   * así que borrar-e-insertar evita duplicados en cada re-edición.
+   */
+  async _guardar(modulo, datosCrudos, hijosCrudos) {
+    if (modulo === '01_Usuarios') return this._guardarUsuario(datosCrudos);
+
+    let datos;
+    try {
+      datos = await this.subirArchivosDe(modulo, datosCrudos);
+    } catch (e) {
+      return { status: 'ERROR', msg: e.message };
+    }
+
+    const empresaId = (AppState.User || {}).EmpresaId || null;
+    const dniAutor  = (AppState.User || {}).DNI || '';
+
+    const fila = this._aColumnas(modulo, datos);
+    fila.empresa_id     = empresaId;
+    fila.creado_por_dni = dniAutor;
+
+    // Upsert por UUID: una re-sincronización del mismo registro actualiza en
+    // vez de fallar por clave duplicada. OJO: como es un upsert, Postgres
+    // evalúa la política RLS de UPDATE si el UUID ya existe — un rol con
+    // canCreate:true pero canUpdate:false (ej. Trabajador en 02_Reportes)
+    // recibirá 403 si se reintenta el mismo UUID ya guardado (offline
+    // retry tras perder la respuesta de éxito). Es un caso extremo poco
+    // frecuente; se prefiere sobre la alternativa (ignore-duplicates), que
+    // impediría que Admin/Supervisor editen registros existentes.
+    const r = await this._fetch(`/${this._table(modulo)}?on_conflict=uuid`, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(rows)
+      body: JSON.stringify([fila])
     });
+    if (r.status !== 'OK') return r;
+
+    const childTable = this._childTable(modulo);
+    if (childTable && Array.isArray(hijosCrudos)) {
+      await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(datos.UUID)}`, { method: 'DELETE' });
+      if (hijosCrudos.length) {
+        const filasHijas = hijosCrudos.map(h => {
+          const fh = this._hijoAColumnas(modulo, h);
+          fh.empresa_id  = empresaId;
+          fh.parent_uuid = datos.UUID;
+          return fh;
+        });
+        const cr = await this._fetch(`/${childTable}`, {
+          method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(filasHijas)
+        });
+        if (cr.status !== 'OK') return { status: 'PARTIAL', msg: 'Registro guardado; fallaron los detalles: ' + cr.msg };
+      }
+    }
+    return { status: 'OK', uuid: datos.UUID };
+  },
+
+  create(module, data)  { return this._guardar(module, data, []); },
+  update(module, data)  { return this._guardar(module, data, []); },
+
+  async delete(module, uuid) {
+    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para eliminar.' };
+    const childTable = this._childTable(module);
+    if (childTable) await this._fetch(`/${childTable}?parent_uuid=eq.${encodeURIComponent(uuid)}`, { method: 'DELETE' });
+    const r = await this._fetch(`/${this._table(module)}?uuid=eq.${encodeURIComponent(uuid)}`, { method: 'DELETE' });
     return r.status === 'OK' ? { status: 'OK' } : r;
   },
 
-  // Plantillas PDF: tabla 'plantillas' con clave = módulo
-  async readTemplate(module) {
-    const r = await this._fetch(`/plantillas?Modulo=eq.${encodeURIComponent(module)}&select=*`);
-    if (r.status !== 'OK') return r;
-    const fila = (r._raw || [])[0];
-    return { status: 'OK', payload: fila ? { DOC_ID: fila.Doc_Id } : null };
-  },
-  async saveTemplate(module, docId) {
-    const r = await this._fetch('/plantillas', {
-      method: 'POST',
-      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify([{
-        Modulo: module, Doc_Id: docId,
-        Actualizado: new Date().toISOString(),
-        Autor: (AppState.User || {}).Nombre || ''
-      }])
-    });
-    return r.status === 'OK' ? { status: 'OK' } : r;
+  /** Punto de entrada real de guardado: lo usa Offline_Engine tras cada flush de la cola. */
+  async syncQueue(module, items) {
+    let success = 0, errors = 0;
+    const mensajes = [];
+    for (const item of items) {
+      const r = await this._guardar(module, item.payload, item.childPayload || []);
+      if (r.status === 'OK') success++;
+      else { errors++; mensajes.push(r.msg); }
+    }
+    return {
+      status: errors === 0 ? 'OK' : (success > 0 ? 'PARTIAL' : 'ERROR'),
+      processed: items.length,
+      success, errors,
+      msg: mensajes.join('; ')
+    };
   }
 };
 
@@ -14958,10 +14821,6 @@ const DataService = {
   update:     (module, data)     => DataService.provider.update(module, data),
   delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
-  getConfig:  ()                 => DataService.provider.getConfig(),
-  saveConfig: (settings)         => DataService.provider.saveConfig(settings),
-  readTemplate: (module)              => DataService.provider.readTemplate(module),
-  saveTemplate: (module, docId)       => DataService.provider.saveTemplate(module, docId),
 };
 </script>
 
@@ -16304,131 +16163,26 @@ const PWA_SKILLS = {
   <script>
 /**
  * =========================================================================
- * PLANTILLAS PDF — El administrador las edita en Google Docs
+ * PLANTILLAS PDF — formato interno (bloques → HTML → impresión del navegador)
  * =========================================================================
  * ARCHIVO: PDF_Templates.js.html
  *
  * CÓMO FUNCIONA
- * Cada módulo se vincula a un Google Doc que hace de plantilla. El admin lo
- * abre en Google Docs —editor que ya sabe usar— y le da el formato que
- * quiera: logo, colores, tablas, tipografías. Los datos se insertan donde
- * escriba marcadores con la forma  <<[Nombre_Del_Campo]>>.
+ * El PDF se arma 100% en el cliente: `plantillaBase()` deriva los bloques
+ * del subconfig del módulo (datos, tabla de detalle, imágenes, firmas),
+ * `renderHTML()` los convierte en HTML imprimible y `exportar()` abre una
+ * ventana con `window.print()` (el propio diálogo "Guardar como PDF" del
+ * navegador). No depende de ningún servicio externo — funciona igual
+ * online, offline y con cualquier proveedor de datos (Sheets o Supabase).
  *
- * Al exportar, el backend copia la plantilla, sustituye los marcadores
- * (preservando el formato del documento), repite las filas de detalle,
- * inserta firmas e imágenes y devuelve el PDF.
- *
- * DÓNDE SE GUARDA EL VÍNCULO
- * Pestaña `_PLANTILLA_PDF` del Spreadsheet de cada módulo, fila DOC_ID.
- * localStorage queda como caché para no consultar el servidor cada vez.
- *
- * RESPALDO
- * Si un módulo todavía no tiene plantilla, se imprime con un formato interno
- * por defecto (`plantillaBase` + `renderHTML`) para que el botón "Descargar
- * PDF" nunca se quede sin hacer nada. Ese formato NO es editable: para
- * personalizarlo hay que crear la plantilla de Google Docs.
+ * Este formato reemplaza al anterior gestor de plantillas de Google Docs
+ * (retirado: dependía 100% de Drive/Docs). No es editable visualmente por
+ * el admin; para cambiar el diseño hay que editar `plantillaBase()` o
+ * `CSS` en este archivo.
  * =========================================================================
  */
 
 const PDF_TEMPLATE = {
-
-  STORAGE_KEY: 'pwa_pdf_doc_templates',
-
-  // -----------------------------------------------------------------------
-  // VÍNCULO CON LA PLANTILLA DE GOOGLE DOCS
-  // -----------------------------------------------------------------------
-  _cache: function() {
-    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY)) || {}; }
-    catch (e) { return {}; }
-  },
-
-  /** ID del Doc vinculado al módulo (cadena vacía si no hay) */
-  docId: function(modulo) {
-    return (this._cache()[modulo] || {}).docId || '';
-  },
-
-  docUrl: function(modulo) {
-    const id = this.docId(modulo);
-    return id ? 'https://docs.google.com/document/d/' + id + '/edit' : '';
-  },
-
-  /** Guarda el vínculo localmente y en la base de datos */
-  vincular: function(modulo, docId) {
-    const c = this._cache();
-    c[modulo] = { docId: String(docId || '').trim(), fecha: new Date().toISOString() };
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
-
-    if (typeof DataService === 'undefined' || !DataService.saveTemplate) {
-      return Promise.resolve({ remoto: false, msg: 'Guardado solo en este dispositivo.' });
-    }
-    return DataService.saveTemplate(modulo, c[modulo].docId)
-      .then(r => (r && r.status === 'OK')
-        ? { remoto: true,  msg: 'Plantilla vinculada para toda la organización.' }
-        : { remoto: false, msg: (r && r.msg) || 'No se pudo guardar el vínculo en la base de datos.' })
-      .catch(e => ({ remoto: false, msg: 'Sin conexión con el servidor: ' + (e.message || e) }));
-  },
-
-  /** Trae el vínculo vigente desde la base de datos */
-  sincronizar: function(modulo) {
-    if (typeof DataService === 'undefined' || !DataService.readTemplate) {
-      return Promise.resolve({ origen: 'local', docId: this.docId(modulo) });
-    }
-    return DataService.readTemplate(modulo).then(r => {
-      const id = (r && r.status === 'OK' && r.payload) ? String(r.payload.DOC_ID || '').trim() : '';
-      if (id) {
-        const c = this._cache();
-        c[modulo] = { docId: id, fecha: new Date().toISOString() };
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
-        return { origen: 'bd', docId: id };
-      }
-      return { origen: 'local', docId: this.docId(modulo) };
-    }).catch(() => ({ origen: 'local', docId: this.docId(modulo) }));
-  },
-
-  /**
-   * Pide al servidor que cree el Google Doc base del módulo, ya armado con
-   * todos los campos. El admin nunca parte de una hoja en blanco.
-   */
-  crearPlantillaBase: function(modulo) {
-    const campos  = this.camposDe(modulo);
-    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
-    const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
-
-    return new Promise((resolve, reject) => {
-      if (typeof google === 'undefined' || !google.script) {
-        reject(new Error('Esta acción necesita conexión con Google Apps Script.'));
-        return;
-      }
-      google.script.run
-        .withSuccessHandler(res => {
-          try { resolve(typeof res === 'string' ? JSON.parse(res) : res); }
-          catch (e) { reject(new Error('Respuesta inválida del servidor.')); }
-        })
-        .withFailureHandler(err => reject(err))
-        .serverRouter(JSON.stringify({
-          action: 'CREATE_DOC_TEMPLATE',
-          moduleName: modulo,
-          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
-          titulo:  'Informe de ' + String(modulo).replace(/^\d+_/, '').replace(/_/g, ' '),
-          empresa: ajustes.App_Empresa || '',
-          campos:       campos.texto.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
-          camposHijos:  campos.hijos.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
-          camposFirma:  campos.media.filter(c => c.tipo === 'Signature')
-                                    .map(c => ({ clave: c.clave, etiqueta: c.etiqueta }))
-        }));
-    });
-  },
-
-  /** Lista de marcadores que el admin puede pegar en el Doc */
-  marcadores: function(modulo) {
-    const c = this.camposDe(modulo);
-    return {
-      registro: c.texto.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      media:    c.media.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      detalle:  c.hijos.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
-      especiales: [{ etiqueta: 'Fecha de emisión', marcador: '<<[__FECHA__]>>' }]
-    };
-  },
 
   // -----------------------------------------------------------------------
   // LECTURA DEL ESQUEMA DEL MÓDULO
@@ -16761,62 +16515,11 @@ const PDF_TEMPLATE = {
   },
 
   /**
-   * Exporta el registro visible usando la plantilla del módulo.
+   * Exporta el registro visible con el formato interno.
    * Si no se encuentra el registro en caché, cae a los datos de ejemplo para
    * que el usuario al menos vea el formato (y se le avisa).
    */
   exportarRegistro: function(modulo, uuid, titulo) {
-    const docId = this.docId(modulo);
-
-    // 1. CON plantilla de Google Docs → la genera el servidor con el diseño
-    //    que el administrador preparó en el Doc.
-    if (docId && typeof google !== 'undefined' && google.script) {
-      const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
-      const modular = cfg.Config_Modular || {};
-
-      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Generando PDF con la plantilla…', 'info', 2500);
-
-      google.script.run
-        .withSuccessHandler(res => {
-          let r; try { r = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { r = {}; }
-          if (r.status === 'OK' && r.pdfUrl) {
-            window.open(r.pdfUrl, '_blank');
-            if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('PDF generado y guardado en Drive.', 'success', 3200);
-          } else if (r.status === 'NO_TEMPLATE') {
-            this._exportarRespaldo(modulo, uuid, titulo);
-          } else {
-            if (typeof PWA_SKILLS !== 'undefined') {
-              PWA_SKILLS.toast('No se pudo generar el PDF: ' + (r.msg || 'error del servidor') +
-                               '. Se usa el formato interno.', 'warning', 5000);
-            }
-            this._exportarRespaldo(modulo, uuid, titulo);
-          }
-        })
-        .withFailureHandler(() => {
-          if (typeof PWA_SKILLS !== 'undefined') {
-            PWA_SKILLS.toast('Sin conexión con el servidor. Se imprime con el formato interno.', 'warning', 4500);
-          }
-          this._exportarRespaldo(modulo, uuid, titulo);
-        })
-        .serverRouter(JSON.stringify({
-          action: 'GENERATE_PDF',
-          moduleName: modulo,
-          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
-          uuid: uuid,
-          docId: docId,
-          childTable:    modular.CHILD_TABLE  || '',
-          relationalKey: modular.RELATIONAL_KEY || 'UUID',
-          subconfig: { Variables: cfg.Variables || {} }
-        }));
-      return true;
-    }
-
-    // 2. SIN plantilla → formato interno, para que el botón siempre responda
-    return this._exportarRespaldo(modulo, uuid, titulo);
-  },
-
-  /** Formato por defecto (no editable). Se usa mientras no haya plantilla de Docs. */
-  _exportarRespaldo: function(modulo, uuid, titulo) {
     let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
     let hijos = [];
 
@@ -17720,6 +17423,9 @@ async function handleLogin() {
   }
 
   const hash = await PWA_SKILLS.hashSHA256(pass);
+  // Sheets compara un hash guardado en la hoja; Supabase Auth hashea server-side
+  // con bcrypt y espera la contraseña tal cual (viaja por HTTPS, igual de segura).
+  const credencial = (AppState.DB_PROVIDER === 'supabase') ? pass : hash;
 
   const onLoginSuccess = (u) => {
     AppState.updateSession({
@@ -17728,7 +17434,11 @@ async function handleLogin() {
       Status: u.Status || 'Activo',
       Nombre: u.Nombre_Completo || '',
       Email: u.Email || '',
-      Rol: u.Rol || 'Trabajador'
+      Rol: u.Rol || 'Trabajador',
+      EmpresaId: u.EmpresaId || null,
+      EmpresaNombre: u.EmpresaNombre || '',
+      SupabaseJWT: u.SupabaseJWT || null,
+      SupabaseRefreshToken: u.SupabaseRefreshToken || null
     });
     const timeoutMin = parseInt((typeof getAppSettings === 'function' ? getAppSettings().Session_Timeout : null) || '480');
     localStorage.setItem('pwa_session_expiry', String(Date.now() + timeoutMin * 60 * 1000));
@@ -17749,7 +17459,7 @@ async function handleLogin() {
 
   // Usar DataService (soporta Sheets y Supabase de forma transparente)
   try {
-    const parsed = await DataService.auth(dni, hash);
+    const parsed = await DataService.auth(dni, credencial);
     if (parsed.status === 'CESADO') {
       PWA_SKILLS.toast('Acceso revocado. Contacte al administrador.', 'error', 5000);
       return;

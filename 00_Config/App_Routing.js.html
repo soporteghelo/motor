@@ -640,6 +640,9 @@ async function handleLogin() {
   }
 
   const hash = await PWA_SKILLS.hashSHA256(pass);
+  // Sheets compara un hash guardado en la hoja; Supabase Auth hashea server-side
+  // con bcrypt y espera la contraseña tal cual (viaja por HTTPS, igual de segura).
+  const credencial = (AppState.DB_PROVIDER === 'supabase') ? pass : hash;
 
   const onLoginSuccess = (u) => {
     AppState.updateSession({
@@ -648,7 +651,11 @@ async function handleLogin() {
       Status: u.Status || 'Activo',
       Nombre: u.Nombre_Completo || '',
       Email: u.Email || '',
-      Rol: u.Rol || 'Trabajador'
+      Rol: u.Rol || 'Trabajador',
+      EmpresaId: u.EmpresaId || null,
+      EmpresaNombre: u.EmpresaNombre || '',
+      SupabaseJWT: u.SupabaseJWT || null,
+      SupabaseRefreshToken: u.SupabaseRefreshToken || null
     });
     const timeoutMin = parseInt((typeof getAppSettings === 'function' ? getAppSettings().Session_Timeout : null) || '480');
     localStorage.setItem('pwa_session_expiry', String(Date.now() + timeoutMin * 60 * 1000));
@@ -669,7 +676,7 @@ async function handleLogin() {
 
   // Usar DataService (soporta Sheets y Supabase de forma transparente)
   try {
-    const parsed = await DataService.auth(dni, hash);
+    const parsed = await DataService.auth(dni, credencial);
     if (parsed.status === 'CESADO') {
       PWA_SKILLS.toast('Acceso revocado. Contacte al administrador.', 'error', 5000);
       return;

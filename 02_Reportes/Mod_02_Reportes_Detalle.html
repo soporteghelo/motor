@@ -111,16 +111,10 @@ async function loadDetail_02_Reportes(uuid) {
     if (cached) { try { allReports = JSON.parse(cached); } catch(e) {} }
 
     if (!allReports) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allReports = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allReports)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '02_Reportes' }));
-      });
+      try {
+        const parsed = await DataService.read('02_Reportes');
+        if (parsed.status === 'OK') { allReports = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allReports)); }
+      } catch (e) { /* se resuelve abajo con "no encontrado" */ }
     }
 
     const report = allReports ? allReports.find(r => String(r.UUID) === String(uuid)) : null;

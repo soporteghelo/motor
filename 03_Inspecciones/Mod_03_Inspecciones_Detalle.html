@@ -137,16 +137,10 @@ async function loadDetail_03_Inspecciones(uuid) {
     if (cached) { try { allInsp = JSON.parse(cached); } catch(e) {} }
 
     if (!allInsp) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allInsp = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allInsp)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '03_Inspecciones' }));
-      });
+      try {
+        const parsed = await DataService.read('03_Inspecciones');
+        if (parsed.status === 'OK') { allInsp = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allInsp)); }
+      } catch (e) { /* se resuelve abajo con "no encontrado" */ }
     }
 
     const insp = allInsp ? allInsp.find(i => String(i.UUID) === String(uuid)) : null;

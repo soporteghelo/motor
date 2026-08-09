@@ -95,16 +95,10 @@ async function loadDetail_01_Usuarios(dni) {
     if (cached) { try { allUsers = JSON.parse(cached); } catch(e) {} }
 
     if (!allUsers) {
-      await new Promise(resolve => {
-        google.script.run
-          .withSuccessHandler(res => {
-            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
-            if (parsed.status === 'OK') { allUsers = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allUsers)); }
-            resolve();
-          })
-          .withFailureHandler(() => resolve())
-          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '01_Usuarios' }));
-      });
+      try {
+        const parsed = await DataService.read('01_Usuarios');
+        if (parsed.status === 'OK') { allUsers = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allUsers)); }
+      } catch (e) { /* se resuelve con la caché de sesión más abajo */ }
     }
 
     // La tabla puede enviar el UUID interno y las integraciones antiguas el DNI.

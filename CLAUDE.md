@@ -77,7 +77,7 @@ var SUBCONFIG_XX_NOMBRE = {
   Config_Modular: {
     NombreInterno: "XX_Nombre",
     DRIVE_FOLDER_NAME: "XX_Nombre_DB",      // Nombre de carpeta en Drive
-    GOOGLE_DOC_TEMPLATE_ID: "",             // ID Google Docs para PDF (vacío = omitir)
+    GOOGLE_DOC_TEMPLATE_ID: "",             // Heredado, sin uso: el PDF ahora es 100% interno (ver sección "Plantillas PDF")
     EMAIL_TEMPLATE_ID: "",                  // ID Google Docs para email
     PARENT_TABLE: "MAIN",                   // Nombre pestaña principal en Sheets
     CHILD_TABLE: "",                        // Pestaña hija (vacío si no hay)
@@ -156,29 +156,17 @@ Funciones globales disponibles en el frontend:
 | `PWA_SKILLS.showEmptyState(tbodyId, opts)` | Estado vacío con icono, mensaje y acción |
 | `PWA_SKILLS.finishLoading(tbodyId)` | Quita el esqueleto y el `aria-busy` |
 
-## Plantillas PDF — el admin las edita en Google Docs
+## Plantillas PDF — formato interno (sin Google Docs/Drive)
 
-Cada módulo se vincula a un **Google Doc** que hace de plantilla. El administrador lo abre en Docs, le da el formato de la empresa (logo, colores, tablas) y escribe marcadores `<<[Campo]>>` donde quiera que salgan los datos. Se gestiona desde **Configuración → pestaña PDF**.
+La app ya no depende de Google Docs ni de Drive para generar PDFs (se retiró junto con la migración a Supabase: ese flujo era 100% Google-específico y no tenía equivalente directo). Todo vive en el cliente, en `PDF_Templates.js.html`:
 
-**Flujo:** Crear plantilla base (el servidor genera un Doc ya armado con todos los campos) → el admin lo edita en Google Docs → al exportar, el backend copia la plantilla, sustituye marcadores preservando el formato y devuelve el PDF.
+**Flujo:** `plantillaBase(modulo)` arma los bloques (encabezado, datos, tabla de detalle, imágenes, firmas) leyendo el **subconfig** del módulo → `renderHTML()` los convierte en HTML imprimible → `exportar()` abre una ventana y llama a `window.print()` (el diálogo nativo "Guardar como PDF" del navegador). No hay llamada al servidor: funciona igual online, offline, y con cualquier `DB_PROVIDER`.
 
-| Acción de Code.gs | Qué hace |
-|---|---|
-| `CREATE_DOC_TEMPLATE` | Crea el Doc base desde el esquema del módulo y lo deja en su carpeta de Drive |
-| `GENERATE_PDF` | Copia la plantilla, rellena, exporta a PDF y lo guarda en la carpeta del módulo |
-| `SAVE_TEMPLATE` / `READ_TEMPLATE` | Vínculo módulo ↔ Doc, en la pestaña `_PLANTILLA_PDF` (fila `DOC_ID`) |
+- El botón "Descargar PDF" de cada `Detalle` llama a `PDF_TEMPLATE.exportarRegistro(modulo, uuid, titulo)`.
+- Este formato **no es editable visualmente** por el admin. Para cambiar el diseño hay que tocar `plantillaBase()` o la hoja `CSS` en `PDF_Templates.js.html` — no hay pestaña de configuración para esto (se quitó de Configuración junto con el gestor de plantillas de Docs).
+- Las imágenes/firmas se insertan si el campo trae una URL o dataURL válida; si el registro no está en caché local, se exporta con datos de ejemplo (avisando al usuario) para que el botón nunca falle.
 
-**Marcadores admitidos en el Doc:**
-- `<<[Campo]>>` — cualquier campo del registro
-- `<<[Campo]>>` en campos `Image`/`Signature` — se inserta la **imagen real** desde Drive (usa la columna `Campo_ID`)
-- `<<[__FECHA__]>>` — fecha de emisión
-- **Tabla de detalle:** una tabla cuya **última fila** contenga marcadores; esa fila se clona por cada registro hijo
-
-**Reglas al tocar esto:**
-- `replaceText()` de Apps Script interpreta expresiones regulares: los corchetes de `<<[...]>>` se escapan con `escaparBusqueda()`. Sin eso no encuentra nada.
-- La plantilla original **nunca se modifica**: siempre se trabaja sobre una copia que se borra al terminar.
-- Si un módulo no tiene plantilla, se imprime con un **formato interno de respaldo** (`plantillaBase` + `renderHTML` en `PDF_Templates.js.html`). Ese formato no es editable; para personalizarlo hay que crear la plantilla de Docs.
-- La lista de marcadores sale del **subconfig**: si añades un campo al formulario aparece solo en la chuleta.
+**Correo por plantilla** (`EMAIL_TEMPLATE_ID`, Skill 10) sí sigue usando Google Docs + `MailApp`, vía `Code.gs` (`sendTemplatedEmail`, disparado desde `SYNC_OFFLINE_QUEUE`) — es la única pieza que se mantuvo puenteada a Apps Script a propósito, porque no tiene reemplazo directo en Supabase.
 
 ---
 
@@ -236,8 +224,9 @@ node tools/gen_supabase.js     # lee los subconfigs y genera el SQL
 | `supabase_02_rls.sql` | Políticas por rol. Rol y empresa se leen del JWT (`app_metadata`), sin consulta extra por fila |
 | `supabase_03_storage.sql` | Buckets `evidencias`, `documentos`, `publico` con sus políticas |
 | `supabase_04_seed.sql` | Empresa de demostración con 30 días de prueba |
+| `supabase_05_login.sql` | Función `login_email_de_dni(dni)` — resuelve DNI → email para el login (ver "Autenticación" abajo) |
 
-Ejecutar en el editor SQL de Supabase **en ese orden**.
+Ejecutar en el editor SQL de Supabase **en ese orden**. `tools/seed_demo_data.js` siembra datos de ejemplo completos (empresas, usuarios en los 4 roles, registros por módulo) sobre este esquema vía la Admin API + PostgREST.
 
 **Archivos (sustituye a Google Drive):**
 
@@ -251,7 +240,11 @@ Ruta: `<empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>` — la empresa va primero
 
 `DataProvider.subirArchivosDe(modulo, datos)` sube todos los campos de archivo del registro y sustituye su valor por la ruta. Borrar evidencia queda reservado a Admin y SuperAdmin: es destruir prueba.
 
-**`AppState.User` lleva ahora** `EmpresaId`, `EmpresaNombre` y `SupabaseJWT`. Sin `EmpresaId` la escritura es rechazada por RLS.
+**`AppState.User` lleva ahora** `EmpresaId`, `EmpresaNombre`, `SupabaseJWT` y `SupabaseRefreshToken`. Sin `EmpresaId` la escritura es rechazada por RLS.
+
+**Autenticación (DNI → Supabase Auth):** la PWA loguea por DNI, pero Supabase Auth identifica usuarios por email. `SupabaseProvider.auth()` resuelve esto en dos pasos: (1) llama a la función `login_email_de_dni(dni)` — `SECURITY DEFINER`, ver `supabase_05_login.sql` — para obtener el email; (2) hace el login real contra `/auth/v1/token?grant_type=password` con ese email y la contraseña **tal cual la escribió el usuario** (no un hash: Supabase la recibe por HTTPS y la hashea con bcrypt server-side). Por eso `handleLogin()` en `App_Routing.js.html` NO pre-hashea la contraseña cuando `DB_PROVIDER === 'supabase'` (sí lo hace para `'sheets'`, que compara contra un hash guardado en la hoja). El JWT emitido se guarda en `AppState.User.SupabaseJWT`; si expira (1h), `SupabaseProvider._fetch()` intenta renovarlo una vez con `SupabaseRefreshToken` antes de fallar.
+
+**Alta de usuarios nuevos:** crear un usuario real de Supabase Auth requiere la Admin API (`service_role`), que nunca debe exponerse al navegador. Hoy eso se hace con `tools/seed_demo_data.js` o manualmente contra la API; el módulo `01_Usuarios` en modo Supabase solo permite **editar** perfiles existentes (nombre, email, rol, status) — el alta desde la app es un gap conocido, pendiente de un endpoint con privilegios de servidor (Edge Function o híbrido vía Apps Script).
 
 **Al añadir un módulo nuevo**: ejecutar `node tools/gen_supabase.js` de nuevo y aplicar el SQL. El esquema se deriva de los subconfigs — no se edita a mano.
 
@@ -262,7 +255,7 @@ Ruta: `<empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>` — la empresa va primero
 2. **Vistas obligatorias**: Todo módulo DEBE tener Resumen, Edicion y Detalle — 3 archivos separados.
 3. **Segregación**: Cada vista en su propio archivo `.html`.
 4. **Trazabilidad Drive**: El subconfig DEBE incluir `DRIVE_FOLDER_NAME`.
-5. **Automatización PDF**: El subconfig DEBE incluir `GOOGLE_DOC_TEMPLATE_ID` (vacío = omitir generación).
+5. **PDF automático**: Todo módulo lo obtiene gratis vía el formato interno (`PDF_Templates.js.html`) leyendo su subconfig — no requiere configuración adicional. `GOOGLE_DOC_TEMPLATE_ID` es un campo heredado sin uso.
 6. **Estructura relacional**: El subconfig DEBE definir `PARENT_TABLE`, `CHILD_TABLE` y `RELATIONAL_KEY`.
 7. **Filas dinámicas**: Si hay `CHILD_TABLE`, el formulario de Edición DEBE incluir el componente de filas dinámicas con `PWA_SKILLS.addDynamicRow`.
 8. **DNI siempre Text**: El campo DNI debe ser tipo `"Text"` (String), nunca Number — para preservar ceros iniciales.
@@ -316,7 +309,7 @@ AppState.User.Token      // Hash SHA-256 de password (token de sesión)
 AppState.User.Status     // Activo | Cesado
 AppState.activeModule    // Módulo activo actualmente (ej: '03_Inspecciones')
 AppState.VERSION         // Versión de la app
-AppState.DB_PROVIDER     // 'sheets' o 'supabase'
+AppState.DB_PROVIDER     // 'supabase' (default) o 'sheets' (legado)
 ```
 
 ---
