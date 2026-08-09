@@ -684,10 +684,7 @@ function processModuleAction(req) {
 }
 
 // =========================================================================
-// 5. MODULO DE AUTENTICACION BÁSICO - Mapeo de Estatus "CESADOS"
-// =========================================================================
-// =========================================================================
-// AUXILIARES DE PLANTILLA GOOGLE DOCS
+// 5. AUXILIARES DE PLANTILLA GOOGLE DOCS Y AUTENTICACIÓN
 // =========================================================================
 /**
  * replaceText() de Apps Script interpreta expresiones regulares, así que los
