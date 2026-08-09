@@ -94,14 +94,13 @@
 
 <script>
 function exportToPDF(moduleID) {
-  // La plantilla la diseña el administrador en Configuración → PDF.
-  const idEl = document.getElementById('rep-det-id');
-  const uuid = idEl ? idEl.innerText.replace('Reporte #', '').trim() : '';
+  const uuid = window._repDetalleUUID || '';
   PDF_TEMPLATE.exportarRegistro(moduleID, uuid, 'Reporte ' + uuid);
 }
 
 async function loadDetail_02_Reportes(uuid) {
   console.log(`Cargando Reporte: ${uuid}`);
+  window._repDetalleUUID = uuid;
   document.getElementById('rep-det-id').innerText = 'Cargando...';
 
   try {
@@ -121,7 +120,7 @@ async function loadDetail_02_Reportes(uuid) {
     if (!report) { document.getElementById('rep-det-id').innerText = 'Reporte no encontrado'; return; }
 
     document.getElementById('rep-det-id').innerText = `Reporte #${String(uuid).substring(0, 8).toUpperCase()}`;
-    document.getElementById('rep-det-date').innerText = report.Timestamp ? report.Timestamp.split('T')[0] : '--';
+    document.getElementById('rep-det-date').innerText = report.Fecha_Emision || '--';
     document.getElementById('rep-det-cat').innerText = report.Categoria_Reporte || '--';
 
     const severityEl = document.querySelector('#rep-det-cat').closest('.grid').querySelector('span[class*="px-2"]');

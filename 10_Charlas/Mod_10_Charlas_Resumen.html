@@ -260,7 +260,7 @@ function loadResumen_10_Charlas() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('10_Charlas\Mod_10_Charlas_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('10_Charlas', filas) : filas;
       window._chlData = visibles;
       localStorage.setItem('refdata_10_Charlas', JSON.stringify(visibles));
       chlRenderTabla(visibles);

@@ -232,7 +232,7 @@ function loadResumen_05_Incidentes() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('05_Incidentes\Mod_05_Incidentes_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('05_Incidentes', filas) : filas;
       window._incData = visibles;
       localStorage.setItem('refdata_05_Incidentes', JSON.stringify(visibles));
       incRenderTabla(visibles);

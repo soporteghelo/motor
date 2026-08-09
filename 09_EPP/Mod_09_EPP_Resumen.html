@@ -248,7 +248,7 @@ function loadResumen_09_EPP() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('09_EPP\Mod_09_EPP_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('09_EPP', filas) : filas;
       window._eppData = visibles;
       localStorage.setItem('refdata_09_EPP', JSON.stringify(visibles));
       eppRenderTabla(visibles);

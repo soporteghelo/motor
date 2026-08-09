@@ -276,7 +276,7 @@ function loadResumen_06_Capacitaciones() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('06_Capacitaciones\Mod_06_Capacitaciones_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('06_Capacitaciones', filas) : filas;
       window._capData = visibles;
       localStorage.setItem('refdata_06_Capacitaciones', JSON.stringify(visibles));
       capRenderTabla(visibles);

@@ -1489,12 +1489,88 @@ var SUBCONFIG_01_USUARIOS = {
 
 </div>
 <script>
-function loadResumen_01_Usuarios() {
+const USR_AVATAR_GRADS = [
+  'from-indigo-500 to-violet-500','from-rose-500 to-pink-500',
+  'from-emerald-500 to-teal-500','from-amber-500 to-orange-500','from-blue-500 to-cyan-500'
+];
+const USR_ROL_CONF = {
+  'SuperAdmin': { cls:'bg-gray-900 text-white border-gray-700',           icon:'admin_panel_settings' },
+  'Admin':      { cls:'bg-indigo-50 text-indigo-700 border-indigo-200',  icon:'shield' },
+  'Supervisor': { cls:'bg-amber-50 text-amber-700 border-amber-200',     icon:'manage_accounts' },
+  'Trabajador': { cls:'bg-slate-50 text-slate-600 border-slate-200',     icon:'person' }
+};
+
+function usrRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #usuarios-table-body');
+  if (!tbody) return;
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('usuarios-table-body', {
+      icon: 'group_off',
+      title: 'Sin usuarios',
+      message: 'Todavía no hay personal registrado.',
+      actionLabel: 'Agregar usuario', actionIcon: 'person_add',
+      onAction: "changeInternalView('01_Usuarios','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  PWA_SKILLS.finishLoading('usuarios-table-body');
+  tbody.innerHTML = data.map((u, i) => {
+    const rc = USR_ROL_CONF[u.Rol] || USR_ROL_CONF['Trabajador'];
+    const grad = USR_AVATAR_GRADS[i % USR_AVATAR_GRADS.length];
+    const inicial = (u.Nombre_Completo || u.DNI || '?').trim().charAt(0).toUpperCase();
+    const cesado = u.Status === 'Cesado' || u.Status === 'Inactivo';
+    return `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        onclick="changeInternalView('01_Usuarios','Detalle','${u.DNI}')">
+      <td class="px-3 py-2.5">
+        <p class="text-[12px] font-black text-on-surface tabular-nums">${u.DNI}</p>
+        <span class="inline-flex items-center gap-1 mt-0.5">
+          <span class="w-1.5 h-1.5 rounded-full ${cesado ? 'bg-red-500' : 'bg-emerald-500'} inline-block"></span>
+          <span class="text-[9px] ${cesado ? 'text-red-700' : 'text-emerald-700'} font-bold uppercase tracking-widest">${u.Status || 'Activo'}</span>
+        </span>
+      </td>
+      <td class="px-3 py-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center text-white text-[13px] font-black shadow-sm shrink-0">${inicial}</div>
+          <div>
+            <p class="text-[12px] font-bold text-on-surface leading-snug">${u.Nombre_Completo || '—'}</p>
+            <p class="text-[10px] text-secondary">${u.Email || ''}</p>
+          </div>
+        </div>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${rc.cls}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${rc.icon}</span>${u.Rol || '—'}
+        </span>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cesado ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${cesado ? 'block' : 'check_circle'}</span>${u.Status || 'Activo'}
+        </span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="event.stopPropagation(); changeInternalView('01_Usuarios','Edicion','${u.DNI}')" aria-label="Editar a ${u.Nombre_Completo || u.DNI}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
   PWA_SKILLS.initSortableTable('usuarios-table-body');
+  PWA_SKILLS.enhanceTable('usuarios-table-body');
   PWA_SKILLS.updateResultCount('usuarios-table-body', 'ui-result-count');
-  const countEl = document.getElementById('ui-result-count');
-  if (countEl) countEl.classList.remove('hidden');
-  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function loadResumen_01_Usuarios() {
+  PWA_SKILLS.renderSkeleton('usuarios-table-body', 6);
+
   if (!window._usrExportListener) {
     window._usrExportListener = true;
     document.addEventListener('click', function(e) {
@@ -1505,6 +1581,34 @@ function loadResumen_01_Usuarios() {
       }
     });
   }
+
+  DataService.read('01_Usuarios')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('01_Usuarios', filas) : filas;
+      window._usrData = visibles;
+      localStorage.setItem('refdata_01_Usuarios', JSON.stringify(visibles));
+      usrRenderTabla(visibles);
+      if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_01_Usuarios')) || []; } catch (e) {}
+      window._usrData = cache;
+      if (cache.length) {
+        usrRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('usuarios-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudo cargar el personal y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_01_Usuarios()"
+        });
+      }
+    });
 }
 </script>
 
@@ -2035,12 +2139,73 @@ var SUBCONFIG_02_REPORTES = {
 
 </div>
 <script>
-function loadResumen_02_Reportes() {
+/** Distintivo de severidad. Mismo criterio de color en toda la app. */
+function repSeveridadBadge(sev) {
+  const m = {
+    'Bajo (Verde)':     { cls:'bg-emerald-50 text-emerald-700 border-emerald-200', dot:'bg-emerald-400' },
+    'Medio (Amarillo)': { cls:'bg-amber-50 text-amber-700 border-amber-200',       dot:'bg-amber-400' },
+    'Alto (Rojo)':      { cls:'bg-red-50 text-red-700 border-red-200',            dot:'bg-red-500' },
+    'Crítico (Negro)':  { cls:'bg-gray-900 text-white border-gray-700',           dot:'bg-white' }
+  };
+  const c = m[sev] || { cls:'bg-surface-variant text-secondary border-outline-variant', dot:'bg-secondary' };
+  return '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ' + c.cls + '">' +
+         '<span class="w-1.5 h-1.5 rounded-full ' + c.dot + ' shrink-0"></span>' + (sev || '—') + '</span>';
+}
+
+function repRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #reportes-table-body');
+  if (!tbody) return;
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('reportes-table-body', {
+      icon: 'assignment_late',
+      title: 'Sin reportes',
+      message: 'Todavía no hay reportes registrados.',
+      actionLabel: 'Crear el primero', actionIcon: 'add_task',
+      onAction: "changeInternalView('02_Reportes','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  PWA_SKILLS.finishLoading('reportes-table-body');
+  tbody.innerHTML = data.map(r => `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        onclick="changeInternalView('02_Reportes','Detalle','${r.UUID}')">
+      <td class="px-3 py-2.5">
+        <p class="text-[12px] font-bold text-on-surface">${r.Fecha_Emision || '—'}</p>
+        <p class="text-[10px] font-mono text-secondary">#${r.UUID}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <p class="text-[11px] font-semibold text-on-surface">${r.Categoria_Reporte || '—'}</p>
+        <p class="text-[10px] text-secondary">Insp. ${r.Inspector_DNI || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">${repSeveridadBadge(r.Nivel_Severidad)}</td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-emerald-500" style="font-variation-settings:'FILL' 1" aria-hidden="true">cloud_done</span>
+          <span class="text-[10px] font-bold text-emerald-700">Sincronizado</span>
+        </span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="event.stopPropagation(); changeInternalView('02_Reportes','Detalle','${r.UUID}')" aria-label="Ver reporte ${r.UUID}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">chevron_right</span>
+        </button>
+      </td>
+    </tr>`).join('');
+
   PWA_SKILLS.initSortableTable('reportes-table-body');
+  PWA_SKILLS.enhanceTable('reportes-table-body');
   PWA_SKILLS.updateResultCount('reportes-table-body', 'ui-result-count');
-  const countEl = document.getElementById('ui-result-count');
-  if (countEl) countEl.classList.remove('hidden');
-  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function loadResumen_02_Reportes() {
+  PWA_SKILLS.renderSkeleton('reportes-table-body', 6);
+
   if (!window._repExportListener) {
     window._repExportListener = true;
     document.addEventListener('click', function(e) {
@@ -2051,6 +2216,36 @@ function loadResumen_02_Reportes() {
       }
     });
   }
+
+  DataService.read('02_Reportes')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      // Alcance por rol: el filtro del navegador es comodidad, la restricción
+      // real la aplica RLS en la base de datos.
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('02_Reportes', filas) : filas;
+      window._repData = visibles;
+      localStorage.setItem('refdata_02_Reportes', JSON.stringify(visibles));
+      repRenderTabla(visibles);
+      if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_02_Reportes')) || []; } catch (e) {}
+      window._repData = cache;
+      if (cache.length) {
+        repRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('reportes-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar los reportes y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_02_Reportes()"
+        });
+      }
+    });
 }
 </script>
 
@@ -2318,14 +2513,13 @@ function loadResumen_02_Reportes() {
 
 <script>
 function exportToPDF(moduleID) {
-  // La plantilla la diseña el administrador en Configuración → PDF.
-  const idEl = document.getElementById('rep-det-id');
-  const uuid = idEl ? idEl.innerText.replace('Reporte #', '').trim() : '';
+  const uuid = window._repDetalleUUID || '';
   PDF_TEMPLATE.exportarRegistro(moduleID, uuid, 'Reporte ' + uuid);
 }
 
 async function loadDetail_02_Reportes(uuid) {
   console.log(`Cargando Reporte: ${uuid}`);
+  window._repDetalleUUID = uuid;
   document.getElementById('rep-det-id').innerText = 'Cargando...';
 
   try {
@@ -2345,7 +2539,7 @@ async function loadDetail_02_Reportes(uuid) {
     if (!report) { document.getElementById('rep-det-id').innerText = 'Reporte no encontrado'; return; }
 
     document.getElementById('rep-det-id').innerText = `Reporte #${String(uuid).substring(0, 8).toUpperCase()}`;
-    document.getElementById('rep-det-date').innerText = report.Timestamp ? report.Timestamp.split('T')[0] : '--';
+    document.getElementById('rep-det-date').innerText = report.Fecha_Emision || '--';
     document.getElementById('rep-det-cat').innerText = report.Categoria_Reporte || '--';
 
     const severityEl = document.querySelector('#rep-det-cat').closest('.grid').querySelector('span[class*="px-2"]');
@@ -2540,12 +2734,86 @@ console.log("✅ Subconfig 03_Inspecciones (Estandarizada) cargada.");
 
 </div>
 <script>
-function loadResumen_03_Inspecciones() {
+const INSP_AREA_CLS = {
+  'Mina':      'bg-orange-50 text-orange-700 border-orange-200',
+  'Planta':    'bg-blue-50 text-blue-700 border-blue-200',
+  'Talleres':  'bg-purple-50 text-purple-700 border-purple-200',
+  'Logística': 'bg-teal-50 text-teal-700 border-teal-200'
+};
+const INSP_ESTADO_CONF = {
+  'Pendiente':  { cls:'bg-amber-50 text-amber-700 border-amber-200',      icon:'schedule' },
+  'En Proceso': { cls:'bg-blue-50 text-blue-700 border-blue-200',         icon:'autorenew' },
+  'Cerrado':    { cls:'bg-emerald-50 text-emerald-700 border-emerald-200', icon:'check_circle' }
+};
+
+function inspRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #inspecciones-table-body');
+  if (!tbody) return;
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('inspecciones-table-body', {
+      icon: 'inventory_2',
+      title: 'Sin inspecciones',
+      message: 'Todavía no hay inspecciones registradas.',
+      actionLabel: 'Crear la primera', actionIcon: 'add',
+      onAction: "changeInternalView('03_Inspecciones','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  PWA_SKILLS.finishLoading('inspecciones-table-body');
+  tbody.innerHTML = data.map(r => {
+    const ac = INSP_AREA_CLS[r.Area_Inspeccion] || 'bg-surface-variant text-secondary border-outline-variant';
+    const ec = INSP_ESTADO_CONF[r.Estado_Actual] || { cls:'bg-surface-variant text-secondary border-outline-variant', icon:'help' };
+    return `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        onclick="changeInternalView('03_Inspecciones','Detalle','${r.UUID}')">
+      <td class="px-3 py-2.5">
+        <p class="text-[10px] font-black text-primary font-mono">#${r.UUID}</p>
+        <p class="text-[10px] text-secondary mt-0.5">${r.Fecha_Peru || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${ac}">${r.Area_Inspeccion || '—'}</span>
+      </td>
+      <td class="px-3 py-2.5">
+        <p class="text-[11px] font-semibold text-on-surface">${r.Tipo_Hallazgo || '—'}: ${r.Descripcion_Tecnica || ''}</p>
+        <p class="text-[10px] text-secondary">Auditor ${r.Auditor_DNI || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${ec.cls}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${ec.icon}</span>${r.Estado_Actual || '—'}
+        </span>
+      </td>
+      <td class="px-3 py-2.5">
+        <div class="flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[13px] text-secondary" aria-hidden="true">person</span>
+          <span class="text-[11px] font-semibold text-on-surface">${r.Responsable || '—'}</span>
+        </div>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="text-[10px] text-on-surface-variant">${r.Plazo || '—'}</span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="event.stopPropagation(); changeInternalView('03_Inspecciones','Detalle','${r.UUID}')" aria-label="Ver inspección ${r.UUID}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">chevron_right</span>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
   PWA_SKILLS.initSortableTable('inspecciones-table-body');
+  PWA_SKILLS.enhanceTable('inspecciones-table-body');
   PWA_SKILLS.updateResultCount('inspecciones-table-body', 'ui-result-count');
-  const countEl = document.getElementById('ui-result-count');
-  if (countEl) countEl.classList.remove('hidden');
-  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function loadResumen_03_Inspecciones() {
+  PWA_SKILLS.renderSkeleton('inspecciones-table-body', 6);
+
   if (!window._inspExportListener) {
     window._inspExportListener = true;
     document.addEventListener('click', function(e) {
@@ -2556,6 +2824,34 @@ function loadResumen_03_Inspecciones() {
       }
     });
   }
+
+  DataService.read('03_Inspecciones')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('03_Inspecciones', filas) : filas;
+      window._inspData = visibles;
+      localStorage.setItem('refdata_03_Inspecciones', JSON.stringify(visibles));
+      inspRenderTabla(visibles);
+      if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_03_Inspecciones')) || []; } catch (e) {}
+      window._inspData = cache;
+      if (cache.length) {
+        inspRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('inspecciones-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar las inspecciones y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_03_Inspecciones()"
+        });
+      }
+    });
 }
 </script>
 
@@ -2929,14 +3225,13 @@ function loadResumen_03_Inspecciones() {
 
 <script>
 function exportRecordToPDF(moduleID) {
-  // La plantilla la diseña el administrador en Configuración → PDF.
-  const idEl = document.getElementById('insp-detail-id');
-  const uuid = idEl ? idEl.innerText.replace('INSP-', '').trim() : '';
+  const uuid = window._inspDetalleUUID || '';
   PDF_TEMPLATE.exportarRegistro(moduleID, uuid, 'Inspección ' + uuid);
 }
 
 async function loadDetail_03_Inspecciones(uuid) {
   console.log(`Cargando Inspección: ${uuid}`);
+  window._inspDetalleUUID = uuid;
   const idEl = document.getElementById('insp-detail-id');
   if (idEl) idEl.innerText = 'Cargando...';
 
@@ -5284,7 +5579,7 @@ function loadResumen_05_Incidentes() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('05_Incidentes\Mod_05_Incidentes_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('05_Incidentes', filas) : filas;
       window._incData = visibles;
       localStorage.setItem('refdata_05_Incidentes', JSON.stringify(visibles));
       incRenderTabla(visibles);
@@ -6282,7 +6577,7 @@ function loadResumen_06_Capacitaciones() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('06_Capacitaciones\Mod_06_Capacitaciones_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('06_Capacitaciones', filas) : filas;
       window._capData = visibles;
       localStorage.setItem('refdata_06_Capacitaciones', JSON.stringify(visibles));
       capRenderTabla(visibles);
@@ -7247,7 +7542,7 @@ function loadResumen_07_IPERC() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('07_IPERC\Mod_07_IPERC_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('07_IPERC', filas) : filas;
       window._ipcData = visibles;
       localStorage.setItem('refdata_07_IPERC', JSON.stringify(visibles));
       ipcRenderTabla(visibles);
@@ -8320,7 +8615,7 @@ function loadResumen_08_PETAR() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('08_PETAR\Mod_08_PETAR_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('08_PETAR', filas) : filas;
       window._ptrData = visibles;
       localStorage.setItem('refdata_08_PETAR', JSON.stringify(visibles));
       ptrRenderTabla(visibles);
@@ -9410,7 +9705,7 @@ function loadResumen_09_EPP() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('09_EPP\Mod_09_EPP_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('09_EPP', filas) : filas;
       window._eppData = visibles;
       localStorage.setItem('refdata_09_EPP', JSON.stringify(visibles));
       eppRenderTabla(visibles);
@@ -10436,7 +10731,7 @@ function loadResumen_10_Charlas() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('10_Charlas\Mod_10_Charlas_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('10_Charlas', filas) : filas;
       window._chlData = visibles;
       localStorage.setItem('refdata_10_Charlas', JSON.stringify(visibles));
       chlRenderTabla(visibles);
@@ -11897,7 +12192,12 @@ const PERMISOS = {
    * Campos por los que un registro "pertenece" a alguien. Se buscan en este
    * orden; el primero que exista en la fila decide.
    */
-  CAMPOS_PROPIEDAD:    ['Registrado_Por_DNI', 'Reportado_Por', 'Trabajador_DNI', 'Creado_Por', 'DNI'],
+  // 'creado_por_dni' es el sello que pone SupabaseProvider en TODO registro
+  // nuevo, sin importar el módulo — cubre el "propios" incluso cuando el
+  // campo de autoría propio del módulo (ej. Inspector_DNI en Reportes) no
+  // está en esta lista.
+  CAMPOS_PROPIEDAD:    ['Registrado_Por_DNI', 'Reportado_Por', 'Trabajador_DNI', 'Creado_Por', 'DNI',
+                        'Inspector_DNI', 'creado_por_dni'],
   CAMPOS_RESPONSABLE:  ['Responsable_DNI', 'Supervisor_DNI', 'Aprobado_Por', 'Moderado_Por',
                         'Revisado_Por', 'Elaborado_Por', 'Ejecutante_DNI', 'Expositor_DNI',
                         'Auditor_DNI', 'Entregado_Por', 'Responsable', 'Instructor'],

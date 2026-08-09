@@ -153,7 +153,12 @@ const PERMISOS = {
    * Campos por los que un registro "pertenece" a alguien. Se buscan en este
    * orden; el primero que exista en la fila decide.
    */
-  CAMPOS_PROPIEDAD:    ['Registrado_Por_DNI', 'Reportado_Por', 'Trabajador_DNI', 'Creado_Por', 'DNI'],
+  // 'creado_por_dni' es el sello que pone SupabaseProvider en TODO registro
+  // nuevo, sin importar el módulo — cubre el "propios" incluso cuando el
+  // campo de autoría propio del módulo (ej. Inspector_DNI en Reportes) no
+  // está en esta lista.
+  CAMPOS_PROPIEDAD:    ['Registrado_Por_DNI', 'Reportado_Por', 'Trabajador_DNI', 'Creado_Por', 'DNI',
+                        'Inspector_DNI', 'creado_por_dni'],
   CAMPOS_RESPONSABLE:  ['Responsable_DNI', 'Supervisor_DNI', 'Aprobado_Por', 'Moderado_Por',
                         'Revisado_Por', 'Elaborado_Por', 'Ejecutante_DNI', 'Expositor_DNI',
                         'Auditor_DNI', 'Entregado_Por', 'Responsable', 'Instructor'],

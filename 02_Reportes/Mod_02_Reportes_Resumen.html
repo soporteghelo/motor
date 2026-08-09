@@ -71,12 +71,73 @@
 
 </div>
 <script>
-function loadResumen_02_Reportes() {
+/** Distintivo de severidad. Mismo criterio de color en toda la app. */
+function repSeveridadBadge(sev) {
+  const m = {
+    'Bajo (Verde)':     { cls:'bg-emerald-50 text-emerald-700 border-emerald-200', dot:'bg-emerald-400' },
+    'Medio (Amarillo)': { cls:'bg-amber-50 text-amber-700 border-amber-200',       dot:'bg-amber-400' },
+    'Alto (Rojo)':      { cls:'bg-red-50 text-red-700 border-red-200',            dot:'bg-red-500' },
+    'Crítico (Negro)':  { cls:'bg-gray-900 text-white border-gray-700',           dot:'bg-white' }
+  };
+  const c = m[sev] || { cls:'bg-surface-variant text-secondary border-outline-variant', dot:'bg-secondary' };
+  return '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ' + c.cls + '">' +
+         '<span class="w-1.5 h-1.5 rounded-full ' + c.dot + ' shrink-0"></span>' + (sev || '—') + '</span>';
+}
+
+function repRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #reportes-table-body');
+  if (!tbody) return;
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('reportes-table-body', {
+      icon: 'assignment_late',
+      title: 'Sin reportes',
+      message: 'Todavía no hay reportes registrados.',
+      actionLabel: 'Crear el primero', actionIcon: 'add_task',
+      onAction: "changeInternalView('02_Reportes','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  PWA_SKILLS.finishLoading('reportes-table-body');
+  tbody.innerHTML = data.map(r => `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        onclick="changeInternalView('02_Reportes','Detalle','${r.UUID}')">
+      <td class="px-3 py-2.5">
+        <p class="text-[12px] font-bold text-on-surface">${r.Fecha_Emision || '—'}</p>
+        <p class="text-[10px] font-mono text-secondary">#${r.UUID}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <p class="text-[11px] font-semibold text-on-surface">${r.Categoria_Reporte || '—'}</p>
+        <p class="text-[10px] text-secondary">Insp. ${r.Inspector_DNI || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">${repSeveridadBadge(r.Nivel_Severidad)}</td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px] text-emerald-500" style="font-variation-settings:'FILL' 1" aria-hidden="true">cloud_done</span>
+          <span class="text-[10px] font-bold text-emerald-700">Sincronizado</span>
+        </span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="event.stopPropagation(); changeInternalView('02_Reportes','Detalle','${r.UUID}')" aria-label="Ver reporte ${r.UUID}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">chevron_right</span>
+        </button>
+      </td>
+    </tr>`).join('');
+
   PWA_SKILLS.initSortableTable('reportes-table-body');
+  PWA_SKILLS.enhanceTable('reportes-table-body');
   PWA_SKILLS.updateResultCount('reportes-table-body', 'ui-result-count');
-  const countEl = document.getElementById('ui-result-count');
-  if (countEl) countEl.classList.remove('hidden');
-  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function loadResumen_02_Reportes() {
+  PWA_SKILLS.renderSkeleton('reportes-table-body', 6);
+
   if (!window._repExportListener) {
     window._repExportListener = true;
     document.addEventListener('click', function(e) {
@@ -87,5 +148,35 @@ function loadResumen_02_Reportes() {
       }
     });
   }
+
+  DataService.read('02_Reportes')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      // Alcance por rol: el filtro del navegador es comodidad, la restricción
+      // real la aplica RLS en la base de datos.
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('02_Reportes', filas) : filas;
+      window._repData = visibles;
+      localStorage.setItem('refdata_02_Reportes', JSON.stringify(visibles));
+      repRenderTabla(visibles);
+      if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_02_Reportes')) || []; } catch (e) {}
+      window._repData = cache;
+      if (cache.length) {
+        repRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('reportes-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar los reportes y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_02_Reportes()"
+        });
+      }
+    });
 }
 </script>

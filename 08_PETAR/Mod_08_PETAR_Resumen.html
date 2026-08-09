@@ -269,7 +269,7 @@ function loadResumen_08_PETAR() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('08_PETAR\Mod_08_PETAR_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('08_PETAR', filas) : filas;
       window._ptrData = visibles;
       localStorage.setItem('refdata_08_PETAR', JSON.stringify(visibles));
       ptrRenderTabla(visibles);

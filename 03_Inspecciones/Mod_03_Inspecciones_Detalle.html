@@ -119,14 +119,13 @@
 
 <script>
 function exportRecordToPDF(moduleID) {
-  // La plantilla la diseña el administrador en Configuración → PDF.
-  const idEl = document.getElementById('insp-detail-id');
-  const uuid = idEl ? idEl.innerText.replace('INSP-', '').trim() : '';
+  const uuid = window._inspDetalleUUID || '';
   PDF_TEMPLATE.exportarRegistro(moduleID, uuid, 'Inspección ' + uuid);
 }
 
 async function loadDetail_03_Inspecciones(uuid) {
   console.log(`Cargando Inspección: ${uuid}`);
+  window._inspDetalleUUID = uuid;
   const idEl = document.getElementById('insp-detail-id');
   if (idEl) idEl.innerText = 'Cargando...';
 

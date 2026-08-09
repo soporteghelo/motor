@@ -74,12 +74,86 @@
 
 </div>
 <script>
-function loadResumen_03_Inspecciones() {
+const INSP_AREA_CLS = {
+  'Mina':      'bg-orange-50 text-orange-700 border-orange-200',
+  'Planta':    'bg-blue-50 text-blue-700 border-blue-200',
+  'Talleres':  'bg-purple-50 text-purple-700 border-purple-200',
+  'Logística': 'bg-teal-50 text-teal-700 border-teal-200'
+};
+const INSP_ESTADO_CONF = {
+  'Pendiente':  { cls:'bg-amber-50 text-amber-700 border-amber-200',      icon:'schedule' },
+  'En Proceso': { cls:'bg-blue-50 text-blue-700 border-blue-200',         icon:'autorenew' },
+  'Cerrado':    { cls:'bg-emerald-50 text-emerald-700 border-emerald-200', icon:'check_circle' }
+};
+
+function inspRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #inspecciones-table-body');
+  if (!tbody) return;
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('inspecciones-table-body', {
+      icon: 'inventory_2',
+      title: 'Sin inspecciones',
+      message: 'Todavía no hay inspecciones registradas.',
+      actionLabel: 'Crear la primera', actionIcon: 'add',
+      onAction: "changeInternalView('03_Inspecciones','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  PWA_SKILLS.finishLoading('inspecciones-table-body');
+  tbody.innerHTML = data.map(r => {
+    const ac = INSP_AREA_CLS[r.Area_Inspeccion] || 'bg-surface-variant text-secondary border-outline-variant';
+    const ec = INSP_ESTADO_CONF[r.Estado_Actual] || { cls:'bg-surface-variant text-secondary border-outline-variant', icon:'help' };
+    return `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        onclick="changeInternalView('03_Inspecciones','Detalle','${r.UUID}')">
+      <td class="px-3 py-2.5">
+        <p class="text-[10px] font-black text-primary font-mono">#${r.UUID}</p>
+        <p class="text-[10px] text-secondary mt-0.5">${r.Fecha_Peru || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${ac}">${r.Area_Inspeccion || '—'}</span>
+      </td>
+      <td class="px-3 py-2.5">
+        <p class="text-[11px] font-semibold text-on-surface">${r.Tipo_Hallazgo || '—'}: ${r.Descripcion_Tecnica || ''}</p>
+        <p class="text-[10px] text-secondary">Auditor ${r.Auditor_DNI || '—'}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${ec.cls}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${ec.icon}</span>${r.Estado_Actual || '—'}
+        </span>
+      </td>
+      <td class="px-3 py-2.5">
+        <div class="flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[13px] text-secondary" aria-hidden="true">person</span>
+          <span class="text-[11px] font-semibold text-on-surface">${r.Responsable || '—'}</span>
+        </div>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="text-[10px] text-on-surface-variant">${r.Plazo || '—'}</span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="event.stopPropagation(); changeInternalView('03_Inspecciones','Detalle','${r.UUID}')" aria-label="Ver inspección ${r.UUID}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">chevron_right</span>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
   PWA_SKILLS.initSortableTable('inspecciones-table-body');
+  PWA_SKILLS.enhanceTable('inspecciones-table-body');
   PWA_SKILLS.updateResultCount('inspecciones-table-body', 'ui-result-count');
-  const countEl = document.getElementById('ui-result-count');
-  if (countEl) countEl.classList.remove('hidden');
-  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function loadResumen_03_Inspecciones() {
+  PWA_SKILLS.renderSkeleton('inspecciones-table-body', 6);
+
   if (!window._inspExportListener) {
     window._inspExportListener = true;
     document.addEventListener('click', function(e) {
@@ -90,5 +164,33 @@ function loadResumen_03_Inspecciones() {
       }
     });
   }
+
+  DataService.read('03_Inspecciones')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('03_Inspecciones', filas) : filas;
+      window._inspData = visibles;
+      localStorage.setItem('refdata_03_Inspecciones', JSON.stringify(visibles));
+      inspRenderTabla(visibles);
+      if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_03_Inspecciones')) || []; } catch (e) {}
+      window._inspData = cache;
+      if (cache.length) {
+        inspRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('inspecciones-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar las inspecciones y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_03_Inspecciones()"
+        });
+      }
+    });
 }
 </script>

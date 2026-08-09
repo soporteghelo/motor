@@ -255,7 +255,7 @@ function loadResumen_07_IPERC() {
       // El filtro del navegador es comodidad; la restricción real la
       // aplica RLS en la base de datos.
       const visibles = (typeof PERMISOS !== 'undefined')
-        ? PERMISOS.filtrarDatos('07_IPERC\Mod_07_IPERC_Resumen.html', filas) : filas;
+        ? PERMISOS.filtrarDatos('07_IPERC', filas) : filas;
       window._ipcData = visibles;
       localStorage.setItem('refdata_07_IPERC', JSON.stringify(visibles));
       ipcRenderTabla(visibles);
