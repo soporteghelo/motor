@@ -99,6 +99,29 @@ async function upsertRows(table, rows, onConflict) {
   console.log(`  -> ${table}: ${rows.length} filas`);
 }
 
+/**
+ * Tablas hijas (bigserial id, sin unique key sobre las columnas de datos):
+ * no admiten on_conflict, así que se insertan directo. Solo son seguras de
+ * re-ejecutar si la tabla hija está vacía (si no, duplican).
+ */
+async function insertRows(table, rows) {
+  if (!rows.length) return;
+  if (DRY_RUN) {
+    console.log(`  [dry-run] ${table}: ${rows.length} filas (ejemplo: ${JSON.stringify(rows[0]).slice(0, 160)}...)`);
+    return;
+  }
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    await rest(`/rest/v1/${table}`, {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(chunk)
+    });
+  }
+  console.log(`  -> ${table}: ${rows.length} filas`);
+}
+
 async function findAuthUserIdByEmail(email) {
   const data = await rest(`/auth/v1/admin/users?email=${encodeURIComponent(email)}`);
   const list = Array.isArray(data) ? data : (data && data.users) || [];
@@ -630,22 +653,22 @@ async function main() {
   });
 
   await upsertRows('reportes', acc.reportes, 'uuid');
-  await upsertRows('reportes_child', acc.reportes_child, 'empresa_id,parent_uuid,observacion');
+  await insertRows('reportes_child', acc.reportes_child);
   await upsertRows('inspecciones', acc.inspecciones, 'uuid');
-  await upsertRows('inspecciones_child', acc.inspecciones_child, 'empresa_id,parent_uuid,hallazgo');
+  await insertRows('inspecciones_child', acc.inspecciones_child);
   await upsertRows('actos_condiciones', acc.actos_condiciones, 'uuid');
   await upsertRows('incidentes', acc.incidentes, 'uuid');
-  await upsertRows('incidentes_acciones', acc.incidentes_acciones, 'empresa_id,parent_uuid,accion');
+  await insertRows('incidentes_acciones', acc.incidentes_acciones);
   await upsertRows('capacitaciones', acc.capacitaciones, 'uuid');
-  await upsertRows('capacitaciones_asistentes', acc.capacitaciones_asistentes, 'empresa_id,parent_uuid,dni');
+  await insertRows('capacitaciones_asistentes', acc.capacitaciones_asistentes);
   await upsertRows('iperc', acc.iperc, 'uuid');
-  await upsertRows('iperc_peligros', acc.iperc_peligros, 'empresa_id,parent_uuid,peligro');
+  await insertRows('iperc_peligros', acc.iperc_peligros);
   await upsertRows('petar', acc.petar, 'uuid');
-  await upsertRows('petar_verificaciones', acc.petar_verificaciones, 'empresa_id,parent_uuid,item');
+  await insertRows('petar_verificaciones', acc.petar_verificaciones);
   await upsertRows('epp', acc.epp, 'uuid');
-  await upsertRows('epp_items', acc.epp_items, 'empresa_id,parent_uuid,equipo');
+  await insertRows('epp_items', acc.epp_items);
   await upsertRows('charlas', acc.charlas, 'uuid');
-  await upsertRows('charlas_asistentes', acc.charlas_asistentes, 'empresa_id,parent_uuid,dni');
+  await insertRows('charlas_asistentes', acc.charlas_asistentes);
 
   console.log('\nListo.');
   if (!DRY_RUN) {
