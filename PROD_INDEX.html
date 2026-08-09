@@ -747,11 +747,10 @@
         margin: 0;
       }
 
-      /* PETAR: el patrón genérico apila 5 filas etiqueta:valor (Tipo, Ventana,
-         Vigencia, Estado, Área), todas con el mismo peso visual — saturado
-         para una tarjeta que debe leerse de un vistazo en campo. Se agrupa
-         en: título, qué trabajo es, una línea de datos secundarios (horario
-         + área) y una línea con los dos distintivos de estado juntos. */
+      /* PETAR: orden fijado a pedido — permiso+fecha arriba, horario+área
+         como dato secundario, el tipo de trabajo como titular (es lo que de
+         verdad importa reconocer de un vistazo) con la empresa ejecutora
+         debajo, y los dos distintivos de estado juntos al final. */
       #petar-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
         display: flex;
         flex-wrap: wrap;
@@ -770,56 +769,70 @@
         margin-left: 0;
         text-align: left;
       }
-      /* Título: N° de permiso + fecha */
+      /* 1) N° de permiso + fecha, en la misma línea (las acciones quedan ancladas arriba).
+         68px reserva sitio para los dos botones de 28px + espacio entre ellos:
+         menos que eso y la fecha queda debajo de los íconos. */
       #petar-table.pwa-table-cards tbody td:first-child {
         order: 1;
         flex: 1 1 auto;
-        display: block;
-        padding: 0 38px 0 0 !important;
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px 8px;
+        padding: 0 68px 0 0 !important;
         margin: 0;
         border: 0 !important;
       }
-      /* Qué trabajo es: tipo + empresa ejecutora, línea propia con más peso */
-      #petar-table.pwa-table-cards tbody td:nth-child(2) {
-        order: 2;
-        flex: 0 0 100%;
-        display: block;
-        margin-top: 6px;
-      }
-      #petar-table.pwa-table-cards tbody td:nth-child(2) div:first-child {
-        font-size: 13px !important;
-        line-height: 1.35;
-      }
-      #petar-table.pwa-table-cards tbody td:nth-child(2) div + div {
-        margin-top: 2px;
+      #petar-table.pwa-table-cards tbody td:first-child div + div {
+        font-size: 11px !important;
         color: var(--ds-fg-muted);
       }
-      /* Ventana horaria + área: datos secundarios, una sola línea */
+      /* 2) Horario + área: dato secundario, una sola línea */
       #petar-table.pwa-table-cards tbody td:nth-child(3) {
-        order: 3;
+        order: 2;
         flex: 0 0 auto;
         width: auto;
         min-height: 0;
         margin-top: 8px;
       }
       #petar-table.pwa-table-cards tbody td:nth-child(6) {
-        order: 3;
+        order: 2;
         flex: 1 1 auto;
         width: auto;
         min-width: 0;
         min-height: 0;
         margin-top: 8px;
-        justify-content: flex-end;
       }
-      #petar-table.pwa-table-cards tbody td:nth-child(6) > * { margin-left: auto; text-align: right; }
-      /* Los dos distintivos de estado, uno junto al otro: es lo primero que hay que leer */
+      #petar-table.pwa-table-cards tbody td:nth-child(6) > * {
+        margin-left: 8px !important;
+        color: var(--ds-fg-muted);
+      }
+      /* 3) Tipo de trabajo: el titular de la tarjeta, con la empresa ejecutora debajo */
+      #petar-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 3;
+        flex: 0 0 100%;
+        display: block;
+        margin-top: 8px;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(2) div:first-child {
+        font-size: 16px !important;
+        font-weight: 800;
+        color: var(--ds-fg);
+        line-height: 1.3;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(2) div + div {
+        font-size: 12px !important;
+        color: var(--ds-fg-muted);
+        margin-top: 2px;
+      }
+      /* 4) Los dos distintivos de estado, uno junto al otro */
       #petar-table.pwa-table-cards tbody td:nth-child(4),
       #petar-table.pwa-table-cards tbody td:nth-child(5) {
         order: 4;
         flex: 0 0 auto;
         width: auto;
         min-height: 0;
-        margin-top: 8px;
+        margin-top: 10px;
       }
       #petar-table.pwa-table-cards tbody td.pwa-cell-actions {
         order: 0;
