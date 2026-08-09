@@ -746,6 +746,86 @@
         flex: 0 0 auto;
         margin: 0;
       }
+
+      /* PETAR: el patrón genérico apila 5 filas etiqueta:valor (Tipo, Ventana,
+         Vigencia, Estado, Área), todas con el mismo peso visual — saturado
+         para una tarjeta que debe leerse de un vistazo en campo. Se agrupa
+         en: título, qué trabajo es, una línea de datos secundarios (horario
+         + área) y una línea con los dos distintivos de estado juntos. */
+      #petar-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        border-radius: 12px;
+      }
+      #petar-table.pwa-table-cards tbody td,
+      #petar-table.pwa-table-cards tbody td::before {
+        border: 0 !important;
+      }
+      #petar-table.pwa-table-cards tbody td::before { display: none; }
+      #petar-table.pwa-table-cards tbody td:not(:first-child) > * {
+        margin-left: 0;
+        text-align: left;
+      }
+      /* Título: N° de permiso + fecha */
+      #petar-table.pwa-table-cards tbody td:first-child {
+        order: 1;
+        flex: 1 1 auto;
+        display: block;
+        padding: 0 38px 0 0 !important;
+        margin: 0;
+        border: 0 !important;
+      }
+      /* Qué trabajo es: tipo + empresa ejecutora, línea propia con más peso */
+      #petar-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 2;
+        flex: 0 0 100%;
+        display: block;
+        margin-top: 6px;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(2) div:first-child {
+        font-size: 13px !important;
+        line-height: 1.35;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(2) div + div {
+        margin-top: 2px;
+        color: var(--ds-fg-muted);
+      }
+      /* Ventana horaria + área: datos secundarios, una sola línea */
+      #petar-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 3;
+        flex: 0 0 auto;
+        width: auto;
+        min-height: 0;
+        margin-top: 8px;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 3;
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        min-height: 0;
+        margin-top: 8px;
+        justify-content: flex-end;
+      }
+      #petar-table.pwa-table-cards tbody td:nth-child(6) > * { margin-left: auto; text-align: right; }
+      /* Los dos distintivos de estado, uno junto al otro: es lo primero que hay que leer */
+      #petar-table.pwa-table-cards tbody td:nth-child(4),
+      #petar-table.pwa-table-cards tbody td:nth-child(5) {
+        order: 4;
+        flex: 0 0 auto;
+        width: auto;
+        min-height: 0;
+        margin-top: 8px;
+      }
+      #petar-table.pwa-table-cards tbody td.pwa-cell-actions {
+        order: 0;
+        flex: 0 0 auto;
+        margin: 0;
+      }
     }
 
     /* ─── 5.b RITMO VERTICAL EN MÓVIL (spacing-scale / content-priority) ───
