@@ -100,9 +100,21 @@ async function upsertRows(table, rows, onConflict) {
 }
 
 /**
+ * Borra todas las filas de una tabla que pertenezcan a las empresas del
+ * seed. Se usa antes de insertar tablas hijas (bigserial, sin unique key)
+ * para que re-ejecutar el script con más registros no las duplique.
+ */
+async function limpiarPorEmpresa(table, empresaIds) {
+  if (DRY_RUN) return;
+  const filtro = empresaIds.map(id => `"${id}"`).join(',');
+  await rest(`/rest/v1/${table}?empresa_id=in.(${filtro})`, { method: 'DELETE' });
+}
+
+/**
  * Tablas hijas (bigserial id, sin unique key sobre las columnas de datos):
- * no admiten on_conflict, así que se insertan directo. Solo son seguras de
- * re-ejecutar si la tabla hija está vacía (si no, duplican).
+ * no admiten on_conflict, así que se insertan directo. Re-ejecutar el
+ * script es seguro porque main() limpia estas tablas por empresa antes
+ * de llamar aquí (ver limpiarPorEmpresa).
  */
 async function insertRows(table, rows) {
   if (!rows.length) return;
@@ -326,7 +338,7 @@ function buildEmpresaData(emp, personas) {
   if (emp.modulos['02_Reportes']) {
     const CAT = ['Preventivo', 'Auditoría Interna', 'Acto Subestándar', 'Condición Crítica'];
     const SEV = ['Bajo (Verde)', 'Medio (Amarillo)', 'Alto (Rojo)', 'Crítico (Negro)'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       const creador = pick(trabs, base + i);
       const uuid = nextId('RPT');
       out.reportes.push({
@@ -347,7 +359,7 @@ function buildEmpresaData(emp, personas) {
   // ── 03_Inspecciones ── (Supervisor audita, Trabajador queda como responsable del levantamiento)
   if (emp.modulos['03_Inspecciones']) {
     const ESTADOS = ['Pendiente', 'En Proceso', 'Cerrado'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       const auditor = pick(sups, base + i);
       const responsable = pick(trabs, base + i + 1);
       const estado = pick(ESTADOS, base + i);
@@ -378,7 +390,7 @@ function buildEmpresaData(emp, personas) {
     const CATEG = ['EPP', 'Herramientas', 'Equipos', 'Procedimientos', 'Orden y Limpieza', 'Ergonomía', 'Ambiental'];
     const RIESGO = ['Bajo (Verde)', 'Medio (Amarillo)', 'Alto (Rojo)', 'Crítico (Negro)'];
     const ESTADOS = ['Pendiente', 'En Revisión', 'Aprobado', 'Cerrado'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       const reportante = pick(trabs, base + i);
       const moderador = pick(sups, base + i);
       const estado = pick(ESTADOS, base + i);
@@ -410,7 +422,7 @@ function buildEmpresaData(emp, personas) {
     const GRAVEDAD = ['Leve', 'Grave'];
     const CAUSA = ['Factor personal', 'Factor del trabajo', 'Método / procedimiento', 'Equipo / herramienta', 'Entorno / condiciones'];
     const ESTADOS = ['Reportado', 'En investigación', 'Con acciones abiertas', 'Cerrado'];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       const afectado = pick(trabs, base + i);
       const investigador = pick(sups, base + i);
       const estado = pick(ESTADOS, base + i);
@@ -448,7 +460,7 @@ function buildEmpresaData(emp, personas) {
   if (emp.modulos['06_Capacitaciones']) {
     const TIPO = ['Inducción', 'Capacitación específica', 'Reentrenamiento', 'Charla de seguridad'];
     const MODALIDAD = ['Presencial', 'Virtual', 'Mixta'];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       const instructor = pick(sups, base + i);
       const tema = pick(TEMAS_CHARLA, base + i);
       const uuid = nextId('CAP');
@@ -484,7 +496,7 @@ function buildEmpresaData(emp, personas) {
   if (emp.modulos['07_IPERC']) {
     const TIPO = ['Línea base', 'Continuo', 'Específico'];
     const ESTADOS = ['Aprobado', 'En revisión', 'Borrador'];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       const elaborador = pick(sups, base + i);
       const revisor = pick(sups, base + i + 1);
       const uuid = nextId('IPE');
@@ -519,7 +531,7 @@ function buildEmpresaData(emp, personas) {
   // ── 08_PETAR ── (Trabajador ejecuta, Supervisor supervisa/aprueba)
   if (emp.modulos['08_PETAR']) {
     const ESTADOS = ['Aprobado', 'En ejecución', 'Cerrado', 'Solicitado'];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       const ejecutante = pick(trabs, base + i);
       const supervisor = pick(sups, base + i);
       const tipo = pick(PETAR_TIPOS, base + i);
@@ -557,7 +569,7 @@ function buildEmpresaData(emp, personas) {
   if (emp.modulos['09_EPP']) {
     const TIPO_ENTREGA = ['Dotación inicial', 'Reposición por vida útil', 'Reposición por desgaste'];
     const ESTADOS = ['Entregado', 'Pendiente de firma'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       const receptor = pick(trabs, base + i);
       const entregador = pick(sups, base + i);
       const uuid = nextId('EPP');
@@ -593,7 +605,7 @@ function buildEmpresaData(emp, personas) {
   if (emp.modulos['10_Charlas']) {
     const TURNOS = ['Día', 'Tarde', 'Noche'];
     const CATEGORIAS = ['Riesgos del día', 'Orden y limpieza', 'Uso de EPP', 'Trabajo en altura', 'Emergencias'];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       const expositor = pick(sups, base + i);
       const uuid = nextId('CHA');
       const fecha = daysAgo(randInt(0, 30));
@@ -651,6 +663,12 @@ async function main() {
     const data = buildEmpresaData(emp, personasEmp);
     Object.keys(acc).forEach(k => acc[k].push(...data[k]));
   });
+
+  const empresaIds = EMPRESAS.map(e => e.id);
+  console.log('   (limpiando tablas hijas antes de reinsertar, para que re-ejecutar no duplique)');
+  for (const t of ['reportes_child', 'inspecciones_child', 'incidentes_acciones', 'capacitaciones_asistentes', 'iperc_peligros', 'petar_verificaciones', 'epp_items', 'charlas_asistentes']) {
+    await limpiarPorEmpresa(t, empresaIds);
+  }
 
   await upsertRows('reportes', acc.reportes, 'uuid');
   await insertRows('reportes_child', acc.reportes_child);
