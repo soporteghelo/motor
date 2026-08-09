@@ -68,6 +68,14 @@
                    <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Correo de Contacto</label>
                    <p id="usr-det-email" class="text-base font-bold text-primary">--</p>
                 </div>
+                <div>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Área</label>
+                   <p id="usr-det-area" class="text-base font-bold text-on-surface">--</p>
+                </div>
+                <div>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Puesto</label>
+                   <p id="usr-det-puesto" class="text-base font-bold text-on-surface">--</p>
+                </div>
              </div>
           </div>
 
@@ -123,7 +131,10 @@ async function loadDetail_01_Usuarios(dni) {
     document.getElementById('usr-det-id').innerText = `DNI: ${user.DNI}`;
     document.getElementById('usr-det-dni-v').innerText = user.DNI || '--';
     document.getElementById('usr-det-email').innerText = user.Email || '--';
-    document.getElementById('usr-det-rol').innerText = user.Rol || '--';
+    document.getElementById('usr-det-area').innerText = user.Area || '--';
+    document.getElementById('usr-det-puesto').innerText = user.Puesto || '--';
+    document.getElementById('usr-det-rol').innerText =
+      (typeof PERMISOS !== 'undefined' ? PERMISOS.normalizar(user.Rol) : user.Rol) || '--';
 
     const badge = document.getElementById('usr-det-badge');
     if (badge) {

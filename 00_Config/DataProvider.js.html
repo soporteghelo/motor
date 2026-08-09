@@ -416,7 +416,8 @@ const SupabaseProvider = {
   _usuarioAFrontend(fila) {
     return {
       UUID: fila.id, DNI: fila.dni, Nombre_Completo: fila.nombre, Email: fila.email,
-      Rol: fila.rol, Status: fila.status, empresa_id: fila.empresa_id
+      Rol: fila.rol, Status: fila.status, Area: fila.area, Puesto: fila.puesto,
+      empresa_id: fila.empresa_id
     };
   },
 
@@ -437,6 +438,8 @@ const SupabaseProvider = {
     if (datos.Email    !== undefined) cambios.email  = datos.Email;
     if (datos.Rol      !== undefined) cambios.rol    = String(datos.Rol).toLowerCase();
     if (datos.Status   !== undefined) cambios.status = datos.Status;
+    if (datos.Area     !== undefined) cambios.area   = datos.Area;
+    if (datos.Puesto   !== undefined) cambios.puesto = datos.Puesto;
     if (!Object.keys(cambios).length) return { status: 'OK', uuid: fila.id };
 
     const r = await this._fetch(`/usuarios?id=eq.${fila.id}`, {
