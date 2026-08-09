@@ -1,0 +1,45 @@
+<script>
+/**
+ * =========================================================================
+ * 🛠️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "00_Admin" 🛠️
+ * =========================================================================
+ * SKILL PEDAGÓGICA (DASHBOARD SUPER-ADMIN):
+ * 
+ * Este módulo es la torre de control. Solo debe ser visible para roles 
+ * tipo "Admin". Permite auditar la salud del sistema y ver logs de errores.
+ *
+ * ESPECIFICACIONES:
+ * - NO gestiona base de datos propia directamente (Usa los recursos de 00_Config).
+ * - Se encarga de la validación de integridad (Paridad Sheets vs Subconfigs).
+ * =========================================================================
+ */
+
+const SUBCONFIG_00_ADMIN = {
+  
+  Config_Modular: {
+    NombreInterno: "00_Admin",
+    DRIVE_FOLDER_NAME: "00_Admin_Settings",
+    GOOGLE_DOC_TEMPLATE_ID: "", 
+    EMAIL_TEMPLATE_ID: "", 
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "", 
+    RELATIONAL_KEY: "UUID",
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: "propios" },
+    SupervisorRole:  { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: "propios" },
+    TrabajadorRole:  { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    // Definición de variables de auditoría si fuera necesario persistir logs
+    "UUID": { type: "Hidden_UUID", required: true, isFilter: false },
+    "Timestamp": { type: "Date", required: true, isFilter: true },
+    "Usuario_DNI": { type: "Text", required: true, isFilter: true },
+    "Accion": { type: "Text", required: true, isFilter: true },
+    "Detalle": { type: "Text", required: false, isFilter: false },
+    "Resultado": { type: "Enum", acceptedValues: ["ÉXITO", "ERROR", "ADVERTENCIA"], required: true, isFilter: true }
+  }
+};
+</script>

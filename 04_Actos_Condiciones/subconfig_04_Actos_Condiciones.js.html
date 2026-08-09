@@ -1,0 +1,86 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "04_Actos_Condiciones"
+ * =========================================================================
+ * DESCRIPCIÓN: Registro y moderación de Actos y Condiciones Sub-Estándar.
+ * Los reportes ingresan desde Google Forms (personal en campo) o desde
+ * la app móvil. Los supervisores/admins los moderan aquí.
+ *
+ * FLUJO:
+ *   1. Trabajador reporta vía Google Forms o App Móvil → Estado: Pendiente
+ *   2. Supervisor revisa → Estado: En Revisión
+ *   3. Supervisor aprueba/rechaza + registra acción correctiva → Cerrado/Aprobado
+ * =========================================================================
+ */
+
+var SUBCONFIG_04_ACTOS_CONDICIONES = {
+
+  Config_Modular: {
+    NombreInterno:          "04_Actos_Condiciones",
+    Titulo:                 "Actos y Condiciones Sub-Estándar",
+    DRIVE_FOLDER_NAME:      "04_Actos_Condiciones_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "",
+    RELATIONAL_KEY:         "UUID",
+    Relational_Fields:      [],
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":               { type: "Hidden_UUID", required: true,  isFilter: false },
+    "Fecha_Reporte":      { type: "Date",        required: true,  isFilter: true,  label: "Fecha Reporte"    },
+    "Fecha_Incidente":    { type: "Date",        required: true,  isFilter: true,  label: "Fecha Incidente"  },
+    "Reportado_Por":      { type: "Text",        required: true,  isFilter: true,  label: "DNI Reportante"   },
+    "Nombre_Reportante":  { type: "Text",        required: true,  isFilter: true,  label: "Nombre Reportante"},
+    "Area": {
+      type: "Enum", required: true, isFilter: true, label: "Área",
+      acceptedValues: ["Mina", "Planta", "Talleres", "Logística", "Administración", "Almacén"],
+      allowOtherValues: true
+    },
+    "Tipo_Reporte": {
+      type: "Enum", required: true, isFilter: true, label: "Tipo",
+      acceptedValues: ["Acto Subestándar", "Condición Subestándar"],
+      allowOtherValues: false
+    },
+    "Categoria": {
+      type: "Enum", required: true, isFilter: true, label: "Categoría",
+      acceptedValues: ["EPP", "Herramientas", "Equipos", "Procedimientos", "Orden y Limpieza", "Ergonomía", "Ambiental"],
+      allowOtherValues: true
+    },
+    "Nivel_Riesgo": {
+      type: "Enum", required: true, isFilter: true, label: "Nivel Riesgo",
+      acceptedValues: ["Bajo (Verde)", "Medio (Amarillo)", "Alto (Rojo)", "Crítico (Negro)"],
+      allowOtherValues: false
+    },
+    "Descripcion":        { type: "Text",    required: true,  isFilter: false, label: "Descripción"      },
+    "Evidencia_Foto":     { type: "Image",   required: false, isFilter: false, label: "Evidencia Foto"   },
+    "Evidencia_Foto_ID":  { type: "Hidden",  required: false },
+    "Evidencia_Foto_Path":{ type: "Hidden",  required: false },
+    "Estado": {
+      type: "Enum", required: true, isFilter: true, label: "Estado",
+      acceptedValues: ["Pendiente", "En Revisión", "Aprobado", "Rechazado", "Cerrado"],
+      defaultValue: "Pendiente"
+    },
+    "Moderado_Por":       { type: "Text",    required: false, isFilter: false, label: "Moderado Por (DNI)"  },
+    "Fecha_Moderacion":   { type: "Date",    required: false, isFilter: false, label: "Fecha Moderación"    },
+    "Accion_Correctiva":  { type: "Text",    required: false, isFilter: false, label: "Acción Correctiva"   },
+    "Observaciones_Mod":  { type: "Text",    required: false, isFilter: false, label: "Observaciones"       },
+    "Fuente": {
+      type: "Enum", required: false, isFilter: true, label: "Fuente",
+      acceptedValues: ["App Móvil", "Google Forms", "Manual"],
+      defaultValue: "App Móvil"
+    },
+    "Fecha_Registro":     { type: "Hidden",  required: false }
+  }
+};
+
+console.log("✅ Subconfig 04_Actos_Condiciones cargado.");
+</script>

@@ -1,0 +1,265 @@
+<script>
+/**
+ * =========================================================================
+ * PERMISOS — Control de acceso por rol
+ * =========================================================================
+ * ARCHIVO: Permisos.js.html
+ *
+ * PROBLEMA QUE RESUELVE
+ * Los subconfigs declaraban matrices de permisos (canCreate, canRead…) que
+ * NADIE leía: eran decoración. Cualquier usuario veía y editaba todo. Este
+ * archivo las convierte en control real y añade lo que faltaba: el ALCANCE
+ * de los datos, que es la diferencia entre "puede leer inspecciones" y
+ * "puede leer TODAS las inspecciones".
+ *
+ * LOS CUATRO ROLES
+ *
+ *   SuperAdmin  — el proveedor del servicio (tú).
+ *                 Ve todas las empresas. Activa y desactiva módulos por
+ *                 empresa, define planes y accede a la configuración total.
+ *                 No es el jefe del cliente: es quien opera la plataforma.
+ *
+ *   Admin       — el representante de la empresa cliente.
+ *                 Manda dentro de SU empresa: crea y edita usuarios, ve
+ *                 todos los registros, aprueba y cierra. No puede tocar la
+ *                 configuración de la plataforma ni ver otras empresas.
+ *
+ *   Supervisor  — responsable de un área o equipo.
+ *                 Ve lo que él generó y aquello donde figura como
+ *                 responsable, aprobador o supervisor asignado. Puede crear
+ *                 y actualizar en su ámbito; no borra ni gestiona usuarios.
+ *
+ *   Trabajador  — personal de campo.
+ *                 Ve y reporta lo suyo. Puede crear reportes (actos y
+ *                 condiciones, incidentes) porque reportar debe ser fácil
+ *                 para todos, pero solo consulta sus propios registros.
+ *
+ * ALCANCE DE DATOS (lo que hace que los roles signifiquen algo)
+ *   'todos'        ve todos los registros de su empresa
+ *   'responsable'  los que generó + aquellos donde figura como responsable
+ *   'propios'      únicamente los que él generó o donde es el afectado
+ *
+ * El alcance se aplica en el cliente para la experiencia de uso, y SE VUELVE
+ * A APLICAR en la base de datos mediante RLS de Supabase. El filtro del
+ * navegador es comodidad; la seguridad real vive en el servidor.
+ * =========================================================================
+ */
+
+const PERMISOS = {
+
+  // Jerarquía: un número mayor incluye las capacidades del menor
+  JERARQUIA: { 'Trabajador': 1, 'Supervisor': 2, 'Admin': 3, 'SuperAdmin': 4 },
+
+  /**
+   * Normaliza el rol. Históricamente convivían 'Worker', 'Trabajador',
+   * 'admin'… y comparaciones directas fallaban en silencio.
+   */
+  normalizar: function(rol) {
+    const r = String(rol || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+    if (r === 'superadmin' || r === 'root' || r === 'owner')      return 'SuperAdmin';
+    if (r === 'admin' || r === 'administrador')                   return 'Admin';
+    if (r === 'supervisor' || r === 'jefe')                       return 'Supervisor';
+    if (r === 'worker' || r === 'trabajador' || r === 'operario') return 'Trabajador';
+    return 'Trabajador';   // ante la duda, el rol de menor privilegio
+  },
+
+  /** Rol del usuario en sesión */
+  rol: function() {
+    return this.normalizar((typeof AppState !== 'undefined' && AppState.User) ? AppState.User.Rol : '');
+  },
+
+  /** DNI del usuario en sesión: la clave con la que se compara la propiedad de un registro */
+  dni: function() {
+    return String((typeof AppState !== 'undefined' && AppState.User) ? (AppState.User.DNI || '') : '');
+  },
+
+  /** ¿El rol actual alcanza al menos este nivel? */
+  esAlMenos: function(rolMinimo) {
+    return (this.JERARQUIA[this.rol()] || 0) >= (this.JERARQUIA[this.normalizar(rolMinimo)] || 99);
+  },
+
+  esSuperAdmin: function() { return this.rol() === 'SuperAdmin'; },
+
+  // -----------------------------------------------------------------------
+  // LECTURA DE LA MATRIZ DEL SUBCONFIG
+  // -----------------------------------------------------------------------
+  _subconfig: function(modulo) {
+    const clave = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    return window[clave] || null;
+  },
+
+  /**
+   * Permisos efectivos del rol actual sobre un módulo.
+   * Si el subconfig no declara nada para el rol, se niega: es más seguro
+   * fallar cerrado que abierto.
+   */
+  matriz: function(modulo) {
+    const rol = this.rol();
+    // El proveedor siempre puede todo: es quien administra la plataforma
+    if (rol === 'SuperAdmin') {
+      return { canCreate: true, canRead: true, canUpdate: true, canDelete: true, alcance: 'todos' };
+    }
+
+    const cfg = this._subconfig(modulo);
+    const mod = cfg && cfg.Config_Modular ? cfg.Config_Modular : {};
+    const m = mod[rol + 'Role'];
+
+    if (!m) return { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: 'propios' };
+
+    return {
+      canCreate: !!m.canCreate,
+      canRead:   !!m.canRead,
+      canUpdate: !!m.canUpdate,
+      canDelete: !!m.canDelete,
+      alcance:   m.alcance || (rol === 'Admin' ? 'todos' : rol === 'Supervisor' ? 'responsable' : 'propios')
+    };
+  },
+
+  /** @returns {boolean} ¿puede el rol actual ejecutar esta acción en este módulo? */
+  puede: function(modulo, accion) {
+    const m = this.matriz(modulo);
+    const mapa = { crear:'canCreate', leer:'canRead', editar:'canUpdate', eliminar:'canDelete' };
+    return !!m[mapa[accion] || accion];
+  },
+
+  /** @returns {'todos'|'responsable'|'propios'} */
+  alcance: function(modulo) {
+    return this.matriz(modulo).alcance;
+  },
+
+  // -----------------------------------------------------------------------
+  // MÓDULOS ACTIVOS (lo que el SuperAdmin enciende y apaga por empresa)
+  // -----------------------------------------------------------------------
+  /**
+   * Un módulo se muestra si (1) está activo en el plan de la empresa y
+   * (2) el rol tiene permiso de lectura. Los módulos desactivados no
+   * aparecen ni son alcanzables escribiendo la ruta.
+   */
+  moduloActivo: function(modulo) {
+    const cfg = (typeof getAppSettings === 'function') ? getAppSettings() : {};
+    const activos = cfg.Modulos_Activos;
+    if (!activos || typeof activos !== 'object') return true;   // sin configuración, todo activo
+    return activos[modulo] !== false;
+  },
+
+  moduloVisible: function(modulo) {
+    return this.moduloActivo(modulo) && this.puede(modulo, 'leer');
+  },
+
+  // -----------------------------------------------------------------------
+  // ALCANCE DE DATOS
+  // -----------------------------------------------------------------------
+  /**
+   * Campos por los que un registro "pertenece" a alguien. Se buscan en este
+   * orden; el primero que exista en la fila decide.
+   */
+  CAMPOS_PROPIEDAD:    ['Registrado_Por_DNI', 'Reportado_Por', 'Trabajador_DNI', 'Creado_Por', 'DNI'],
+  CAMPOS_RESPONSABLE:  ['Responsable_DNI', 'Supervisor_DNI', 'Aprobado_Por', 'Moderado_Por',
+                        'Revisado_Por', 'Elaborado_Por', 'Ejecutante_DNI', 'Expositor_DNI',
+                        'Auditor_DNI', 'Entregado_Por', 'Responsable', 'Instructor'],
+
+  _coincide: function(fila, campos, dni, nombre) {
+    for (let i = 0; i < campos.length; i++) {
+      const v = fila[campos[i]];
+      if (v == null || v === '') continue;
+      const s = String(v).trim();
+      if (dni && s === dni) return true;
+      // Algunos módulos guardan el nombre en vez del DNI (p. ej. Responsable)
+      if (nombre && s.toLowerCase() === nombre.toLowerCase()) return true;
+    }
+    return false;
+  },
+
+  /**
+   * Filtra un conjunto de filas según el alcance del rol en ese módulo.
+   * Los módulos llaman a esto después de leer y antes de pintar.
+   */
+  filtrarDatos: function(modulo, filas) {
+    if (!Array.isArray(filas)) return [];
+    const alcance = this.alcance(modulo);
+    if (alcance === 'todos') return filas;
+
+    const dni    = this.dni();
+    const nombre = String((typeof AppState !== 'undefined' && AppState.User) ? (AppState.User.Nombre || '') : '');
+
+    return filas.filter(f => {
+      if (this._coincide(f, this.CAMPOS_PROPIEDAD, dni, nombre)) return true;
+      if (alcance === 'responsable' && this._coincide(f, this.CAMPOS_RESPONSABLE, dni, nombre)) return true;
+      return false;
+    });
+  },
+
+  /** Texto que explica al usuario por qué ve menos registros de los que espera */
+  explicacionAlcance: function(modulo) {
+    const a = this.alcance(modulo);
+    if (a === 'todos') return '';
+    if (a === 'responsable') return 'Ves los registros que generaste y aquellos donde figuras como responsable.';
+    return 'Ves únicamente tus propios registros.';
+  },
+
+  // -----------------------------------------------------------------------
+  // APLICACIÓN EN LA INTERFAZ
+  // -----------------------------------------------------------------------
+  /**
+   * Oculta del menú lo que el rol no puede ver. Se llama al iniciar sesión
+   * y cada vez que cambian los módulos activos.
+   */
+  aplicarMenu: function() {
+    const mapa = {
+      '03_Inspecciones':'dnav-03', '05_Incidentes':'dnav-05', '06_Capacitaciones':'dnav-06',
+      '07_IPERC':'dnav-07', '08_PETAR':'dnav-08', '09_EPP':'dnav-09', '10_Charlas':'dnav-10',
+      '02_Reportes':'dnav-02', '04_Actos_Condiciones':'dnav-04ac'
+    };
+    Object.keys(mapa).forEach(mod => {
+      const el = document.getElementById(mapa[mod]);
+      if (el) el.style.display = this.moduloVisible(mod) ? '' : 'none';
+    });
+
+    // Administración de usuarios: solo Admin y SuperAdmin.
+    const userAdmin = document.getElementById('dnav-01');
+    if (userAdmin) userAdmin.style.display = this.esAlMenos('Admin') && this.moduloVisible('01_Usuarios') ? '' : 'none';
+
+    // Administración y Configuración: solo quien administra la plataforma
+    const admin = document.getElementById('dnav-00');
+    if (admin) admin.style.display = this.esSuperAdmin() ? '' : 'none';
+    const cfg = document.getElementById('dnav-04');
+    if (cfg) cfg.style.display = this.esAlMenos('Admin') ? '' : 'none';
+  },
+
+  /**
+   * Desactiva en la vista actual los controles que el rol no puede usar.
+   * Se apoya en atributos declarativos para no tener que tocar cada módulo:
+   *   data-permiso="crear|editar|eliminar"   (el módulo activo se deduce)
+   */
+  aplicarVista: function(modulo) {
+    modulo = modulo || (typeof AppState !== 'undefined' ? AppState.activeModule : null);
+    if (!modulo) return;
+    const cont = document.getElementById('main-container');
+    if (!cont) return;
+
+    ['crear', 'editar', 'eliminar'].forEach(accion => {
+      if (this.puede(modulo, accion)) return;
+      cont.querySelectorAll('[data-permiso="' + accion + '"]').forEach(el => el.remove());
+    });
+
+    // Aviso de alcance: el usuario debe saber por qué la lista se ve corta
+    const texto = this.explicacionAlcance(modulo);
+    const slot  = cont.querySelector('#ui-search-bar-slot');
+    if (texto && slot && !cont.querySelector('#ui-aviso-alcance')) {
+      const aviso = document.createElement('div');
+      aviso.id = 'ui-aviso-alcance';
+      aviso.className = 'flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-surface-container-low border border-outline-variant';
+      aviso.innerHTML =
+        '<span class="material-symbols-outlined text-[15px] text-secondary shrink-0" aria-hidden="true">filter_alt</span>' +
+        '<span class="text-[11px] text-on-surface-variant">' + texto + '</span>';
+      slot.parentNode.insertBefore(aviso, slot);
+    }
+  },
+
+  /** Etiqueta legible del rol, para la cabecera del menú lateral */
+  etiqueta: function() {
+    return { 'SuperAdmin':'Super Administrador', 'Admin':'Administrador',
+             'Supervisor':'Supervisor', 'Trabajador':'Trabajador' }[this.rol()] || 'Trabajador';
+  }
+};
+</script>

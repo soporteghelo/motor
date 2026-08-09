@@ -1,0 +1,169 @@
+<script>
+/**
+ * =========================================================================
+ * 🌍 CONFIGURACIÓN MAESTRA GLOBAL (AppState & UI Styles)
+ * =========================================================================
+ * ARCHIVO: Global_Config.js.html
+ * 
+ * 💡 NOTAS TÉCNICAS DEL BACKEND (Code.gs ya está configurado para):
+ * 1. RUTAS DE ARCHIVOS: Files / AÑO / MES / DNI_Usuario / Archivo.pdf
+ * 2. CONCURRENCIA: LockService (10s) para evitar colisiones.
+ * 3. DESEMPEÑO: CacheService (6 horas) para IDs de carpetas.
+ * 4. SEGURIDAD: Bloqueo automático ante estatus "CESADO".
+ * =========================================================================
+ */
+
+const AppState = {
+  // --- INFRAESTRUCTURA CORE ---
+  ROOT_APP_FOLDER_ID: "SUSTITUIR_POR_TU_ID_DE_DRIVE",
+  // 1. [DINÁMICO]: Se auto-puebla desde el Code.gs al cargar el Index
+  WEB_APP_URL: "<?= scriptUrl ?>", 
+  IS_PRODUCTION: false, // Cambiar a true cuando pegues la URL arriba
+  VERSION: "1.0.0",
+  APP_NAME: "MOTOR PWA ZERO-TOUCH",
+
+  // --- CONFIGURACIÓN DE DISEÑO AVANZADO (TAILWIND & STITCH) ---
+  UI_Styles: {
+    // Configuración Maestra de Tailwind (Referencia para generación dinámica)
+    Tailwind_Theme: {
+      colors: {
+        "primary": "#000666",
+        "on-primary": "#ffffff",
+        "primary-container": "#1a237e",
+        "on-primary-container": "#8690ee",
+        "secondary": "#505f76",
+        "on-secondary": "#ffffff",
+        "secondary-container": "#d0e1fb",
+        "on-secondary-container": "#54647a",
+        "tertiary": "#380b00",
+        "on-tertiary": "#ffffff",
+        "tertiary-container": "#5c1800",
+        "on-tertiary-container": "#e17c5a",
+        "error": "#ba1a1a",
+        "on-error": "#ffffff",
+        "error-container": "#ffdad6",
+        "on-error-container": "#93000a",
+        "background": "#fbf8ff",
+        "on-background": "#1b1b21",
+        "surface": "#fbf8ff",
+        "on-surface": "#1b1b21",
+        "surface-variant": "#e4e1ea",
+        "on-surface-variant": "#454652",
+        "outline": "#767683",
+        "outline-variant": "#c6c5d4"
+      },
+      fontFamily: {
+        body: ["Inter", "sans-serif"],
+        heading: ["Inter", "sans-serif"]
+      },
+      borderRadius: {
+        "sm": "0.25rem",
+        "md": "0.5rem",
+        "lg": "0.75rem",
+        "full": "9999px"
+      }
+    },
+    // Estilos de Material Symbols
+    MaterialSymbols: {
+      Fill: 0, // 0 para Outlined, 1 para Filled
+      Weight: 400,
+      Grade: 0,
+      OpticalSize: 24
+    }
+  },
+
+  // --- CONFIGURACIÓN DE COMPONENTES GLOBALES ---
+  UI_Components: {
+    Header: {
+      ShowLogo: true,
+      Transparent: false,
+      Height: "64px"
+    },
+    Footer: {
+      Visible: true,
+      Text: "© 2026 Sistema de Gestión Operativa - Enterprise Edition",
+      VersionVisible: true
+    },
+    FAB: {
+      Size: "56px",
+      Elevation: "0 4px 12px rgba(0,0,0,0.2)",
+      Position: { bottom: "25px", right: "25px" }
+    }
+  },
+  
+  // --- SESIÓN DEL USUARIO ---
+  User: {
+    DNI:      localStorage.getItem('pwa_user_dni')    || null,
+    Nombre:   localStorage.getItem('pwa_user_nombre') || "Invitado",
+    Email:    localStorage.getItem('pwa_user_email')  || "",
+    // Roles válidos: SuperAdmin | Admin | Supervisor | Trabajador
+    // Ante la duda se asume el de menor privilegio (ver PERMISOS.normalizar)
+    Rol:      localStorage.getItem('pwa_user_rol')    || "Trabajador",
+    Token:    localStorage.getItem('pwa_user_token')  || null,
+    Status:   localStorage.getItem('pwa_user_status') || "Inactivo",
+    // Multi-empresa: sella cada registro y aísla los archivos en Storage.
+    // RLS lo exige; sin él, Supabase rechaza la escritura.
+    EmpresaId:     localStorage.getItem('pwa_empresa_id')     || null,
+    EmpresaNombre: localStorage.getItem('pwa_empresa_nombre') || '',
+    // JWT de Supabase Auth: lleva rol y empresa_id en app_metadata
+    SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')   || null
+  },
+
+  // --- MOTOR DE COMPORTAMIENTO ---
+  Settings: {
+    Theme: localStorage.getItem('pwa_theme') || "light",
+    CalidadCompresion: "Medio",
+    OfflineSyncInterval: 120000,
+    MaxBatchSize: 50,
+    TimezoneOffset: -5
+  },
+
+  activeModule: null,
+
+  // --- PROVEEDOR DE BASE DE DATOS ---
+  // 'sheets' → Google Sheets via Apps Script (default)
+  // 'supabase' → Supabase REST API (migrar cuando la app escale)
+  DB_PROVIDER: 'sheets',
+
+  // --- CONFIGURACIÓN SUPABASE (completar al migrar) ---
+  Supabase: {
+    URL:            'https://fkelhhfptckarqgknkfh.supabase.co',
+    ANON_KEY:       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZWxoaGZwdGNrYXJxZ2tua2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxOTM5MjcsImV4cCI6MjEwMTc2OTkyN30.joWcmZIHws6eOf3I-o6hEXFAQMq9juEJdWaKVqPdl4c',   // clave pública: es segura porque RLS está activo
+    PROJECT_REF:    'fkelhhfptckarqgknkfh',
+    USE_SNAKE_CASE: true,      // el esquema generado usa snake_case
+    // Mapeo de campos de fecha/hora por módulo (para filtros delta)
+    TS_FIELDS: {
+      '01_Usuarios':        'Fecha_Registro',
+      '02_Reportes':        'Fecha_Registro',
+      '03_Inspecciones':    'Fecha_Peru',
+      '04_Configuraciones': 'Ultima_Actualizacion'
+    }
+  },
+
+  // --- MÉTODOS DE ESTADO ---
+  updateSession: function(userData) {
+    this.User = { ...this.User, ...userData };
+    // El rol se normaliza al guardar: así 'Worker', 'worker' y 'Trabajador'
+    // no producen tres comportamientos distintos.
+    if (typeof PERMISOS !== 'undefined') this.User.Rol = PERMISOS.normalizar(this.User.Rol);
+
+    const guardar = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
+    guardar('pwa_user_dni',        this.User.DNI);
+    guardar('pwa_user_nombre',     this.User.Nombre);
+    guardar('pwa_user_email',      this.User.Email);
+    guardar('pwa_user_rol',        this.User.Rol);
+    guardar('pwa_user_token',      this.User.Token);
+    guardar('pwa_user_status',     this.User.Status);
+    guardar('pwa_empresa_id',      this.User.EmpresaId);
+    guardar('pwa_empresa_nombre',  this.User.EmpresaNombre);
+    guardar('pwa_supabase_jwt',    this.User.SupabaseJWT);
+
+    if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
+  },
+
+  clearSession: function() {
+    localStorage.clear();
+    location.reload();
+  }
+};
+</script>

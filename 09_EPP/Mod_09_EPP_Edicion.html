@@ -1,0 +1,429 @@
+<!-- =========================================================================
+     VISTA: EDICIÓN — MÓDULO 09_EPP
+     ========================================================================= -->
+<div id="module-09_epp-edicion" class="module-view" style="display:none;">
+
+  <section class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b border-outline-variant pb-4">
+    <div class="flex items-center gap-4">
+      <button onclick="changeInternalView('09_EPP','Resumen')" aria-label="Volver al listado"
+        class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-secondary">
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+      </button>
+      <div>
+        <h1 class="text-xl font-bold text-on-surface" id="epp-form-titulo">Registrar Entrega</h1>
+        <p class="text-[11px] text-secondary font-medium">Complete los campos obligatorios (*)</p>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="eppGuardarBorrador()" class="h-9 px-4 rounded-lg border border-outline text-xs font-semibold text-secondary hover:bg-slate-50 transition-colors">
+        Borrador
+      </button>
+      <button onclick="eppGuardar()" class="h-9 px-6 rounded-lg bg-primary text-on-primary text-xs font-bold shadow-md hover:opacity-90 transition-all flex items-center gap-2">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">save</span>
+        Guardar Cargo
+      </button>
+    </div>
+  </section>
+
+  <input type="hidden" id="epp-uuid" value="">
+  <div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- 1. A quién se entrega -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-primary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg" aria-hidden="true">badge</span>Trabajador
+      </h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-trabajador">Seleccionar del personal</label>
+          <select id="epp-trabajador" onchange="eppAutorellenar()"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="">Cargando…</option>
+          </select>
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-nombre">Nombre del trabajador *</label>
+          <input type="text" id="epp-nombre" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-area">Área *</label>
+          <select id="epp-area" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="">Seleccione…</option>
+            <option>Operaciones</option><option>Mantenimiento</option><option>Almacén</option>
+            <option>Logística</option><option>Producción</option><option>Administración</option>
+            <option>Obra / Campo</option><option>Laboratorio</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-puesto">Puesto</label>
+          <input type="text" id="epp-puesto" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Motivo y fecha -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-secondary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg" aria-hidden="true">local_shipping</span>Datos de la entrega
+      </h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div class="col-span-2">
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-motivo">Motivo de la entrega *</label>
+          <select id="epp-motivo" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="">Seleccione…</option>
+            <option>Dotación inicial</option><option>Reposición por vida útil</option>
+            <option>Reposición por desgaste</option><option>Reposición por daño</option>
+            <option>Reposición por pérdida</option><option>Cambio de puesto</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-fecha">Fecha de entrega *</label>
+          <input type="date" id="epp-fecha" onchange="eppRecalcular()"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2" for="epp-entregado">Entregado por</label>
+          <select id="epp-entregado" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="">Cargando…</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Equipos entregados (tabla hija) -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <div class="flex justify-between items-center mb-4 gap-3 flex-wrap">
+        <h2 class="text-sm font-bold text-primary flex items-center gap-2">
+          <span class="material-symbols-outlined text-lg" aria-hidden="true">inventory_2</span>Equipos entregados
+          <span class="text-[10px] font-bold text-secondary" id="epp-conteo-items"></span>
+        </h2>
+        <button onclick="eppAgregarItem()"
+          class="h-9 px-3 rounded-lg bg-secondary text-on-secondary text-[10px] font-bold hover:opacity-90 transition-all flex items-center gap-1 uppercase whitespace-nowrap">
+          <span class="material-symbols-outlined text-sm" aria-hidden="true">add</span>Agregar equipo
+        </button>
+      </div>
+
+      <p class="text-[11px] text-secondary mb-3 leading-relaxed">
+        Al elegir el equipo se propone su vida útil habitual y se calcula la fecha de reposición.
+        Puedes ajustarla si la ficha técnica de tu proveedor indica otra.
+      </p>
+
+      <div id="epp-items" class="space-y-3">
+        <div class="text-center py-6 border border-dashed border-outline-variant rounded-xl text-secondary text-[11px]" id="epp-items-vacio">
+          Agrega al menos un equipo: un cargo sin ítems no registra nada.
+        </div>
+      </div>
+
+      <div id="epp-resumen-rep" class="hidden mt-4 rounded-xl border p-3"></div>
+    </div>
+
+    <!-- 4. Conformidad -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-on-surface flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg" aria-hidden="true">draw</span>Conformidad del trabajador
+      </h2>
+      <div class="space-y-5">
+        <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5">
+          <div>
+            <label class="block text-xs font-bold text-secondary mb-2" for="epp-estado">Estado *</label>
+            <select id="epp-estado" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+              <option>Entregado</option><option>Pendiente de firma</option>
+              <option>Devuelto</option><option>Anulado</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-secondary mb-2" for="epp-observaciones">Observaciones</label>
+            <input type="text" id="epp-observaciones" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Firma de conformidad</label>
+          <p class="text-[11px] text-secondary mb-2">Sin firma no hay evidencia de que el equipo fue entregado.</p>
+          <canvas id="epp-firma" class="w-full max-w-lg h-40 bg-surface-container-low rounded-xl border border-outline-variant cursor-crosshair"></canvas>
+          <button onclick="PWA_SKILLS.clearSignature('epp-firma')" class="mt-2 text-[11px] font-bold text-secondary hover:text-error transition-colors uppercase flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm" aria-hidden="true">history</span>Limpiar firma
+          </button>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-3">Cargo escaneado (opcional)</label>
+          <div class="flex items-center gap-3 flex-wrap">
+            <button type="button" onclick="document.getElementById('epp-file').click()" aria-label="Agregar foto del cargo firmado"
+              class="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant bg-surface flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container transition-all text-secondary">
+              <span class="material-symbols-outlined text-2xl" aria-hidden="true">add_a_photo</span>
+              <span class="text-[9px] font-bold mt-0.5 uppercase">Foto</span>
+            </button>
+            <input type="file" id="epp-file" accept="image/*" multiple style="display:none;" onchange="eppSubirFotos(this)">
+            <div id="epp-fotos-preview" class="flex gap-2 flex-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function eppAutorellenar() {
+  const sel = document.getElementById('epp-trabajador');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.value && opt.textContent) {
+    document.getElementById('epp-nombre').value = opt.textContent.trim();
+  }
+}
+
+function eppAgregarItem(valores) {
+  const vacio = document.querySelector('#main-container #epp-items-vacio');
+  if (vacio) vacio.remove();
+  PWA_SKILLS.addDynamicRow('epp-items', SUBCONFIG_09_EPP.Config_Modular.Relational_Fields, valores);
+  eppRecalcular();
+}
+
+/**
+ * Calcula la fecha de reposición de cada ítem y la más próxima del cargo.
+ * Es lo que permite responder "¿quién usa equipo vencido?" sin revisar papeles.
+ */
+function eppRecalcular() {
+  const cont = document.querySelector('#main-container #epp-items');
+  if (!cont) return;
+  const base = (document.getElementById('epp-fecha') || {}).value;
+  const filas = cont.querySelectorAll('[id^="row-"]');
+  let masProxima = null;
+
+  filas.forEach(fila => {
+    const equipo = fila.querySelector('[name="Equipo"]');
+    const vida   = fila.querySelector('[name="Vida_Util"]');
+    const salida = fila.querySelector('[data-display="Fecha_Reposicion"]');
+    if (!salida) return;
+
+    if (!base || !vida || !vida.value || vida.value === '0') {
+      salida.textContent = vida && vida.value === '0' ? 'Hasta desgaste' : '—';
+      salida.className = 'w-full h-10 px-3 rounded-lg border border-dashed border-outline-variant bg-surface-container-low text-xs font-bold flex items-center justify-center text-secondary';
+      salida.style.cssText = '';
+      salida.removeAttribute('data-fecha');
+      return;
+    }
+
+    const f = new Date(base + 'T00:00:00');
+    f.setMonth(f.getMonth() + parseInt(vida.value, 10));
+    const iso = f.getFullYear() + '-' + String(f.getMonth()+1).padStart(2,'0') + '-' + String(f.getDate()).padStart(2,'0');
+
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const dias = Math.round((f - hoy) / 86400000);
+    const col = dias < 0
+      ? { bg:'#fee2e2', fg:'#991b1b', bd:'#fecaca' }
+      : dias <= 30
+        ? { bg:'#fef3c7', fg:'#92400e', bd:'#fde68a' }
+        : { bg:'#d1fae5', fg:'#065f46', bd:'#a7f3d0' };
+
+    salida.textContent = iso;
+    salida.title = dias < 0 ? 'Vencida hace ' + Math.abs(dias) + ' días' : 'Faltan ' + dias + ' días';
+    salida.setAttribute('data-fecha', iso);
+    salida.className = 'w-full h-10 px-2 rounded-lg border text-xs font-black flex items-center justify-center tabular-nums';
+    salida.style.cssText = 'background:' + col.bg + ';color:' + col.fg + ';border-color:' + col.bd;
+
+    if (!masProxima || iso < masProxima) masProxima = iso;
+  });
+
+  const conteo = document.querySelector('#main-container #epp-conteo-items');
+  if (conteo) conteo.textContent = filas.length ? '· ' + filas.length + ' equipo(s)' : '';
+
+  const res = document.querySelector('#main-container #epp-resumen-rep');
+  if (!res) return;
+  if (!masProxima) { res.className = 'hidden mt-4 rounded-xl border p-3'; res.innerHTML = ''; return; }
+
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dias = Math.round((new Date(masProxima + 'T00:00:00') - hoy) / 86400000);
+  const conf = dias < 0
+    ? { c:'bg-red-50 border-red-200', t:'text-red-800', i:'gpp_maybe', tit:'Reposición ya vencida',
+        sub:'Alguno de estos equipos cumplió su vida útil hace ' + Math.abs(dias) + ' días.' }
+    : dias <= 30
+      ? { c:'bg-amber-50 border-amber-200', t:'text-amber-800', i:'schedule', tit:'Reposición próxima',
+          sub:'El primer equipo debe reponerse en ' + dias + ' días (' + masProxima + ').' }
+      : { c:'bg-emerald-50 border-emerald-200', t:'text-emerald-800', i:'verified', tit:'Vida útil al día',
+          sub:'Primera reposición el ' + masProxima + '.' };
+
+  res.className = 'mt-4 rounded-xl border p-3 ' + conf.c;
+  res.innerHTML =
+    '<div class="flex items-start gap-2.5">' +
+    '<span class="material-symbols-outlined text-[19px] shrink-0 ' + conf.t + '" aria-hidden="true">' + conf.i + '</span>' +
+    '<div class="min-w-0"><p class="text-[12px] font-black ' + conf.t + '">' + conf.tit + '</p>' +
+    '<p class="text-[11px] mt-0.5 ' + conf.t + ' opacity-90">' + conf.sub + '</p></div></div>';
+}
+
+function eppSubirFotos(input) {
+  const cont = document.getElementById('epp-fotos-preview');
+  if (!cont || !input.files) return;
+  window._eppFotos = window._eppFotos || [];
+  Array.from(input.files).slice(0, 5).forEach(file => {
+    PWA_SKILLS.compressImage(file, (AppState.Settings || {}).CalidadCompresion || 'Medio').then(dataUrl => {
+      window._eppFotos.push(dataUrl);
+      const d = document.createElement('div');
+      d.className = 'w-20 h-20 rounded-xl border border-outline-variant overflow-hidden relative';
+      d.innerHTML = '<img src="' + dataUrl + '" class="w-full h-full object-cover" alt="Cargo firmado">';
+      cont.appendChild(d);
+    });
+  });
+}
+
+function eppRecolectar() {
+  const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  const campo = document.getElementById('epp-uuid');
+  if (!campo.value) {
+    campo.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : String(Date.now());
+  }
+
+  const hijos = [];
+  let masProxima = null;
+  document.querySelectorAll('#main-container #epp-items [id^="row-"]').forEach(fila => {
+    const o = { PARENT_UUID: campo.value };
+    fila.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => { o[el.name] = el.value; });
+    const rep = fila.querySelector('[data-display="Fecha_Reposicion"]');
+    if (rep && rep.getAttribute('data-fecha')) {
+      o.Fecha_Reposicion = rep.getAttribute('data-fecha');
+      if (!masProxima || o.Fecha_Reposicion < masProxima) masProxima = o.Fecha_Reposicion;
+    }
+    if (o.Equipo) hijos.push(o);
+  });
+
+  const firma = document.getElementById('epp-firma');
+  let firmaData = '';
+  if (firma) {
+    const blanco = document.createElement('canvas');
+    blanco.width = firma.width; blanco.height = firma.height;
+    if (firma.toDataURL() !== blanco.toDataURL()) firmaData = firma.toDataURL('image/png');
+  }
+
+  const datos = {
+    UUID:               campo.value,
+    Trabajador_DNI:     val('epp-trabajador'),
+    Nombre_Trabajador:  val('epp-nombre'),
+    Area:               val('epp-area'),
+    Puesto:             val('epp-puesto'),
+    Tipo_Entrega:       val('epp-motivo'),
+    Fecha_Entrega:      val('epp-fecha'),
+    Entregado_Por:      val('epp-entregado'),
+    Estado:             val('epp-estado') || 'Entregado',
+    Observaciones:      val('epp-observaciones'),
+    Total_Items:        String(hijos.length),
+    Proxima_Reposicion: masProxima || '',
+    Registrado_Por:     (AppState.User || {}).Nombre || '',
+    Fecha_Registro:     PWA_SKILLS.getPeruTime()
+  };
+
+  if (firmaData) datos.Firma_Trabajador = firmaData;
+  if (window._eppFotos && window._eppFotos.length) datos.Foto_Cargo = window._eppFotos.join(',');
+
+  return { datos: datos, hijos: hijos, tieneFirma: !!firmaData || !!(window._eppFotos || []).length };
+}
+
+function eppGuardarBorrador() {
+  const { datos, hijos } = eppRecolectar();
+  localStorage.setItem('draft_09_EPP', JSON.stringify({ datos: datos, hijos: hijos }));
+  PWA_SKILLS.toast('Borrador guardado en este dispositivo.', 'success', 2800);
+}
+
+async function eppGuardar() {
+  const { datos, hijos, tieneFirma } = eppRecolectar();
+
+  const faltan = [];
+  if (!datos.Nombre_Trabajador) faltan.push(['epp-nombre', 'el nombre del trabajador']);
+  if (!datos.Area)              faltan.push(['epp-area', 'el área']);
+  if (!datos.Tipo_Entrega)      faltan.push(['epp-motivo', 'el motivo de la entrega']);
+  if (!datos.Fecha_Entrega)     faltan.push(['epp-fecha', 'la fecha de entrega']);
+
+  if (faltan.length) {
+    const [id, que] = faltan[0];
+    const el = document.getElementById(id);
+    if (el) { el.scrollIntoView({ block:'center', behavior:'smooth' }); if (el.focus) el.focus(); }
+    PWA_SKILLS.toast('Falta ' + que + (faltan.length > 1 ? ' y ' + (faltan.length - 1) + ' campo(s) más.' : '.'), 'error', 4200);
+    return;
+  }
+
+  if (!hijos.length) {
+    PWA_SKILLS.toast('Agrega al menos un equipo: un cargo sin ítems no registra nada.', 'error', 4500);
+    const cont = document.querySelector('#main-container #epp-items');
+    if (cont) cont.scrollIntoView({ block:'center', behavior:'smooth' });
+    return;
+  }
+
+  // La firma es la evidencia legal de la entrega. Si falta, se marca el
+  // estado en consecuencia en vez de dar por buena una entrega sin respaldo.
+  if (datos.Estado === 'Entregado' && !tieneFirma) {
+    if (!confirm('No hay firma ni cargo escaneado. Sin evidencia, la entrega no es demostrable.\n\n' +
+                 'Aceptar = guardar como "Pendiente de firma"\nCancelar = volver y firmar ahora')) {
+      const c = document.getElementById('epp-firma');
+      if (c) c.scrollIntoView({ block:'center', behavior:'smooth' });
+      return;
+    }
+    datos.Estado = 'Pendiente de firma';
+    const sel = document.getElementById('epp-estado');
+    if (sel) sel.value = 'Pendiente de firma';
+  }
+
+  try {
+    await pushToQueue('09_EPP', 'SYNC_OFFLINE_QUEUE', datos, hijos);
+    localStorage.removeItem('draft_09_EPP');
+    window._eppFotos = [];
+    PWA_SKILLS.toast('Cargo registrado con ' + hijos.length + ' equipo(s).' +
+      (datos.Proxima_Reposicion ? ' Próxima reposición: ' + datos.Proxima_Reposicion + '.' : ''), 'success', 4000);
+    changeInternalView('09_EPP', 'Resumen');
+  } catch (err) {
+    console.error('Error al guardar el cargo de EPP:', err);
+    PWA_SKILLS.toast('No se pudo guardar. Vuelve a intentarlo.', 'error', 5000);
+  }
+}
+
+function loadEdicion_09_EPP(uuid) {
+  window._eppFotos = [];
+  PWA_SKILLS.loadRelationalOptions('epp-trabajador', '01_Usuarios', 'Nombre_Completo', 'DNI');
+  PWA_SKILLS.loadRelationalOptions('epp-entregado', '01_Usuarios', 'Nombre_Completo', 'DNI',
+    { column: 'Rol', value: 'Supervisor' });
+  setTimeout(() => PWA_SKILLS.initSignaturePad('epp-firma'), 150);
+
+  // Delegación: elegir equipo propone su vida útil; cambiarla recalcula
+  const cont = document.querySelector('#main-container #epp-items');
+  if (cont && !cont._eppEnlazado) {
+    cont._eppEnlazado = true;
+    cont.addEventListener('change', e => {
+      if (!e.target) return;
+      if (e.target.name === 'Equipo') {
+        const fila = e.target.closest('[id^="row-"]');
+        const vida = fila ? fila.querySelector('[name="Vida_Util"]') : null;
+        const sug  = (SUBCONFIG_09_EPP.VidaUtilSugerida || {})[e.target.value];
+        if (vida && sug && !vida.value) vida.value = sug;
+        eppRecalcular();
+      } else if (e.target.name === 'Vida_Util') {
+        eppRecalcular();
+      }
+    });
+  }
+
+  const campo  = document.getElementById('epp-uuid');
+  const titulo = document.getElementById('epp-form-titulo');
+
+  if (uuid && uuid !== 'CURRENT') {
+    const r = (window._eppData || []).find(x => String(x.UUID) === String(uuid));
+    if (r) {
+      if (titulo) titulo.textContent = 'Editar Cargo';
+      campo.value = r.UUID;
+      const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+      set('epp-nombre', r.Nombre_Trabajador); set('epp-area', r.Area);
+      set('epp-puesto', r.Puesto);            set('epp-motivo', r.Tipo_Entrega);
+      set('epp-fecha', r.Fecha_Entrega);      set('epp-estado', r.Estado);
+      set('epp-observaciones', r.Observaciones);
+
+      const cont2 = document.querySelector('#main-container #epp-items');
+      if (cont2) cont2.innerHTML = '';
+      (r._items || []).forEach(it => eppAgregarItem(it));
+      eppRecalcular();
+      return;
+    }
+  }
+
+  if (titulo) titulo.textContent = 'Registrar Entrega';
+  campo.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : String(Date.now());
+  const f = document.getElementById('epp-fecha');
+  if (f && !f.value) f.value = PWA_SKILLS.getPeruTime(false);   // fecha local, no UTC
+  eppRecalcular();
+}
+</script>

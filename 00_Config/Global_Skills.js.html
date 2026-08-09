@@ -1,0 +1,1069 @@
+<script>
+/**
+ * =========================================================================
+ * 🛠️ SKILLS Y UTILIDADES GLOBALES (Motor de Funciones)
+ * =========================================================================
+ * ARCHIVO: Global_Skills.js.html
+ * 
+ * ⚠️ REGLAS DE ORO OPERACIONALES:
+ * 1. DISEÑO UNIFICADO: Todos los módulos deben adaptarse a los estilos de Global_Config.js.html.
+ * 2. VISTAS OBLIGATORIAS: Todo nuevo módulo DEBE poseer obligatoriamente: Resumen, Edición y Detalle.
+ * 3. SEGREGACIÓN: Cada vista en su propio archivo .html separado.
+ * 4. TRAZABILIDAD DRIVE: El archivo subconfig DEBE incluir DRIVE_FOLDER_NAME (Nombre de la carpeta en Drive).
+ * 5. AUTOMATIZACIÓN PDF: El archivo subconfig DEBE incluir GOOGLE_DOC_TEMPLATE_ID. Si tiene un ID válido, el servidor generará un PDF por cada registro. Si está vacío, se omitirá la generación.
+ * 6. ESTRUCTURA RELACIONAL (MASTER-DETAIL): El subconfig DEBE definir PARENT_TABLE, CHILD_TABLE y RELATIONAL_KEY.
+ * 7. INYECCIÓN DINÁMICA DE SUB-TABLAS: Si el módulo posee una CHILD_TABLE, el formulario DEBE incluir un componente de "Filas Dinámicas".
+ * 8. TIPADO ESTRICTO DNI: El campo DNI debe ser siempre tipo "Text" (String) para asegurar su persistencia literal en Google Sheets sin pérdida de ceros a la izquierda.
+ * 9. REFERENCIAS Y SLICES (TIPO REF): Los campos que referencien otros módulos deben ser tipo "REF". Estos funcionarán como selectores dinámicos y podrán incluir la propiedad `slice: { column: string, value: any }` para filtrar las opciones disponibles.
+ * 10. NOTIFICACIONES Y PLANTILLAS DE CORREO: Cada módulo puede definir un EMAIL_TEMPLATE_ID (Google Doc). El sistema inyectará datos usando la sintaxis <<[VARIABLE]>>.
+ * 11. TRAZABILIDAD DE ARCHIVOS DRIVE: Todo campo de tipo "Image" o "File" cargado a Drive debe registrar automáticamente dos columnas adicionales en el Sheets: [NombreCampo]_ID y [NombreCampo]_Path.
+ * 12. VISTA DE DETALLE PREMIUM: Todo módulo debe implementar una vista de detalle que no solo muestre texto, sino que renderice miniaturas dinámicas de las imágenes, firmas y documentos almacenados en Drive basándose en los metadatos de la Skill 11. La interfaz debe usar grids responsivos y efectos de hover premium.
+ * 13. NAVEGACIÓN Y UI PERSISTENTE: Todo nuevo módulo DEBE mantener el Header y Footer estandarizado. El Header debe incluir SIEMPRE una flecha de retroceder en todas sus vistas: En 'Resumen' regresa al Menú Principal, en 'Edición' o 'Detalle' regresa al 'Resumen' del módulo.
+ * 14. INTEGRIDAD DE LA CONFIGURACIÓN (BUILD): Todo cambio realizado en cualquier archivo de la carpeta `00_Config` (Global_Config, Skills, Routing, etc.) debe reflejarse obligatoriamente en `LOCAL_PREVIEW.html` y `PROD_INDEX.html` mediante el comando `node generate_preview.js` antes de cualquier prueba o despliegue.
+ * 15. BOTÓN DE SINCRONIZACIÓN GLOBAL: El botón de sincronización/actualización de datos no debe estar dentro del módulo. Debe ubicarse exclusivamente en el Header Global de la App, a la izquierda de los controles de Tema/Estado, para permitir actualizaciones rápidas desde cualquier vista sin manchar el diseño del módulo.
+ * 16. LAYOUT DE FILTROS COMPACTO: Los controles de filtrado (Selectores) y búsqueda (Input) deben presentarse siempre en una ÚNICA FILA responsiva. Se debe priorizar el espacio para la tabla de datos, evitando bloques de filtros que ocupen demasiado espacio vertical.
+ * 17. BARRA DE FILTRADO INLINE COLAPSABLE (Regla 17): La vista "Resumen" debe contener una barra de búsqueda/filtrado en UNA SOLA FILA. La barra tiene: [🔍 Buscar texto] y [▼ Filtros (N activos)]. Al pulsar el botón Filtros, se despliega un panel colapsable con todos los controles dinámicos + botón "Aplicar". Los filtros dinámicos se inyectan basados en `isFilter: true` de la SUBCONFIG. No se utilizarán paneles flotantes ni FABs.
+ * 19. FILTRADO DINÁMICO POR ESQUEMA (SUBCONFIG): Los filtros mostrados en el FAB deben generarse dinámicamente leyendo la propiedad `isFilter: true` de las variables definidas en la `SUBCONFIG` de cada módulo. No se permiten filtros hardcodeados en el HTML de los módulos para garantizar la escalabilidad.
+ * 20. DENSIDAD DE DATOS COMPACTA: Las tablas de la vista "Resumen" deben usar un espaciado reducido (`px-3 py-2`) para maximizar la visibilidad de registros y mejorar la eficiencia en la lectura de datos técnicos operativos en dispositivos móviles.
+ * 21. JERARQUÍA DE ACCIONES EN DETALLE: En la vista "Detalle", las acciones ("Editar", "Descargar PDF") deben agruparse en un stack vertical alineado a la derecha (`flex-col items-end`). Los botones deben tener un tamaño minimalista (ej. `h-7`), tipografía reducida (ej. `text-[9px]`) y estar obligatoriamente configurados para evitar saltos de línea largos usando `whitespace-nowrap`, permitiendo que el header respire y enfoque la atención en el título / status.
+ * 
+ * DESCRIPCIÓN: Implementación técnica de las "Skills" de la Guía Maestra:
+ * Compresión de imágenes, Firmas digitales y Auto-guardado de borradores.
+ */
+
+const PWA_SKILLS = {
+  
+  // -----------------------------------------------------------------------
+  // SKILL C: OPTIMIZADOR FILE-CANVAS (Compresión Client-Side)
+  // -----------------------------------------------------------------------
+  /**
+   * Comprime una imagen usando Canvas nativo antes de encolarla.
+   * @param {File} file - El archivo de imagen de la cámara.
+   * @param {string} quality - 'Bajo', 'Medio', 'Alto'.
+   */
+  compressImage: async function(file, quality = 'Medio') {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Escalamiento según calidad (Reducción de resolución)
+          let scaleFactor = (quality === 'Alto') ? 0.9 : (quality === 'Bajo' ? 0.5 : 0.7);
+          canvas.width = width * scaleFactor;
+          canvas.height = height * scaleFactor;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Compresión de bits (JPEG)
+          // Medio: 0.7 de calidad de bits.
+          let bitQuality = (quality === 'Alto') ? 0.9 : (quality === 'Bajo' ? 0.4 : 0.7);
+          const dataUrl = canvas.toDataURL('image/jpeg', bitQuality);
+          
+          console.log(`📸 Imagen optimizada (${quality}): de ${(file.size/1024).toFixed(1)}KB a ~${(dataUrl.length/1333).toFixed(1)}KB`);
+          resolve(dataUrl);
+        };
+      };
+    });
+  },
+
+    /**
+     * Skill 12: Renderizador de Media Premium (Drive + Local)
+     */
+    renderDriveMedia: function(fieldValue, fieldId, containerId) {
+       const container = document.getElementById(containerId);
+       if (!container) return;
+
+       if (!fieldValue) {
+          container.innerHTML = `<div class="flex flex-col items-center justify-center p-8 opacity-40"><span class="material-symbols-outlined text-4xl mb-2">image_not_supported</span><p class="text-[10px] font-bold uppercase tracking-tighter">Sin Media Registrada</p></div>`;
+          return;
+       }
+
+       // Sanitizador: solo permite src con protocolo http/https o data:image/
+       const sanitizeSrc = (src) => {
+          const t = String(src || '').trim();
+          if (t.startsWith('https://') || t.startsWith('http://') || t.startsWith('data:image/')) return t;
+          console.warn('[SECURITY] URL de media bloqueada:', t.substring(0, 60));
+          return '';
+       };
+
+       const sources = fieldValue.includes(",") ? fieldValue.split(",").map(s => s.trim()) : [fieldValue];
+
+       const grid = document.createElement('div');
+       grid.className = 'grid grid-cols-2 md:grid-cols-4 gap-4 w-full';
+
+       sources.forEach(rawSrc => {
+          const safeSrc = sanitizeSrc(rawSrc);
+          const card = document.createElement('div');
+          card.className = 'group relative aspect-video rounded-xl overflow-hidden border border-outline-variant bg-white shadow-sm hover:shadow-md transition-all cursor-zoom-in';
+          const img = document.createElement('img');
+          img.className = 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110';
+          if (safeSrc) {
+             img.src = safeSrc;
+             img.onerror = function() { this.src = 'https://placehold.co/400?text=Error+Carga'; };
+          } else {
+             img.src = 'https://placehold.co/400?text=URL+Bloqueada';
+          }
+          const overlay = document.createElement('div');
+          overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2';
+          overlay.innerHTML = '<span class="text-[8px] text-white font-black uppercase tracking-widest">Ver en Grande</span>';
+          card.appendChild(img);
+          card.appendChild(overlay);
+          grid.appendChild(card);
+       });
+
+       container.innerHTML = '';
+       container.appendChild(grid);
+    },
+
+  // -----------------------------------------------------------------------
+  // SKILL B: AUTOGUARDADO INTERACTIVO (Drafts)
+  // -----------------------------------------------------------------------
+  /**
+   * Guarda el estado de un formulario automáticamente en LocalStorage.
+   * Se debe invocar en el 'oninput' o 'onblur' de los campos.
+   */
+  saveDraft: function(formId, moduleName) {
+    const form = document.getElementById(formId);
+    const formData = new FormData(form);
+    const data = {};
+    formData.forEach((value, key) => data[key] = value);
+    
+    localStorage.setItem(`draft_${moduleName}`, JSON.stringify(data));
+    console.log(`💾 Borrador de [${moduleName}] guardado.`);
+  },
+
+  loadDraft: function(formId, moduleName) {
+    const draft = localStorage.getItem(`draft_${moduleName}`);
+    if (!draft) return;
+    
+    const data = JSON.parse(draft);
+    const form = document.getElementById(formId);
+    for (const key in data) {
+      if (form.elements[key]) form.elements[key].value = data[key];
+    }
+    console.log(`📂 Borrador de [${moduleName}] restaurado.`);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL F: PIZARRA DE FIRMAS (Signature Pad)
+  // -----------------------------------------------------------------------
+  initSignaturePad: function(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    // Limpiar handler de window previo asociado a este canvas (evita acumulación)
+    const prevStopKey = `_sigStop_${canvasId}`;
+    if (window[prevStopKey]) {
+      window.removeEventListener('mouseup', window[prevStopKey]);
+      delete window[prevStopKey];
+    }
+
+    canvas.width = canvas.offsetWidth || 300;
+    canvas.height = canvas.offsetHeight || 200;
+
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = "#000666";
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    let drawing = false;
+
+    const getCoords = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const startDraw = (e) => {
+      drawing = true;
+      const { x, y } = getCoords(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    };
+
+    const stopDraw = () => { drawing = false; ctx.closePath(); };
+
+    const draw = (e) => {
+      if (!drawing) return;
+      if (e.touches) e.preventDefault();
+      const { x, y } = getCoords(e);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    };
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDraw);
+
+    // Guardar referencia para limpieza futura
+    window[prevStopKey] = stopDraw;
+    window.addEventListener('mouseup', stopDraw);
+  },
+
+  clearSignature: function(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL DE SEGURIDAD: HASH SHA-256
+  // -----------------------------------------------------------------------
+  /**
+   * Encripta una cadena usando SHA-256 (Nativo del navegador)
+   * @param {string} string - Texto plano (ej. contraseña)
+   */
+  hashSHA256: async function(string) {
+    const utf8 = new TextEncoder().encode(string);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 7.A: RELACIONALIDAD DINÁMICA (Cascading & Cross-Module)
+  // -----------------------------------------------------------------------
+  /**
+   * Carga opciones en un select basadas en la data de otro módulo.
+   * @param {string} selectId - ID del elemento <select>
+   * @param {string} originModule - Módulo de donde extraer (ej: '01_Usuarios')
+   * @param {string} columnLabel - Columna para mostrar (ej: 'Nombre_Completo')
+   * @param {string} columnValue - Columna para guardar (ej: 'DNI')
+   */
+  loadRelationalOptions: async function(selectId, originModule, columnLabel, columnValue, sliceConfig) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Cargando...</option>';
+
+    try {
+      const cacheKey = `refdata_${originModule}`;
+      const stampKey = `${cacheKey}_t`;
+      const TTL = 10 * 60 * 1000;   // 10 minutos
+
+      let data = null;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) { try { data = JSON.parse(cached); } catch(e) {} }
+
+      // El caché tenía vida infinita: un usuario nuevo (o un cambio de rol)
+      // no aparecía NUNCA en los desplegables hasta limpiar el navegador.
+      // Ahora caduca; y si está vigente se sirve al instante y se refresca
+      // por detrás, para no hacer esperar al usuario.
+      const sello  = parseInt(localStorage.getItem(stampKey) || '0', 10);
+      const vigente = data && data.length && (Date.now() - sello) < TTL;
+
+      const traer = () => DataService.read(originModule)
+        .then(res => {
+          if (res && res.status === 'OK' && Array.isArray(res.payload)) {
+            localStorage.setItem(cacheKey, JSON.stringify(res.payload));
+            localStorage.setItem(stampKey, String(Date.now()));
+            return res.payload;
+          }
+          return null;
+        })
+        .catch(() => null);
+
+      if (vigente) {
+        traer().then(frescos => {
+          // Solo se repinta si la lista cambió y el select sigue en pantalla
+          if (frescos && document.body.contains(select) &&
+              JSON.stringify(frescos) !== JSON.stringify(data)) {
+            const elegido = select.value;
+            this.loadRelationalOptions(selectId, originModule, columnLabel, columnValue, sliceConfig)
+                .then(() => { if (elegido) select.value = elegido; });
+          }
+        });
+      } else {
+        const frescos = await traer();
+        if (frescos) data = frescos;
+      }
+
+      if (!data || data.length === 0) {
+        select.innerHTML = '<option value="">Sin datos disponibles</option>';
+        return;
+      }
+
+      let filteredData = data;
+      if (sliceConfig && sliceConfig.column && sliceConfig.value) {
+        filteredData = data.filter(row =>
+          String(row[sliceConfig.column]).toLowerCase() === String(sliceConfig.value).toLowerCase()
+        );
+      }
+
+      select.innerHTML = '<option value="">Seleccione...</option>';
+      filteredData.forEach(row => {
+        const opt = document.createElement('option');
+        opt.value = row[columnValue] || '';
+        opt.textContent = row[columnLabel] || row[columnValue] || '';
+        select.appendChild(opt);
+      });
+
+    } catch (err) {
+      console.error(`Error cargando opciones relacionales para ${selectId}:`, err);
+      select.innerHTML = '<option value="">Error al cargar</option>';
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL E: ESTÁNDAR CRONOLÓGICO PERUANO (GMT-5)
+  // -----------------------------------------------------------------------
+  /**
+   * Obtiene la fecha/hora actual normalizada a Perú (UTC-5)
+   * @param {boolean} formatFull - Si es true, retorna string ISO completo.
+   */
+  getPeruTime: function(formatFull = true) {
+    const offsetHours = (AppState.Settings || {}).TimezoneOffset != null ? AppState.Settings.TimezoneOffset : -5;
+
+    // La versión anterior sumaba getTimezoneOffset() a getTime() y luego leía
+    // el resultado con toISOString(). getTime() ya es un instante absoluto, así
+    // que ese ajuste se aplicaba dos veces y el resultado era la hora UTC, no
+    // la del huso. En la práctica: a partir de las 19:00 en Perú, la fecha
+    // registrada era la del día siguiente.
+    //
+    // Correcto: desplazar el instante absoluto al huso objetivo y leerlo con
+    // los getters UTC, que es lo que hace toISOString().
+    const t = new Date(Date.now() + offsetHours * 3600000);
+    const iso = t.toISOString();
+    return formatFull ? iso : iso.slice(0, 10);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 1.B: EXPORTADOR ANALÍTICO (.XLSX NATIVO)
+  // -----------------------------------------------------------------------
+  /**
+   * Convierte un JSON Array en archivo .xlsx y dispara la descarga.
+   * @param {Array} data - El arreglo de objetos filtrados.
+   * @param {string} fileName - Nombre sugerido del archivo.
+   */
+  exportToExcel: function(data, fileName = "Reporte_Exportado") {
+    if(!data || data.length === 0) return alert("❌ No hay datos para exportar.");
+    
+    // Crear el Libro (Workbook)
+    const wb = XLSX.utils.book_new();
+    // Convertir JSON a Hoja (Worksheet)
+    const ws = XLSX.utils.json_to_sheet(data);
+    
+    // Añadir Hoja al Libro
+    XLSX.utils.book_append_sheet(wb, ws, "Base_Datos");
+    
+    // Generar archivo binario y forzar descarga
+    const timestamp = this.getPeruTime(false).replace(/-/g, '');
+    XLSX.writeFile(wb, `${fileName}_${timestamp}.xlsx`);
+    
+    console.log(`📊 Exportación .xlsx completada: ${data.length} registros.`);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 7.E: MOTOR DE FILAS DINÁMICAS (Sub-Tablas / Detail Rows)
+  // -----------------------------------------------------------------------
+  /**
+   * Genera un bloque de campos repetibles para una tabla hija.
+   * @param {string} containerId - ID del div donde se inyectarán las filas.
+   * @param {Array} fields - Esquema de campos para la fila (del subconfig).
+   */
+  _rowSeq: 0,
+
+  addDynamicRow: function(containerId, fields, valores) {
+    const container = document.querySelector('#main-container #' + containerId) || document.getElementById(containerId);
+    if (!container) return null;
+
+    // Contador propio: dos filas creadas en el mismo milisegundo compartían id
+    this._rowSeq += 1;
+    const rowId = 'row-' + Date.now() + '-' + this._rowSeq;
+    const rowDiv = document.createElement('div');
+    rowDiv.id = rowId;
+    // 2 columnas ya en móvil; 12 columnas fluidas desde tablet
+    rowDiv.className = "grid grid-cols-2 md:grid-cols-12 gap-x-3 gap-y-3 md:gap-4 p-3 md:p-4 mb-3 bg-surface-container-lowest rounded-xl border border-outline-variant animate-in fade-in slide-in-from-top-1 duration-200 relative";
+
+    const esc = v => String(v == null ? '' : v)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const previo = valores || {};
+    const clase = "w-full h-10 px-3 rounded-lg border border-outline-variant bg-white text-xs focus:ring-1 focus:ring-primary outline-none";
+
+    let html = "";
+    fields.forEach(f => {
+      // Un campo puede pedir fila entera en móvil con fullWidth: true
+      const colSpan = f.colSpan || "md:col-span-3";
+      const mobileSpan = f.fullWidth ? "col-span-2" : "";
+      const val = previo[f.name];
+      let control;
+
+      if (f.type === 'select') {
+        const ops = (f.options || []).map(o => {
+          const v = (typeof o === 'object') ? o.value : o;
+          const t = (typeof o === 'object') ? o.label : o;
+          return '<option value="' + esc(v) + '"' +
+                 (String(val) === String(v) ? ' selected' : '') + '>' + esc(t) + '</option>';
+        }).join('');
+        control = '<select name="' + f.name + '" class="' + clase + '">' +
+                  '<option value="">' + esc(f.placeholder || '—') + '</option>' + ops + '</select>';
+
+      } else if (f.type === 'display') {
+        // Casilla de solo lectura para valores calculados; la rellena el módulo
+        control = '<div data-display="' + f.name + '" ' +
+                  'class="w-full h-10 px-3 rounded-lg border border-dashed border-outline-variant ' +
+                  'bg-surface-container-low text-xs font-bold flex items-center justify-center text-secondary">—</div>';
+
+      } else if (f.type === 'textarea') {
+        control = '<textarea name="' + f.name + '" rows="2" class="w-full p-3 rounded-lg border border-outline-variant bg-white text-xs focus:ring-1 focus:ring-primary outline-none resize-none">' + esc(val) + '</textarea>';
+
+      } else {
+        control = '<input type="' + (f.type || 'text') + '" name="' + f.name + '" value="' + esc(val) + '" ' +
+                  (f.placeholder ? 'placeholder="' + esc(f.placeholder) + '" ' : '') + 'class="' + clase + '">';
+      }
+
+      html += '<div class="' + mobileSpan + ' ' + colSpan + '">' +
+              '<label class="block text-[10px] font-bold text-secondary mb-1 uppercase">' + esc(f.label) + '</label>' +
+              control + '</div>';
+    });
+
+    // Botón de eliminar: en móvil ocupa su propia fila alineado a la derecha
+    html += '<div class="col-span-2 md:col-span-1 flex items-end justify-end md:justify-start pb-1">' +
+      '<button type="button" onclick="document.getElementById(\'' + rowId + '\').remove()" aria-label="Eliminar esta fila" ' +
+      'class="w-9 h-9 flex items-center justify-center rounded-full text-error hover:bg-error/10 transition-colors">' +
+      '<span class="material-symbols-outlined text-lg" aria-hidden="true">delete</span></button></div>';
+
+    rowDiv.innerHTML = html;
+    container.appendChild(rowDiv);
+    return rowDiv;
+  },
+
+  /**
+   * Skill #15: Motor de Sincronización Global Contextual
+   */
+  triggerGlobalSync: function() {
+      if (!AppState.activeModule) {
+          console.warn("No hay módulo activo para sincronizar.");
+          return;
+      }
+
+      // Animamos el botón para dar feedback al usuario
+      const btn = document.getElementById('ui-global-sync-btn');
+      if (btn) btn.classList.add('animate-spin');
+
+      console.log(`Iniciando Sincronización Global para: ${AppState.activeModule}`);
+
+      // Llamamos a la función de sincronización específica del módulo
+      if (typeof window.syncModuleData === 'function') {
+          window.syncModuleData(AppState.activeModule);
+      }
+      
+      // Detenemos la animación tras 1s (O cuando la data cargue)
+      setTimeout(() => {
+          if (btn) btn.classList.remove('animate-spin');
+      }, 1000);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 13: BARRA DE BÚSQUEDA REUTILIZABLE (Regla 17)
+  // -----------------------------------------------------------------------
+  renderSearchBar: function(containerId, placeholder) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = `
+      <div data-filter-bar class="mb-4 rounded-xl border border-outline-variant shadow-sm overflow-hidden bg-surface-container-lowest">
+        <div class="flex items-center gap-2 px-3 py-2">
+          <span class="material-symbols-outlined text-outline text-[20px] shrink-0">search</span>
+          <label for="ui-search-input" class="sr-only-ds">Buscar registros</label>
+          <input id="ui-search-input" onkeyup="PWA_SKILLS.applyFilters()" type="search"
+            class="filter-compact-control flex-1 min-w-0 bg-transparent border-none text-[12px] text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none py-1"
+            placeholder="${placeholder || 'Buscar...'}"/>
+          <div class="w-px h-5 bg-outline-variant/60 mx-1 shrink-0"></div>
+          <button data-filter-btn onclick="PWA_SKILLS.toggleFilterPanel(this)"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-primary hover:bg-primary/10 transition-colors whitespace-nowrap relative">
+            <span class="material-symbols-outlined text-[16px]">tune</span>
+            Filtros
+            <span id="ui-filter-badge" class="hidden absolute -top-1 -right-1 w-4 h-4 rounded-full bg-primary text-on-primary text-[9px] font-black items-center justify-center"></span>
+            <span class="material-symbols-outlined text-[14px] filter-toggle-icon">expand_more</span>
+          </button>
+        </div>
+        <div id="ui-filter-panel"
+          class="border-t border-outline-variant/60 overflow-hidden transition-all duration-300 ease-in-out"
+          style="max-height:0; opacity:0; pointer-events:none;">
+        </div>
+      </div>
+    `;
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 15: ENUM CON VALOR LIBRE (allowOtherValues)
+  // -----------------------------------------------------------------------
+  initEnumWithOther: function(selectId, inputId) {
+    const select = document.getElementById(selectId);
+    const input = document.getElementById(inputId);
+    if (!select || !input) return;
+    input.style.display = 'none';
+    select.addEventListener('change', () => {
+      input.style.display = select.value === '__OTHER__' ? 'block' : 'none';
+      if (select.value !== '__OTHER__') input.value = '';
+    });
+  },
+
+  getEnumValue: function(selectId, inputId) {
+    const select = document.getElementById(selectId);
+    const input = document.getElementById(inputId);
+    if (!select) return '';
+    return select.value === '__OTHER__' ? (input ? input.value.trim() : '') : select.value;
+  },
+
+   /**
+    * Skill #17: Toggle del panel de filtros colapsable
+    * Llama a esto desde el botón de "Filtros" en la barra de búsqueda.
+    */
+   toggleFilterPanel: function(btn) {
+       const panel = document.querySelector('#main-container #ui-filter-panel');
+       const badge = document.querySelector('#main-container #ui-filter-badge');
+       const icon = btn ? btn.querySelector('.filter-toggle-icon') : null;
+       
+       if (!panel) return;
+
+       const isOpen = panel.classList.contains('filter-open');
+       
+       if (isOpen) {
+           panel.classList.remove('filter-open');
+           panel.style.maxHeight = '0';
+           panel.style.opacity = '0';
+           panel.style.pointerEvents = 'none';
+           if (icon) icon.innerText = 'expand_more';
+       } else {
+           panel.classList.add('filter-open');
+           panel.style.maxHeight = '600px';
+           panel.style.opacity = '1';
+           panel.style.pointerEvents = 'auto';
+           if (icon) icon.innerText = 'expand_less';
+       }
+   },
+
+   /**
+    * Skill #19: Renderizado Automático de Filtros en Panel Colapsable
+    * Inyecta los controles dinámicos dentro del panel #ui-filter-panel
+    * y actualiza el badge de cantidad en el botón toggle.
+   */
+   renderDynamicFilters: function(moduleID) {
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    const badge = document.querySelector('#main-container #ui-filter-badge');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    // Normalización de nombre: SUBCONFIG_03_INSPECCIONES
+    const normalizedID = moduleID.toUpperCase().replace(/\s/g, '_').replace(/[^A-Z0-9_]/g, '');
+    const subConfigName = `SUBCONFIG_${normalizedID}`;
+    
+    console.log(`🔍 Buscando Esquema de Filtros: ${subConfigName}...`);
+    
+    // Búsqueda agresiva en el scope global
+    const config = window[subConfigName] || window[moduleID] || window[`SUBCONFIG_${moduleID}`];
+    
+    if (!config || !config.Variables) {
+        console.warn(`⚠️ Error: No se halló el objeto [${subConfigName}] en el ruteador global.`);
+        panel.innerHTML = `<p class="text-[10px] text-error text-center p-3">No se pudo cargar el esquema de filtros.</p>`;
+        return;
+    }
+
+    // Generar los controles de filtro
+    let filterCount = 0;
+    const filterFields = Object.keys(config.Variables).filter(key => config.Variables[key].isFilter);
+    filterCount = filterFields.length;
+    
+    // Actualizar el badge del botón
+    if (badge) {
+        badge.textContent = filterCount > 0 ? filterCount : '';
+        badge.style.display = filterCount > 0 ? 'flex' : 'none';
+    }
+
+    // Contenedor interno del panel — grid 2 cols en móvil, más en pantallas grandes
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-3';
+
+    filterFields.forEach(key => {
+        const field = config.Variables[key];
+        const div = document.createElement('div');
+        div.className = 'flex flex-col gap-0.5';
+
+        const labelText = (field.label || key).replace(/_/g, ' ');
+
+        if (field.type === 'Enum') {
+            div.innerHTML = `
+                <label class="text-[9px] font-black uppercase tracking-wider text-on-surface-variant px-0.5">${labelText}</label>
+                <div class="filter-compact-field relative flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9">
+                    <span class="material-symbols-outlined text-primary text-[14px] ml-2 shrink-0">filter_alt</span>
+                    <select id="filter-${key}" onchange="PWA_SKILLS.applyFilters()"
+                        class="filter-compact-control bg-transparent border-none text-[10px] font-semibold text-on-surface w-full h-full pl-1.5 pr-5 focus:ring-0 appearance-none cursor-pointer">
+                        <option value="">Todos</option>
+                        ${field.acceptedValues.map(v => `<option value="${v}">${v}</option>`).join('')}
+                    </select>
+                    <span class="material-symbols-outlined text-[12px] text-outline absolute right-1.5 pointer-events-none">expand_more</span>
+                </div>`;
+        } else {
+            const inputType = field.type === 'Date' ? 'date' : 'text';
+            div.innerHTML = `
+                <label class="text-[9px] font-black uppercase tracking-wider text-on-surface-variant px-0.5">${labelText}</label>
+                <div class="filter-compact-field flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9 px-2 gap-1">
+                    <span class="material-symbols-outlined text-outline text-[14px] shrink-0">search</span>
+                    <input type="${inputType}" id="filter-${key}"
+                        onkeyup="PWA_SKILLS.applyFilters()" onchange="PWA_SKILLS.applyFilters()"
+                        placeholder="${labelText}..."
+                        class="filter-compact-control bg-transparent border-none text-[10px] font-medium text-on-surface placeholder:text-outline-variant w-full h-full focus:ring-0">
+                </div>`;
+        }
+
+        grid.appendChild(div);
+    });
+
+    // Fila de acciones del panel
+    const actions = document.createElement('div');
+    actions.className = 'flex items-center justify-between border-t border-outline-variant/60 px-3 py-2 bg-surface-container-low';
+    actions.innerHTML = `
+        <button onclick="PWA_SKILLS.clearFilters()" class="text-[10px] font-bold text-secondary hover:text-error transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-[13px]">filter_alt_off</span>
+            Limpiar
+        </button>
+        <button onclick="PWA_SKILLS.applyFilters(); PWA_SKILLS.toggleFilterPanel(this.closest('[data-filter-bar]').querySelector('[data-filter-btn]'))" class="flex items-center gap-1 px-3 py-1 bg-primary text-on-primary rounded-lg text-[10px] font-bold hover:opacity-90 transition-all">
+            <span class="material-symbols-outlined text-[13px]">check</span>
+            Aplicar
+        </button>
+    `;
+
+    panel.appendChild(grid);
+    panel.appendChild(actions);
+  },
+
+  /**
+   * Skill #17/19: Aplicación de Filtros Ejecutiva
+   */
+  applyFilters: function() {
+    if (!AppState.activeModule) return;
+
+    const searchInput = document.querySelector('#main-container #ui-search-input');
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    const inputs = panel ? panel.querySelectorAll('input, select') : [];
+    const criteria = {};
+
+    if (searchInput && searchInput.value) {
+      criteria['_global'] = searchInput.value.toLowerCase();
+    }
+    inputs.forEach(input => {
+      if (input.value) criteria[input.id.replace('filter-', '')] = input.value.toLowerCase();
+    });
+
+    const tableBody = document.querySelector('#main-container table tbody');
+    if (!tableBody) return;
+
+    const dataRows = this._dataRows(tableBody);
+    dataRows.forEach(row => {
+      const text = row.innerText.toLowerCase();
+      const matchesControls = Object.values(criteria).every(v => text.includes(v));
+      const matchesDrawer = typeof drawerWorkActiveRowMatches === 'function'
+        ? drawerWorkActiveRowMatches(row)
+        : true;
+      row.style.display = matchesControls && matchesDrawer ? '' : 'none';
+    });
+
+    const vis = dataRows.filter(r => r.style.display !== 'none').length;
+
+    // empty-states: si el filtro no deja nada, se explica y se ofrece salida
+    this._toggleNoResults(tableBody, dataRows.length > 0 && vis === 0, criteria._global || '');
+
+    // Update live counter (scoped to #main-container to avoid hitting hidden registry copy)
+    const countEl = document.querySelector('#main-container #ui-result-count');
+    if (countEl) {
+      countEl.textContent = vis === dataRows.length ? `${dataRows.length} registros` : `${vis} de ${dataRows.length}`;
+      countEl.style.color = vis < dataRows.length ? 'var(--color-primary,#000666)' : '';
+    }
+  },
+
+  /**
+   * Skill #17: Limpiar todos los filtros y resetear tabla
+   */
+  clearFilters: function() {
+    const searchInput = document.querySelector('#main-container #ui-search-input');
+    if (searchInput) searchInput.value = '';
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    if (panel) {
+      panel.querySelectorAll('input').forEach(i => i.value = '');
+      panel.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+    }
+    const tableBody = document.querySelector('#main-container table tbody');
+    if (tableBody) {
+      this._toggleNoResults(tableBody, false);
+      this._dataRows(tableBody).forEach(r => r.style.display = '');
+    }
+    const countEl = document.querySelector('#main-container #ui-result-count') || document.getElementById('ui-result-count');
+    if (countEl && tableBody) {
+      countEl.textContent = `${this._dataRows(tableBody).length} registros`;
+      countEl.style.color = '';
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 23: SISTEMA DE NOTIFICACIONES (Toast / Snackbar)
+  // -----------------------------------------------------------------------
+  toast: function(message, type, duration) {
+    type = type || 'info';
+    duration = duration || 3200;
+    const container = document.getElementById('toast-container');
+    if (!container) { console.log('[Toast]', message); return; }
+
+    const iconMap = { success:'check_circle', error:'error', warning:'warning', info:'info' };
+    const colorMap = { success:'#34d399', error:'#f87171', warning:'#fbbf24', info:'#60a5fa' };
+
+    const el = document.createElement('div');
+    el.className = 'pwa-toast ' + type;
+    el.innerHTML =
+      '<span class="material-symbols-outlined" style="font-size:17px;color:' + colorMap[type] + ';font-variation-settings:\'FILL\' 1;flex-shrink:0">' + iconMap[type] + '</span>' +
+      '<span style="flex:1;line-height:1.35">' + message + '</span>' +
+      '<button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;opacity:0.5;cursor:pointer;padding:0;line-height:1;flex-shrink:0">' +
+      '<span class="material-symbols-outlined" style="font-size:15px">close</span></button>';
+
+    container.appendChild(el);
+    const timer = setTimeout(function() {
+      el.classList.add('toast-out');
+      setTimeout(function() { el.remove(); }, 220);
+    }, duration);
+    el.querySelector('button').addEventListener('click', function() { clearTimeout(timer); });
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 20: MOTOR DE ORDENAMIENTO DE TABLAS (Sort Engine)
+  // -----------------------------------------------------------------------
+  _sortState: {},
+
+  initSortableTable: function(tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    if (!table) return;
+    const ths = Array.from(table.querySelectorAll('thead th'));
+
+    ths.forEach((th, idx) => {
+      if (th.hasAttribute('data-nosort')) return;
+      th.style.userSelect = 'none';
+      th.style.cursor = 'pointer';
+      // sortable-table + keyboard-nav: la cabecera es operable por teclado
+      // y aria-sort comunica el estado de orden al lector de pantalla.
+      th.setAttribute('tabindex', '0');
+      th.setAttribute('role', 'columnheader');
+      th.setAttribute('aria-sort', 'none');
+      if (!th.title) th.title = 'Ordenar por esta columna';
+      // Inject sort icon
+      if (!th.querySelector('.sort-icon')) {
+        const ico = document.createElement('span');
+        ico.className = 'sort-icon material-symbols-outlined align-middle';
+        ico.style.cssText = 'font-size:11px;margin-left:3px;opacity:0.25;transition:opacity 0.15s';
+        ico.setAttribute('aria-hidden', 'true');
+        ico.innerText = 'unfold_more';
+        th.appendChild(ico);
+      }
+      const doSort = () => {
+        const key = tbodyId + '_' + idx;
+        const curr = this._sortState[key] || 'none';
+        const next = curr === 'none' ? 'asc' : curr === 'asc' ? 'desc' : 'none';
+        this._sortState[key] = next;
+        this._sortTableByCol(tbody, idx, next);
+        ths.forEach((th2, i2) => {
+          const ico2 = th2.querySelector('.sort-icon');
+          if (i2 === idx && next !== 'none') {
+            th2.setAttribute('aria-sort', next === 'asc' ? 'ascending' : 'descending');
+          } else if (!th2.hasAttribute('data-nosort')) {
+            th2.setAttribute('aria-sort', 'none');
+          }
+          if (!ico2) return;
+          if (i2 === idx && next !== 'none') {
+            ico2.innerText = next === 'asc' ? 'arrow_upward' : 'arrow_downward';
+            ico2.style.opacity = '1';
+            ico2.style.color = 'var(--color-primary,#000666)';
+          } else {
+            ico2.innerText = 'unfold_more';
+            ico2.style.opacity = '0.25';
+            ico2.style.color = '';
+          }
+        });
+      };
+      th.addEventListener('click', doSort);
+      th.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doSort(); }
+      });
+    });
+  },
+
+  _sortTableByCol: function(tbody, colIdx, direction) {
+    const rows = this._dataRows(tbody);
+    if (direction === 'none') {
+      rows.sort((a, b) => (+a.dataset.origIdx || 0) - (+b.dataset.origIdx || 0));
+    } else {
+      rows.forEach((r, i) => { if (!r.dataset.origIdx) r.dataset.origIdx = i; });
+      rows.sort((a, b) => {
+        const ca = a.cells[colIdx] ? a.cells[colIdx].innerText.trim() : '';
+        const cb = b.cells[colIdx] ? b.cells[colIdx].innerText.trim() : '';
+        const na = parseFloat(ca.replace(/[^\d.-]/g, ''));
+        const nb = parseFloat(cb.replace(/[^\d.-]/g, ''));
+        const cmp = (!isNaN(na) && !isNaN(nb)) ? na - nb
+          : ca.localeCompare(cb, 'es', { sensitivity: 'base' });
+        return direction === 'asc' ? cmp : -cmp;
+      });
+    }
+    rows.forEach(r => tbody.appendChild(r));
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 21: CONTADOR DE RESULTADOS VIVOS
+  // -----------------------------------------------------------------------
+  updateResultCount: function(tbodyId, countElId) {
+    const tbody = document.querySelector(`#main-container #${tbodyId}`) || document.getElementById(tbodyId);
+    const el = document.querySelector(`#main-container #${countElId}`) || document.getElementById(countElId);
+    if (!tbody || !el) return;
+    const rows = this._dataRows(tbody);
+    const all = rows.length;
+    const vis = rows.filter(r => r.style.display !== 'none').length;
+    el.textContent = vis === all ? `${all} registros` : `${vis} de ${all}`;
+    el.style.color = vis < all ? 'var(--color-primary,#000666)' : '';
+    // Si la navegación provino del resumen de trabajo, el render asíncrono
+    // acaba de reemplazar las filas. Reaplica el filtro persistente ahora.
+    if (typeof applyActiveDrawerWorkFilter === 'function') {
+      setTimeout(applyActiveDrawerWorkFilter, 0);
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 22: EXPORTADOR CSV (Solo filas visibles, limpio)
+  // -----------------------------------------------------------------------
+  exportVisibleToCSV: function(slug) {
+    const table = document.querySelector('#main-container table');
+    if (!table) { this.toast('Sin tabla activa para exportar.', 'error'); return; }
+
+    const lines = [];
+    const hdr = Array.from(table.querySelectorAll('thead th')).map(th => {
+      const c = th.cloneNode(true);
+      c.querySelectorAll('.sort-icon').forEach(e => e.remove());
+      return '"' + c.innerText.trim().replace(/"/g, '""') + '"';
+    });
+    lines.push(hdr.join(','));
+
+    table.querySelectorAll('tbody tr').forEach(row => {
+      if (row.style.display === 'none') return;
+      const cells = Array.from(row.cells).map(td => {
+        const c = td.cloneNode(true);
+        c.querySelectorAll('button,img,.material-symbols-outlined').forEach(e => e.remove());
+        return '"' + c.innerText.replace(/[\r\n\t]+/g, ' ').trim().replace(/"/g, '""') + '"';
+      });
+      lines.push(cells.join(','));
+    });
+
+    const csv = '﻿' + lines.join('\r\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    const fname = (slug || 'export') + '_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = fname;
+    a.click();
+    this.toast('CSV descargado: ' + fname, 'success');
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 17 (Export): Exportador XLSX Nativo — Filas visibles, datos limpios
+  // -----------------------------------------------------------------------
+  exportFilteredToExcel: function() {
+    if (!AppState.activeModule) return;
+    const slug = AppState.activeModule.replace(/^\d+_/, '');
+    const table = document.querySelector('#main-container table');
+    if (!table) { this.toast('No hay tabla activa para exportar.', 'error'); return; }
+
+    // Build clean header list (skip action columns)
+    const skipLabels = ['acciones', 'gestión', 'gestion', 'ver', 'acción', 'accion'];
+    const rawHeaders = Array.from(table.querySelectorAll('thead th'));
+    const colMap = [];
+    const headers = [];
+    rawHeaders.forEach((th, i) => {
+      const c = th.cloneNode(true);
+      c.querySelectorAll('.sort-icon').forEach(e => e.remove());
+      const label = c.innerText.trim();
+      if (!skipLabels.includes(label.toLowerCase())) {
+        colMap.push(i);
+        headers.push(label);
+      }
+    });
+
+    // Extract visible rows as clean objects
+    const dataRows = [];
+    table.querySelectorAll('tbody tr').forEach(row => {
+      if (row.style.display === 'none') return;
+      const obj = {};
+      colMap.forEach((ci, hi) => {
+        const cell = row.cells[ci];
+        if (!cell) return;
+        const c = cell.cloneNode(true);
+        c.querySelectorAll('button,img,.material-symbols-outlined').forEach(e => e.remove());
+        obj[headers[hi]] = c.innerText.replace(/[\r\n\t]+/g, ' ').trim();
+      });
+      dataRows.push(obj);
+    });
+
+    if (dataRows.length === 0) { this.toast('No hay registros visibles para exportar.', 'warning'); return; }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(dataRows, { header: headers });
+    XLSX.utils.book_append_sheet(wb, ws, slug);
+    const ts = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `${slug}_${ts}.xlsx`);
+    this.toast(`${dataRows.length} registros exportados a Excel.`, 'success');
+  },
+
+  // =======================================================================
+  // SISTEMA DE DISEÑO "Data-Dense Dashboard" (ui-ux-pro-max)
+  // Skills 24–27: tabla responsiva, carga, vacío y filas de datos.
+  // Documentación de tokens: design-system/motor-pwa/MASTER.md
+  // =======================================================================
+
+  /**
+   * SKILL 24: TABLA RESPONSIVA (tabla en escritorio → tarjetas en móvil)
+   * Regla `horizontal-scroll` (severidad ALTA): en <640px una tabla de 7-8
+   * columnas obliga a desplazamiento lateral y esconde datos. Aquí cada fila
+   * se convierte en tarjeta y cada celda muestra la etiqueta de su columna.
+   * Es idempotente: se puede llamar tras cada render.
+   * @param {string} tbodyId - ID del <tbody>
+   */
+  enhanceTable: function(tbodyId) {
+    const tbody = document.querySelector(`#main-container #${tbodyId}`) || document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    if (!table) return;
+
+    table.classList.add('pwa-table-cards');
+
+    // Etiquetas de columna tomadas del <thead> (se ignoran los iconos de orden)
+    const headers = Array.from(table.querySelectorAll('thead th')).map(th => {
+      const c = th.cloneNode(true);
+      c.querySelectorAll('.sort-icon').forEach(e => e.remove());
+      return c.innerText.trim();
+    });
+    const actionLabels = ['acciones', 'gestión', 'gestion', 'acción', 'accion', 'ver'];
+
+    tbody.querySelectorAll('tr').forEach(row => {
+      if (row.hasAttribute('data-ds-ui')) return;   // filas de interfaz, no de datos
+      Array.from(row.cells).forEach((cell, i) => {
+        const label = headers[i] || '';
+        cell.setAttribute('data-label', label);
+        if (actionLabels.includes(label.toLowerCase())) cell.classList.add('pwa-cell-actions');
+      });
+    });
+  },
+
+  /**
+   * SKILL 25: ESQUELETO DE CARGA (progressive-loading)
+   * Regla `loading-states`: toda espera >300ms necesita realimentación. Un
+   * esqueleto conserva la altura de la tabla y evita el salto de layout (CLS).
+   * @param {string} tbodyId
+   * @param {number} rows - filas simuladas (por defecto 6)
+   */
+  renderSkeleton: function(tbodyId, rows) {
+    const tbody = document.querySelector(`#main-container #${tbodyId}`) || document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    const cols = table ? Math.max(1, table.querySelectorAll('thead th').length) : 4;
+    const n = rows || 6;
+    const widths = ['70%', '45%', '85%', '55%', '65%', '40%'];
+
+    let html = '';
+    for (let r = 0; r < n; r++) {
+      html += '<tr data-ds-ui="skeleton" class="ds-skeleton-row" aria-hidden="true">';
+      for (let c = 0; c < cols; c++) {
+        html += `<td><div class="ds-skeleton-bar" style="width:${widths[(r + c) % widths.length]}"></div></td>`;
+      }
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
+
+    // Anuncio para lector de pantalla sin robar el foco
+    if (table) table.setAttribute('aria-busy', 'true');
+  },
+
+  /**
+   * SKILL 26: ESTADO VACÍO (empty-states)
+   * Regla `empty-states`: nunca dejar un espacio en blanco. Siempre mensaje
+   * claro + camino de salida (acción).
+   * @param {string} tbodyId
+   * @param {object} opts - { icon, title, message, actionLabel, onAction }
+   */
+  showEmptyState: function(tbodyId, opts) {
+    const tbody = document.querySelector(`#main-container #${tbodyId}`) || document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    const cols = table ? Math.max(1, table.querySelectorAll('thead th').length) : 1;
+    const o = opts || {};
+    const action = (o.actionLabel && o.onAction)
+      ? `<button type="button" class="ds-empty-action" onclick="${o.onAction}">
+           <span class="material-symbols-outlined text-[16px]" aria-hidden="true">${o.actionIcon || 'refresh'}</span>${o.actionLabel}
+         </button>`
+      : '';
+
+    if (table) table.removeAttribute('aria-busy');
+    tbody.innerHTML = `
+      <tr data-ds-ui="empty">
+        <td colspan="${cols}" style="padding:0;border:0;">
+          <div class="ds-empty" role="status">
+            <span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">${o.icon || 'inbox'}</span>
+            <h4>${o.title || 'Sin registros'}</h4>
+            <p>${o.message || 'Todavía no hay información para mostrar.'}</p>
+            ${action}
+          </div>
+        </td>
+      </tr>`;
+  },
+
+  /**
+   * SKILL 27: FIN DE CARGA — limpia el estado ocupado de la tabla.
+   */
+  finishLoading: function(tbodyId) {
+    const tbody = document.querySelector(`#main-container #${tbodyId}`) || document.getElementById(tbodyId);
+    if (!tbody) return;
+    const table = tbody.closest('table');
+    if (table) table.removeAttribute('aria-busy');
+    tbody.querySelectorAll('tr[data-ds-ui="skeleton"]').forEach(r => r.remove());
+  },
+
+  /**
+   * Helper interno: filas reales de datos (excluye esqueleto / vacío / sin-resultados).
+   */
+  _dataRows: function(tbody) {
+    return Array.from(tbody.querySelectorAll('tr')).filter(r => !r.hasAttribute('data-ds-ui'));
+  },
+
+  /**
+   * Helper interno: muestra u oculta el aviso "sin resultados" dentro de la tabla.
+   * Regla `empty-states` aplicada al filtrado: el usuario debe saber que su
+   * búsqueda no arrojó nada y poder deshacerla en un toque.
+   */
+  _toggleNoResults: function(tbody, show, term) {
+    let row = tbody.querySelector('tr[data-ds-ui="no-results"]');
+    if (!show) { if (row) row.remove(); return; }
+    if (row) return;
+
+    const table = tbody.closest('table');
+    const cols = table ? Math.max(1, table.querySelectorAll('thead th').length) : 1;
+    row = document.createElement('tr');
+    row.setAttribute('data-ds-ui', 'no-results');
+    row.innerHTML = `
+      <td colspan="${cols}" style="padding:0;border:0;">
+        <div class="ds-empty" role="status">
+          <span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">search_off</span>
+          <h4>Sin coincidencias</h4>
+          <p>${term ? `Ningún registro coincide con «${term}» y los filtros activos.` : 'Ningún registro coincide con los filtros activos.'}</p>
+          <button type="button" class="ds-empty-action" onclick="PWA_SKILLS.clearFilters()">
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">filter_alt_off</span>Limpiar filtros
+          </button>
+        </div>
+      </td>`.trim();
+    tbody.appendChild(row);
+  }
+};
+</script>

@@ -1,0 +1,295 @@
+<!-- =========================================================================
+     VISTA: RESUMEN — MÓDULO 08_PETAR
+     Un permiso solo importa mientras está vigente: la lista se organiza por
+     ventana horaria, no por fecha de creación.
+     ========================================================================= -->
+<div id="module-08_petar-resumen" class="module-view">
+
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="showView('Menu')" aria-label="Volver al menú principal"
+        class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_back</span>
+      </button>
+      <div>
+        <h2 class="font-h2 text-h2 text-on-surface leading-tight">Permisos de Alto Riesgo</h2>
+        <p class="text-[11px] text-on-surface-variant">Autorización, verificación y cierre de trabajos críticos</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <span id="ui-result-count" class="text-[10px] font-bold text-on-surface-variant mr-auto sm:mr-1 hidden"></span>
+      <div class="relative" id="ptr-export-wrap">
+        <button onclick="document.getElementById('ptr-export-menu').classList.toggle('hidden')"
+          class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-primary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>Exportar
+          <span class="material-symbols-outlined text-[13px] opacity-60" aria-hidden="true">expand_more</span>
+        </button>
+        <div id="ptr-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
+          <button onclick="PWA_SKILLS.exportFilteredToExcel(); document.getElementById('ptr-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
+            <span class="material-symbols-outlined text-[17px] text-green-600" aria-hidden="true">grid_on</span>Excel (.xlsx)
+          </button>
+          <button onclick="PWA_SKILLS.exportVisibleToCSV('PETAR'); document.getElementById('ptr-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-blue-600" aria-hidden="true">text_snippet</span>CSV (.csv)
+          </button>
+        </div>
+      </div>
+      <button onclick="changeInternalView('08_PETAR', 'Edicion')"
+        class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>Solicitar
+      </button>
+    </div>
+  </div>
+
+  <!-- Indicadores: lo que está pasando ahora mismo en campo -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <button type="button" onclick="ptrFiltrar('vigente')"
+      class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">Vigentes ahora</p>
+      <p class="text-2xl font-black text-emerald-700" id="ptr-kpi-vigentes">—</p>
+    </button>
+    <button type="button" onclick="ptrFiltrarEstado('Solicitado')"
+      class="bg-amber-50 border border-amber-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-1">Por aprobar</p>
+      <p class="text-2xl font-black text-amber-700" id="ptr-kpi-solicitados">—</p>
+    </button>
+    <button type="button" onclick="ptrFiltrar('sin-cerrar')"
+      class="bg-red-50 border border-red-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-red-700 uppercase tracking-widest mb-1">Vencidos sin cerrar</p>
+      <p class="text-2xl font-black text-red-700" id="ptr-kpi-sincerrar">—</p>
+    </button>
+    <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant p-3 shadow-sm">
+      <p class="text-[9px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Cerrados</p>
+      <p class="text-2xl font-black text-on-surface" id="ptr-kpi-cerrados">—</p>
+    </div>
+  </div>
+
+  <div id="ptr-alerta" class="hidden mb-4"></div>
+
+  <div id="ui-search-bar-slot"></div>
+
+  <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="petar-table">
+        <thead>
+          <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
+            <th class="px-3 py-2.5">Permiso / Fecha</th>
+            <th class="px-3 py-2.5">Tipo de trabajo</th>
+            <th class="px-3 py-2.5">Ventana</th>
+            <th class="px-3 py-2.5">Vigencia</th>
+            <th class="px-3 py-2.5">Estado</th>
+            <th class="px-3 py-2.5">Área</th>
+            <th class="px-3 py-2.5 text-center" data-nosort>Gestión</th>
+          </tr>
+        </thead>
+        <tbody id="petar-table-body" class="divide-y divide-outline-variant/40"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/**
+ * Estado real del permiso respecto al reloj.
+ * Un permiso aprobado ayer no autoriza nada hoy: esta función es la que
+ * distingue "aprobado" de "vigente".
+ */
+function ptrVigencia(r) {
+  if (!r.Fecha || !r.Hora_Inicio || !r.Hora_Fin) return { clave:'sin-horario', texto:'Sin horario' };
+  const ini = new Date(r.Fecha + 'T' + r.Hora_Inicio);
+  const fin = new Date(r.Fecha + 'T' + r.Hora_Fin);
+  if (isNaN(ini) || isNaN(fin)) return { clave:'sin-horario', texto:'Sin horario' };
+
+  const ahora = new Date();
+  if (r.Estado === 'Cerrado')   return { clave:'cerrado',   texto:'Cerrado' };
+  if (r.Estado === 'Rechazado' || r.Estado === 'Anulado')
+                                return { clave:'anulado',   texto:r.Estado };
+  if (ahora < ini)              return { clave:'programado',texto:'Programado' };
+  if (ahora > fin)              return { clave:'vencido',   texto:'Vencido sin cerrar' };
+
+  const restan = Math.round((fin - ahora) / 60000);
+  return { clave:'vigente', texto: restan > 60
+    ? 'Vigente · ' + Math.floor(restan / 60) + ' h'
+    : 'Vigente · ' + restan + ' min' };
+}
+
+function ptrVigenciaBadge(v) {
+  const m = {
+    'vigente':     { cls:'bg-emerald-100 text-emerald-800 border-emerald-200', ico:'play_circle' },
+    'programado':  { cls:'bg-blue-100 text-blue-800 border-blue-200',          ico:'schedule' },
+    'vencido':     { cls:'bg-red-100 text-red-800 border-red-200',             ico:'timer_off' },
+    'cerrado':     { cls:'bg-surface-variant text-secondary border-outline-variant', ico:'task_alt' },
+    'anulado':     { cls:'bg-surface-variant text-secondary border-outline-variant', ico:'block' },
+    'sin-horario': { cls:'bg-surface-variant text-secondary border-outline-variant', ico:'help' }
+  };
+  const c = m[v.clave];
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border whitespace-nowrap ' + c.cls + '">' +
+         '<span class="material-symbols-outlined text-[11px]" aria-hidden="true">' + c.ico + '</span>' + v.texto + '</span>';
+}
+
+function ptrEstadoBadge(e) {
+  const m = {
+    'Solicitado':   'bg-amber-100 text-amber-800',
+    'Aprobado':     'bg-emerald-100 text-emerald-800',
+    'En ejecución': 'bg-blue-100 text-blue-800',
+    'Cerrado':      'bg-slate-100 text-slate-700',
+    'Rechazado':    'bg-red-100 text-red-800',
+    'Anulado':      'bg-surface-variant text-secondary'
+  };
+  return '<span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ' +
+         (m[e] || 'bg-surface-variant text-secondary') + '">' + (e || '—') + '</span>';
+}
+
+function ptrRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #petar-table-body');
+  if (!tbody) return;
+
+  const conVig = data.map(r => ({ r: r, v: ptrVigencia(r) }));
+  const vigentes   = conVig.filter(x => x.v.clave === 'vigente');
+  const sinCerrar  = conVig.filter(x => x.v.clave === 'vencido');
+  const solicitados= data.filter(r => r.Estado === 'Solicitado');
+  const cerrados   = data.filter(r => r.Estado === 'Cerrado');
+
+  const set = (id, v) => { const e = document.querySelector('#main-container #' + id); if (e) e.textContent = v; };
+  set('ptr-kpi-vigentes',   vigentes.length);
+  set('ptr-kpi-solicitados',solicitados.length);
+  set('ptr-kpi-sincerrar',  sinCerrar.length);
+  set('ptr-kpi-cerrados',   cerrados.length);
+
+  // Un permiso vencido sin cerrar significa gente trabajando sin autorización
+  const alerta = document.querySelector('#main-container #ptr-alerta');
+  if (alerta) {
+    if (sinCerrar.length) {
+      alerta.className = 'mb-4';
+      alerta.innerHTML =
+        '<div class="flex items-start gap-2.5 p-3 rounded-xl border border-red-200 bg-red-50">' +
+        '<span class="material-symbols-outlined text-[19px] text-red-700 shrink-0" aria-hidden="true">timer_off</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-bold text-red-800">' + sinCerrar.length + ' permiso(s) vencidos sin cerrar</p>' +
+        '<p class="text-[10px] text-red-700 mt-0.5">Si el trabajo continúa, se está ejecutando sin autorización vigente.</p></div>' +
+        '<button type="button" onclick="ptrFiltrar(\'sin-cerrar\')" class="text-[10px] font-black underline text-red-800 shrink-0">Ver</button></div>';
+    } else {
+      alerta.className = 'hidden mb-4';
+      alerta.innerHTML = '';
+    }
+  }
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('petar-table-body', {
+      icon: 'assignment_turned_in',
+      title: 'Sin permisos registrados',
+      message: 'Todo trabajo de alto riesgo necesita un permiso escrito antes de iniciar.',
+      actionLabel: 'Solicitar permiso', actionIcon: 'add',
+      onAction: "changeInternalView('08_PETAR','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  // Orden por urgencia operativa: lo vencido sin cerrar primero, luego lo vigente
+  const peso = { 'vencido':0, 'vigente':1, 'programado':2, 'sin-horario':3, 'cerrado':4, 'anulado':5 };
+  conVig.sort((a, b) => peso[a.v.clave] - peso[b.v.clave]);
+
+  PWA_SKILLS.finishLoading('petar-table-body');
+  tbody.innerHTML = conVig.map(({ r, v }) => `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
+        onclick="changeInternalView('08_PETAR','Detalle','${r.UUID}')">
+      <td class="px-3 py-2">
+        <div class="font-bold text-[11px] text-primary">${r.UUID || '—'}</div>
+        <div class="text-[10px] text-secondary">${r.Fecha || '—'}</div>
+      </td>
+      <td class="px-3 py-2">
+        <div class="text-[11px] font-semibold text-on-surface">${r.Tipo_Trabajo || '—'}</div>
+        <div class="text-[10px] text-secondary">${r.Empresa || ''}</div>
+      </td>
+      <td class="px-3 py-2">
+        <span class="text-[11px] font-bold text-on-surface tabular-nums whitespace-nowrap">
+          ${r.Hora_Inicio || '--'} – ${r.Hora_Fin || '--'}
+        </span>
+      </td>
+      <td class="px-3 py-2">${ptrVigenciaBadge(v)}</td>
+      <td class="px-3 py-2">${ptrEstadoBadge(r.Estado)}</td>
+      <td class="px-3 py-2 text-[11px] text-on-surface-variant">${r.Area || '—'}</td>
+      <td class="px-3 py-2 text-center" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-center gap-1">
+          <button onclick="changeInternalView('08_PETAR','Detalle','${r.UUID}')" aria-label="Ver el permiso ${r.UUID}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">visibility</span>
+          </button>
+          <button onclick="changeInternalView('08_PETAR','Edicion','${r.UUID}')" aria-label="Editar el permiso ${r.UUID}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-secondary hover:bg-surface-variant transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">edit</span>
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  PWA_SKILLS.initSortableTable('petar-table-body');
+  PWA_SKILLS.enhanceTable('petar-table-body');
+  PWA_SKILLS.updateResultCount('petar-table-body', 'ui-result-count');
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function ptrFiltrar(clave) {
+  ptrRenderTabla((window._ptrData || []).filter(r => {
+    const v = ptrVigencia(r).clave;
+    return clave === 'sin-cerrar' ? v === 'vencido' : v === clave;
+  }));
+  const t = { 'vigente':'vigentes ahora', 'sin-cerrar':'vencidos sin cerrar' };
+  PWA_SKILLS.toast('Mostrando permisos ' + (t[clave] || clave) + '.', 'info', 3000);
+}
+
+function ptrFiltrarEstado(estado) {
+  ptrRenderTabla((window._ptrData || []).filter(r => r.Estado === estado));
+  PWA_SKILLS.toast('Mostrando permisos en estado "' + estado + '".', 'info', 3000);
+}
+
+function loadResumen_08_PETAR() {
+  PWA_SKILLS.renderSkeleton('petar-table-body', 6);
+
+  if (!window._ptrExportListener) {
+    window._ptrExportListener = true;
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('ptr-export-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById('ptr-export-menu');
+        if (menu) menu.classList.add('hidden');
+      }
+    });
+  }
+
+  DataService.read('08_PETAR')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      // Alcance por rol: un trabajador no debe recibir registros ajenos.
+      // El filtro del navegador es comodidad; la restricción real la
+      // aplica RLS en la base de datos.
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('08_PETAR\Mod_08_PETAR_Resumen.html', filas) : filas;
+      window._ptrData = visibles;
+      localStorage.setItem('refdata_08_PETAR', JSON.stringify(visibles));
+      ptrRenderTabla(visibles);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_08_PETAR')) || []; } catch (e) {}
+      window._ptrData = cache;
+      if (cache.length) {
+        ptrRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('petar-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar los permisos y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_08_PETAR()"
+        });
+      }
+    });
+}
+</script>

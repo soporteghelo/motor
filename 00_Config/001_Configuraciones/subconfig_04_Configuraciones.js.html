@@ -1,0 +1,142 @@
+<script>
+// =========================================================================
+// SUBCONFIG: 04_Configuraciones
+// =========================================================================
+const SUBCONFIG_04_CONFIGURACIONES = {
+  Module_ID: '04_Configuraciones',
+  Module_Name: 'Configuraciones',
+  Icon: 'settings',
+
+  Defaults: {
+    App_Nombre:           'MOTOR PWA',
+    App_Empresa:          'Empresa Demo S.A.C.',
+    App_Version:          '1.5.0',
+    App_Logo_URL:         '',
+    Color_Primario:       '#1A73E8',
+    Sync_Intervalo:       '5',
+    Calidad_Compresion:   'Medio',
+    Max_Batch_Size:       '50',
+    Session_Timeout:      '480',
+    Modulo_Inspecciones:  'Activo',
+    Modulo_Reportes:      'Activo',
+    Modulo_Usuarios:      'Activo'
+  },
+
+  Config_Modular: {
+    NombreInterno:          '04_Configuraciones',
+    GOOGLE_DOC_TEMPLATE_ID: '',
+    Relational_Fields:      [],
+
+    // Configuración de la empresa: el Admin ajusta lo suyo, nadie más entra.
+    // El SuperAdmin (proveedor) accede por jerarquía desde PERMISOS.matriz().
+    AdminRole:       { canCreate: false, canRead: true , canUpdate: true , canDelete: false, alcance: "todos" },
+    SupervisorRole:  { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: "propios" },
+    TrabajadorRole:  { canCreate: false, canRead: false, canUpdate: false, canDelete: false, alcance: "propios" }
+  }
+};
+
+/**
+ * Lee configuración desde localStorage, mezclando con Defaults.
+ */
+function getAppSettings() {
+  try {
+    const raw = localStorage.getItem('pwa_app_settings');
+    const saved = raw ? JSON.parse(raw) : {};
+    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults, saved);
+  } catch(e) {
+    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults);
+  }
+}
+
+/**
+ * Guarda configuración parcial o total en localStorage.
+ */
+function saveAppSettings(settings) {
+  const current = getAppSettings();
+  const merged = Object.assign({}, current, settings);
+  localStorage.setItem('pwa_app_settings', JSON.stringify(merged));
+  applyAppSettings();
+}
+
+/**
+ * Aplica la configuración guardada a AppState y CSS vars.
+ * Llamar al iniciar la app y después de cada save.
+ */
+function applyAppSettings() {
+  try {
+    const s = getAppSettings();
+
+    // AppState
+    if (typeof AppState !== 'undefined') {
+      AppState.APP_NAME                        = s.App_Nombre;
+      AppState.VERSION                         = s.App_Version;
+      if (AppState.Settings) {
+        AppState.Settings.CalidadCompresion    = s.Calidad_Compresion;
+        AppState.Settings.MaxBatchSize         = parseInt(s.Max_Batch_Size) || 50;
+        AppState.Settings.OfflineSyncInterval  = parseInt(s.Sync_Intervalo) * 60 * 1000;
+      }
+    }
+
+    // CSS: color primario
+    document.documentElement.style.setProperty('--color-primary', s.Color_Primario);
+
+    // Footer versión
+    const fv = document.getElementById('footer-version-tag');
+    if (fv) fv.textContent = `${s.App_Nombre} v${s.App_Version}`;
+
+    // Top bar título si está en menú
+    const title = document.getElementById('app-title');
+    if (title && title.innerText === 'Menú Principal') {
+      // no pisar el título mientras navegan, solo el APP_NAME está disponible
+    }
+  } catch(e) {
+    console.warn('applyAppSettings error:', e);
+  }
+}
+
+/**
+ * Siembra el usuario demo admin en localStorage si aún no existe.
+ * Llamar desde initApp() después de initOfflineDB().
+ */
+async function seedDemoUsers() {
+  const key = 'pwa_demo_users';
+  if (localStorage.getItem(key)) return;
+  try {
+    const hash = await PWA_SKILLS.hashSHA256('admin123');
+    const demoUsers = [
+      {
+        DNI: 'admin',
+        Password_Hash: hash,
+        Nombre_Completo: 'Administrador Sistema',
+        Email: 'admin@empresa.com',
+        Rol: 'Admin',
+        Status: 'Activo'
+      }
+    ];
+    localStorage.setItem(key, JSON.stringify(demoUsers));
+    console.log('✅ Usuario demo sembrado correctamente.');
+  } catch(e) {
+    console.warn('seedDemoUsers error:', e);
+  }
+}
+
+/**
+ * Intenta autenticar contra los usuarios demo almacenados localmente.
+ * Devuelve el objeto userData si coincide, o null si no.
+ */
+async function authenticateOffline(dni, passHash) {
+  try {
+    const raw = localStorage.getItem('pwa_demo_users');
+    if (!raw) return null;
+    const users = JSON.parse(raw);
+    const found = users.find(u =>
+      String(u.DNI).toLowerCase() === String(dni).toLowerCase() &&
+      u.Password_Hash === passHash &&
+      u.Status !== 'Cesado'
+    );
+    return found || null;
+  } catch(e) {
+    return null;
+  }
+}
+</script>

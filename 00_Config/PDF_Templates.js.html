@@ -1,0 +1,546 @@
+<script>
+/**
+ * =========================================================================
+ * PLANTILLAS PDF — El administrador las edita en Google Docs
+ * =========================================================================
+ * ARCHIVO: PDF_Templates.js.html
+ *
+ * CÓMO FUNCIONA
+ * Cada módulo se vincula a un Google Doc que hace de plantilla. El admin lo
+ * abre en Google Docs —editor que ya sabe usar— y le da el formato que
+ * quiera: logo, colores, tablas, tipografías. Los datos se insertan donde
+ * escriba marcadores con la forma  <<[Nombre_Del_Campo]>>.
+ *
+ * Al exportar, el backend copia la plantilla, sustituye los marcadores
+ * (preservando el formato del documento), repite las filas de detalle,
+ * inserta firmas e imágenes y devuelve el PDF.
+ *
+ * DÓNDE SE GUARDA EL VÍNCULO
+ * Pestaña `_PLANTILLA_PDF` del Spreadsheet de cada módulo, fila DOC_ID.
+ * localStorage queda como caché para no consultar el servidor cada vez.
+ *
+ * RESPALDO
+ * Si un módulo todavía no tiene plantilla, se imprime con un formato interno
+ * por defecto (`plantillaBase` + `renderHTML`) para que el botón "Descargar
+ * PDF" nunca se quede sin hacer nada. Ese formato NO es editable: para
+ * personalizarlo hay que crear la plantilla de Google Docs.
+ * =========================================================================
+ */
+
+const PDF_TEMPLATE = {
+
+  STORAGE_KEY: 'pwa_pdf_doc_templates',
+
+  // -----------------------------------------------------------------------
+  // VÍNCULO CON LA PLANTILLA DE GOOGLE DOCS
+  // -----------------------------------------------------------------------
+  _cache: function() {
+    try { return JSON.parse(localStorage.getItem(this.STORAGE_KEY)) || {}; }
+    catch (e) { return {}; }
+  },
+
+  /** ID del Doc vinculado al módulo (cadena vacía si no hay) */
+  docId: function(modulo) {
+    return (this._cache()[modulo] || {}).docId || '';
+  },
+
+  docUrl: function(modulo) {
+    const id = this.docId(modulo);
+    return id ? 'https://docs.google.com/document/d/' + id + '/edit' : '';
+  },
+
+  /** Guarda el vínculo localmente y en la base de datos */
+  vincular: function(modulo, docId) {
+    const c = this._cache();
+    c[modulo] = { docId: String(docId || '').trim(), fecha: new Date().toISOString() };
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
+
+    if (typeof DataService === 'undefined' || !DataService.saveTemplate) {
+      return Promise.resolve({ remoto: false, msg: 'Guardado solo en este dispositivo.' });
+    }
+    return DataService.saveTemplate(modulo, c[modulo].docId)
+      .then(r => (r && r.status === 'OK')
+        ? { remoto: true,  msg: 'Plantilla vinculada para toda la organización.' }
+        : { remoto: false, msg: (r && r.msg) || 'No se pudo guardar el vínculo en la base de datos.' })
+      .catch(e => ({ remoto: false, msg: 'Sin conexión con el servidor: ' + (e.message || e) }));
+  },
+
+  /** Trae el vínculo vigente desde la base de datos */
+  sincronizar: function(modulo) {
+    if (typeof DataService === 'undefined' || !DataService.readTemplate) {
+      return Promise.resolve({ origen: 'local', docId: this.docId(modulo) });
+    }
+    return DataService.readTemplate(modulo).then(r => {
+      const id = (r && r.status === 'OK' && r.payload) ? String(r.payload.DOC_ID || '').trim() : '';
+      if (id) {
+        const c = this._cache();
+        c[modulo] = { docId: id, fecha: new Date().toISOString() };
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(c));
+        return { origen: 'bd', docId: id };
+      }
+      return { origen: 'local', docId: this.docId(modulo) };
+    }).catch(() => ({ origen: 'local', docId: this.docId(modulo) }));
+  },
+
+  /**
+   * Pide al servidor que cree el Google Doc base del módulo, ya armado con
+   * todos los campos. El admin nunca parte de una hoja en blanco.
+   */
+  crearPlantillaBase: function(modulo) {
+    const campos  = this.camposDe(modulo);
+    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
+    const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
+
+    return new Promise((resolve, reject) => {
+      if (typeof google === 'undefined' || !google.script) {
+        reject(new Error('Esta acción necesita conexión con Google Apps Script.'));
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(res => {
+          try { resolve(typeof res === 'string' ? JSON.parse(res) : res); }
+          catch (e) { reject(new Error('Respuesta inválida del servidor.')); }
+        })
+        .withFailureHandler(err => reject(err))
+        .serverRouter(JSON.stringify({
+          action: 'CREATE_DOC_TEMPLATE',
+          moduleName: modulo,
+          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
+          titulo:  'Informe de ' + String(modulo).replace(/^\d+_/, '').replace(/_/g, ' '),
+          empresa: ajustes.App_Empresa || '',
+          campos:       campos.texto.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
+          camposHijos:  campos.hijos.map(c => ({ clave: c.clave, etiqueta: c.etiqueta })),
+          camposFirma:  campos.media.filter(c => c.tipo === 'Signature')
+                                    .map(c => ({ clave: c.clave, etiqueta: c.etiqueta }))
+        }));
+    });
+  },
+
+  /** Lista de marcadores que el admin puede pegar en el Doc */
+  marcadores: function(modulo) {
+    const c = this.camposDe(modulo);
+    return {
+      registro: c.texto.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
+      media:    c.media.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
+      detalle:  c.hijos.map(x => ({ etiqueta: x.etiqueta, marcador: '<<[' + x.clave + ']>>' })),
+      especiales: [{ etiqueta: 'Fecha de emisión', marcador: '<<[__FECHA__]>>' }]
+    };
+  },
+
+  // -----------------------------------------------------------------------
+  // LECTURA DEL ESQUEMA DEL MÓDULO
+  // -----------------------------------------------------------------------
+  /**
+   * Devuelve los campos que el admin puede colocar en el PDF, ya clasificados.
+   * Se leen del subconfig del módulo: así, si mañana añades un campo al
+   * formulario, aparece solo en el editor. Cero mantenimiento.
+   */
+  camposDe: function(modulo) {
+    const nombre = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    const cfg = window[nombre];
+    const out = { texto: [], media: [], hijos: [] };
+    if (!cfg || !cfg.Variables) return out;
+
+    Object.keys(cfg.Variables).forEach(clave => {
+      const def = cfg.Variables[clave] || {};
+      if (def.type === 'Hidden' || def.type === 'Hidden_UUID') return;   // trazabilidad interna
+      const item = { clave: clave, etiqueta: (def.label || clave).replace(/_/g, ' '), tipo: def.type,
+                     valores: def.acceptedValues || null };
+      if (['Image', 'Image_Collection', 'Signature', 'File'].includes(def.type)) out.media.push(item);
+      else out.texto.push(item);
+    });
+
+    const rel = (cfg.Config_Modular || {}).Relational_Fields || [];
+    rel.forEach(f => out.hijos.push({ clave: f.name, etiqueta: f.label || f.name, tipo: f.type || 'text' }));
+
+    return out;
+  },
+
+  tieneTablaHija: function(modulo) {
+    const nombre = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    const cfg = window[nombre];
+    return !!(cfg && cfg.Config_Modular && cfg.Config_Modular.CHILD_TABLE);
+  },
+
+  // -----------------------------------------------------------------------
+  // PLANTILLA BASE (la "versión cero" que programa el desarrollador)
+  // -----------------------------------------------------------------------
+  /**
+   * Genera una plantilla de arranque a partir del esquema del módulo.
+   * El admin nunca parte de una hoja en blanco: recibe un documento armado
+   * con todos los campos y a partir de ahí quita, mueve y ajusta.
+   */
+  plantillaBase: function(modulo) {
+    const campos = this.camposDe(modulo);
+    const titulo = String(modulo).replace(/^\d+_/, '').replace(/_/g, ' ');
+    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
+
+    const bloques = [
+      { id: this._id(), tipo: 'encabezado',
+        titulo: 'Informe de ' + titulo,
+        subtitulo: ajustes.App_Empresa || '',
+        logoUrl: ajustes.App_Logo || '',
+        mostrarFecha: true, alineacion: 'izquierda' },
+      { id: this._id(), tipo: 'datos', titulo: 'Datos del registro', columnas: 2,
+        campos: campos.texto.map(c => c.clave) }
+    ];
+
+    if (this.tieneTablaHija(modulo) && campos.hijos.length) {
+      bloques.push({ id: this._id(), tipo: 'tablaHija', titulo: 'Detalle',
+                     campos: campos.hijos.map(c => c.clave) });
+    }
+
+    const fotos = campos.media.filter(c => c.tipo !== 'Signature');
+    if (fotos.length) {
+      bloques.push({ id: this._id(), tipo: 'imagenes', titulo: 'Evidencia fotográfica',
+                     campos: fotos.map(c => c.clave) });
+    }
+
+    const firmas = campos.media.filter(c => c.tipo === 'Signature');
+    bloques.push({ id: this._id(), tipo: 'firmas', titulo: 'Conformidad',
+      firmas: firmas.length
+        ? firmas.map(f => ({ etiqueta: f.etiqueta, campo: f.clave }))
+        : [{ etiqueta: 'Responsable', campo: '' }, { etiqueta: 'Supervisor', campo: '' }] });
+
+    return {
+      version: 1, modulo: modulo,
+      pagina: { tamano: 'A4', orientacion: 'vertical', margen: 16 },
+      bloques: bloques
+    };
+  },
+
+  _id: function() { return 'b' + Math.random().toString(36).slice(2, 9); },
+
+  // -----------------------------------------------------------------------
+  // RENDERIZADO — bloques → HTML imprimible
+  // -----------------------------------------------------------------------
+  _esc: function(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  },
+
+  /** Sanea una URL de imagen: solo http(s) o data:image */
+  _src: function(v) {
+    const t = String(v || '').trim();
+    return (/^https?:\/\//i.test(t) || /^data:image\//i.test(t)) ? t : '';
+  },
+
+  _valor: function(registro, clave) {
+    const v = registro ? registro[clave] : '';
+    return (v === null || v === undefined || v === '') ? '—' : v;
+  },
+
+  /** Sustituye {{Campo}} dentro de un texto libre */
+  _interpolar: function(texto, registro) {
+    return this._esc(texto).replace(/\{\{\s*([\w]+)\s*\}\}/g, (m, clave) =>
+      this._esc(this._valor(registro, clave)));
+  },
+
+  _etiquetaDe: function(modulo, clave) {
+    const campos = this.camposDe(modulo);
+    const todos = campos.texto.concat(campos.media, campos.hijos);
+    const hit = todos.find(c => c.clave === clave);
+    return hit ? hit.etiqueta : String(clave).replace(/_/g, ' ');
+  },
+
+  /**
+   * Convierte la plantilla + un registro en el HTML del documento.
+   * @param {object} plantilla
+   * @param {object} registro  - fila principal
+   * @param {Array}  hijos     - filas de la tabla hija
+   */
+  renderHTML: function(plantilla, registro, hijos) {
+    const self = this;
+    const mod = plantilla.modulo;
+    hijos = hijos || [];
+    let cuerpo = '';
+
+    (plantilla.bloques || []).forEach(b => {
+      switch (b.tipo) {
+
+        case 'encabezado': {
+          const logo = self._src(b.logoUrl);
+          const fecha = b.mostrarFecha
+            ? '<div class="pt-fecha">Emitido: ' + self._esc(new Date().toLocaleDateString('es-PE',
+                { day:'2-digit', month:'long', year:'numeric' })) + '</div>' : '';
+          cuerpo +=
+            '<header class="pt-head pt-al-' + self._esc(b.alineacion || 'izquierda') + '">' +
+              (logo ? '<img class="pt-logo" src="' + self._esc(logo) + '" alt="">' : '') +
+              '<div class="pt-head-tx">' +
+                '<h1>' + self._esc(b.titulo || '') + '</h1>' +
+                (b.subtitulo ? '<p>' + self._esc(b.subtitulo) + '</p>' : '') +
+                fecha +
+              '</div>' +
+            '</header>';
+          break;
+        }
+
+        case 'datos': {
+          const cols = Math.min(3, Math.max(1, parseInt(b.columnas) || 2));
+          const celdas = (b.campos || []).map(clave =>
+            '<div class="pt-campo">' +
+              '<span class="pt-lbl">' + self._esc(self._etiquetaDe(mod, clave)) + '</span>' +
+              '<span class="pt-val">' + self._esc(self._valor(registro, clave)) + '</span>' +
+            '</div>').join('');
+          cuerpo +=
+            '<section class="pt-sec">' +
+              (b.titulo ? '<h2>' + self._esc(b.titulo) + '</h2>' : '') +
+              '<div class="pt-grid pt-c' + cols + '">' + celdas + '</div>' +
+            '</section>';
+          break;
+        }
+
+        case 'texto':
+          cuerpo += '<section class="pt-sec"><p class="pt-texto">' +
+                    self._interpolar(b.contenido || '', registro) + '</p></section>';
+          break;
+
+        case 'tablaHija': {
+          const cs = b.campos || [];
+          const th = cs.map(c => '<th>' + self._esc(self._etiquetaDe(mod, c)) + '</th>').join('');
+          const tr = hijos.length
+            ? hijos.map(fila => '<tr>' + cs.map(c =>
+                '<td>' + self._esc(self._valor(fila, c)) + '</td>').join('') + '</tr>').join('')
+            : '<tr><td colspan="' + Math.max(1, cs.length) + '" class="pt-vacio">Sin registros de detalle</td></tr>';
+          cuerpo +=
+            '<section class="pt-sec">' +
+              (b.titulo ? '<h2>' + self._esc(b.titulo) + '</h2>' : '') +
+              '<table class="pt-tabla"><thead><tr>' + th + '</tr></thead><tbody>' + tr + '</tbody></table>' +
+            '</section>';
+          break;
+        }
+
+        case 'imagenes': {
+          const imgs = (b.campos || []).map(clave => {
+            const bruto = registro ? registro[clave] : '';
+            if (!bruto) return '';
+            return String(bruto).split(',').map(u => {
+              const src = self._src(u.trim());
+              return src ? '<figure class="pt-fig"><img src="' + self._esc(src) + '" alt="">' +
+                           '<figcaption>' + self._esc(self._etiquetaDe(mod, clave)) + '</figcaption></figure>' : '';
+            }).join('');
+          }).join('');
+          cuerpo +=
+            '<section class="pt-sec">' +
+              (b.titulo ? '<h2>' + self._esc(b.titulo) + '</h2>' : '') +
+              (imgs ? '<div class="pt-figs">' + imgs + '</div>'
+                    : '<p class="pt-vacio">Sin imágenes adjuntas</p>') +
+            '</section>';
+          break;
+        }
+
+        case 'firmas': {
+          const fs = (b.firmas || []).map(f => {
+            const src = f.campo ? self._src(registro ? registro[f.campo] : '') : '';
+            return '<div class="pt-firma">' +
+                     (src ? '<img src="' + self._esc(src) + '" alt="">' : '<div class="pt-firma-hueco"></div>') +
+                     '<span>' + self._esc(f.etiqueta || '') + '</span>' +
+                   '</div>';
+          }).join('');
+          cuerpo +=
+            '<section class="pt-sec pt-no-cortar">' +
+              (b.titulo ? '<h2>' + self._esc(b.titulo) + '</h2>' : '') +
+              '<div class="pt-firmas">' + fs + '</div>' +
+            '</section>';
+          break;
+        }
+
+        case 'espacio':
+          cuerpo += '<div style="height:' + (parseInt(b.alto) || 16) + 'px"></div>';
+          break;
+
+        case 'saltoPagina':
+          cuerpo += '<div class="pt-salto"></div>';
+          break;
+      }
+    });
+
+    return cuerpo;
+  },
+
+  /** Documento completo (con estilos de impresión) listo para imprimir */
+  documentoHTML: function(plantilla, registro, hijos, titulo) {
+    const pag = plantilla.pagina || {};
+    const orientacion = pag.orientacion === 'horizontal' ? 'landscape' : 'portrait';
+    const margen = parseInt(pag.margen) || 16;
+    const reglaPagina = '@page { size: ' + (pag.tamano || 'A4') + ' ' + orientacion +
+                        '; margin: ' + margen + 'mm; }';
+    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">' +
+      '<title>' + this._esc(titulo || 'Documento') + '</title>' +
+      '<style>' + this.CSS.replace('@PAGE_RULE@', reglaPagina) + '</style>' +
+      '</head><body>' + this.renderHTML(plantilla, registro, hijos) + '</body></html>';
+  },
+
+  /** Hoja de estilos del formato interno de respaldo */
+  CSS: '@PAGE_RULE@' +
+      '* { box-sizing:border-box; }' +
+      'body { font-family: Inter, Arial, Helvetica, sans-serif; color:#1b1b21; font-size:11pt; margin:0; line-height:1.45; }' +
+      '.pt-head { display:flex; gap:14px; align-items:center; border-bottom:2px solid #000666; padding-bottom:10px; margin-bottom:16px; }' +
+      '.pt-al-centro { justify-content:center; text-align:center; } .pt-al-derecha { justify-content:flex-end; text-align:right; }' +
+      '.pt-logo { max-height:52px; max-width:150px; object-fit:contain; }' +
+      '.pt-head h1 { font-size:17pt; margin:0; color:#000666; }' +
+      '.pt-head p { margin:2px 0 0; font-size:10pt; color:#505f76; }' +
+      '.pt-fecha { font-size:8.5pt; color:#767683; margin-top:3px; }' +
+      '.pt-sec { margin-bottom:14px; }' +
+      '.pt-sec h2 { font-size:10pt; text-transform:uppercase; letter-spacing:.06em; color:#505f76; ' +
+        'border-bottom:1px solid #c6c5d4; padding-bottom:3px; margin:0 0 8px; }' +
+      '.pt-grid { display:grid; gap:7px 16px; }' +
+      '.pt-c1 { grid-template-columns:1fr; } .pt-c2 { grid-template-columns:1fr 1fr; } .pt-c3 { grid-template-columns:1fr 1fr 1fr; }' +
+      '.pt-campo { display:flex; flex-direction:column; border-bottom:1px dotted #dcdbe4; padding-bottom:3px; }' +
+      '.pt-lbl { font-size:7.5pt; text-transform:uppercase; letter-spacing:.05em; color:#767683; font-weight:700; }' +
+      '.pt-val { font-size:10.5pt; font-weight:600; }' +
+      '.pt-texto { margin:0; font-size:10.5pt; white-space:pre-wrap; }' +
+      '.pt-tabla { width:100%; border-collapse:collapse; font-size:9pt; }' +
+      '.pt-tabla th { background:#f0eff5; text-align:left; padding:5px 7px; border:1px solid #c6c5d4; ' +
+        'font-size:8pt; text-transform:uppercase; letter-spacing:.04em; }' +
+      '.pt-tabla td { padding:5px 7px; border:1px solid #dcdbe4; vertical-align:top; }' +
+      '.pt-vacio { color:#767683; font-style:italic; text-align:center; font-size:9pt; }' +
+      '.pt-figs { display:flex; flex-wrap:wrap; gap:10px; }' +
+      '.pt-fig { width:31%; margin:0; } .pt-fig img { width:100%; border:1px solid #c6c5d4; border-radius:4px; }' +
+      '.pt-fig figcaption { font-size:7.5pt; color:#767683; margin-top:3px; text-align:center; }' +
+      '.pt-firmas { display:flex; gap:26px; margin-top:26px; }' +
+      '.pt-firma { flex:1; text-align:center; }' +
+      '.pt-firma img { max-height:58px; display:block; margin:0 auto 3px; }' +
+      '.pt-firma-hueco { height:58px; }' +
+      '.pt-firma span { display:block; border-top:1px solid #1b1b21; padding-top:4px; font-size:9pt; font-weight:600; }' +
+      '.pt-no-cortar { break-inside:avoid; page-break-inside:avoid; }' +
+      '.pt-salto { break-after:page; page-break-after:always; }',
+
+  // -----------------------------------------------------------------------
+  // SALIDA
+  // -----------------------------------------------------------------------
+  /**
+   * Abre el diálogo de impresión (Guardar como PDF).
+   * Parte del HTML-plantilla guardado —el mismo que vive en la base de datos—
+   * y solo sustituye marcadores. Así el documento impreso es exactamente el
+   * que el administrador aprobó, no una nueva interpretación de los bloques.
+   */
+  exportar: function(modulo, registro, hijos, titulo) {
+    const html = this.documentoHTML(this.plantillaBase(modulo), registro, hijos, titulo || modulo);
+    const win = window.open('', '_blank');
+    if (!win) {
+      if (typeof PWA_SKILLS !== 'undefined') {
+        PWA_SKILLS.toast('El navegador bloqueó la ventana. Permite las ventanas emergentes.', 'error', 5000);
+      }
+      return false;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.onload = function() { win.focus(); win.print(); };
+    return true;
+  },
+
+  /**
+   * Localiza un registro por UUID probando las fuentes disponibles, en orden:
+   * caché en memoria del módulo → caché de referencia en localStorage → datos demo.
+   * Así funciona igual online, offline y en el preview local.
+   */
+  buscarRegistro: function(modulo, uuid) {
+    const claves = ['_actData', '_actDemoData'];
+    const fuentes = [];
+
+    // Caché específica que ya publican algunos módulos
+    claves.forEach(k => { if (Array.isArray(window[k])) fuentes.push(window[k]); });
+
+    // Caché de referencia estándar
+    try {
+      const raw = localStorage.getItem('refdata_' + modulo);
+      if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) fuentes.unshift(arr); }
+    } catch (e) {}
+
+    for (const f of fuentes) {
+      const hit = f.find(r => String(r.UUID) === String(uuid));
+      if (hit) return hit;
+    }
+    return null;
+  },
+
+  /**
+   * Exporta el registro visible usando la plantilla del módulo.
+   * Si no se encuentra el registro en caché, cae a los datos de ejemplo para
+   * que el usuario al menos vea el formato (y se le avisa).
+   */
+  exportarRegistro: function(modulo, uuid, titulo) {
+    const docId = this.docId(modulo);
+
+    // 1. CON plantilla de Google Docs → la genera el servidor con el diseño
+    //    que el administrador preparó en el Doc.
+    if (docId && typeof google !== 'undefined' && google.script) {
+      const cfg = window['SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '')] || {};
+      const modular = cfg.Config_Modular || {};
+
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Generando PDF con la plantilla…', 'info', 2500);
+
+      google.script.run
+        .withSuccessHandler(res => {
+          let r; try { r = typeof res === 'string' ? JSON.parse(res) : res; } catch (e) { r = {}; }
+          if (r.status === 'OK' && r.pdfUrl) {
+            window.open(r.pdfUrl, '_blank');
+            if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('PDF generado y guardado en Drive.', 'success', 3200);
+          } else if (r.status === 'NO_TEMPLATE') {
+            this._exportarRespaldo(modulo, uuid, titulo);
+          } else {
+            if (typeof PWA_SKILLS !== 'undefined') {
+              PWA_SKILLS.toast('No se pudo generar el PDF: ' + (r.msg || 'error del servidor') +
+                               '. Se usa el formato interno.', 'warning', 5000);
+            }
+            this._exportarRespaldo(modulo, uuid, titulo);
+          }
+        })
+        .withFailureHandler(() => {
+          if (typeof PWA_SKILLS !== 'undefined') {
+            PWA_SKILLS.toast('Sin conexión con el servidor. Se imprime con el formato interno.', 'warning', 4500);
+          }
+          this._exportarRespaldo(modulo, uuid, titulo);
+        })
+        .serverRouter(JSON.stringify({
+          action: 'GENERATE_PDF',
+          moduleName: modulo,
+          userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null,
+          uuid: uuid,
+          docId: docId,
+          childTable:    modular.CHILD_TABLE  || '',
+          relationalKey: modular.RELATIONAL_KEY || 'UUID',
+          subconfig: { Variables: cfg.Variables || {} }
+        }));
+      return true;
+    }
+
+    // 2. SIN plantilla → formato interno, para que el botón siempre responda
+    return this._exportarRespaldo(modulo, uuid, titulo);
+  },
+
+  /** Formato por defecto (no editable). Se usa mientras no haya plantilla de Docs. */
+  _exportarRespaldo: function(modulo, uuid, titulo) {
+    let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
+    let hijos = [];
+
+    if (!registro) {
+      const ej = this.registroEjemplo(modulo);
+      registro = ej.registro; hijos = ej.hijos;
+      if (typeof PWA_SKILLS !== 'undefined') {
+        PWA_SKILLS.toast('No se halló el registro en caché; se exporta el formato con datos de ejemplo.', 'warning', 4200);
+      }
+    }
+    return this.exportar(modulo, registro, hijos, titulo || (modulo + ' ' + (uuid || '')));
+  },
+
+  /** Registro de ejemplo para la vista previa del editor */
+  registroEjemplo: function(modulo) {
+    const campos = this.camposDe(modulo);
+    const ej = {};
+    campos.texto.forEach(c => {
+      // Valores realistas: el admin necesita ver cómo queda el formato de verdad
+      if (c.tipo === 'Date')       ej[c.clave] = new Date().toISOString().slice(0, 10);
+      else if (c.valores && c.valores.length) ej[c.clave] = c.valores[0];
+      else                          ej[c.clave] = 'Ejemplo de ' + c.etiqueta.toLowerCase();
+    });
+    campos.media.forEach(c => { ej[c.clave] = ''; });
+    const hijoEj = {};
+    campos.hijos.forEach(c => { hijoEj[c.clave] = 'Dato ' + c.etiqueta.toLowerCase(); });
+    return { registro: ej, hijos: campos.hijos.length ? [hijoEj, hijoEj] : [] };
+  }
+};
+</script>

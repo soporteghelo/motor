@@ -1,0 +1,188 @@
+<!-- =========================================================================
+     VISTA: EDICIÓN (ALTA DE PERSONAL)
+     MODULO: 01_Usuarios
+     ========================================================================= -->
+<div id="module-01_usuarios-edicion" class="module-view" style="display:none;">
+    
+    <section class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4 border-b border-outline-variant pb-6">
+      <div class="flex items-center gap-4">
+         <button onclick="changeInternalView('01_Usuarios', 'Summary')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-secondary">
+           <span class="material-symbols-outlined">arrow_back</span>
+         </button>
+         <div>
+           <h1 class="text-xl font-bold text-on-surface">Configurar Acceso de Personal</h1>
+           <p class="text-[11px] text-secondary font-medium tracking-tight">Defina credenciales y nivel de mando administrativo</p>
+         </div>
+      </div>
+      
+      <div class="flex gap-2">
+         <button onclick="changeInternalView('01_Usuarios', 'Summary')" class="h-10 px-4 rounded-xl border border-outline text-xs font-semibold text-secondary hover:bg-slate-50 transition-colors uppercase tracking-widest">
+            Cancelar
+         </button>
+         <button onclick="saveAndHashUser()" class="h-10 px-6 rounded-xl bg-primary text-on-primary text-xs font-bold shadow-lg hover:opacity-90 transition-all flex items-center gap-2 uppercase tracking-widest">
+            <span class="material-symbols-outlined text-[18px]">verified_user</span>
+            Activar Acceso
+         </button>
+      </div>
+    </section>
+
+    <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+       
+       <!-- Perfil Visual — en móvil va DESPUÉS del formulario (content-priority):
+            nadie debería recorrer un avatar vacío y un aviso decorativo antes
+            de llegar al primer campo. En escritorio recupera su columna izquierda. -->
+       <div class="order-2 md:order-1 md:col-span-1 space-y-6">
+          <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm flex flex-col items-center">
+             <div class="w-32 h-32 rounded-full border-4 border-surface-container-low bg-slate-100 flex items-center justify-center overflow-hidden mb-4 relative group">
+                <img id="usr-photo-preview" src="" class="hidden w-full h-full object-cover">
+                <span id="usr-photo-placeholder" class="material-symbols-outlined text-5xl text-outline-variant">person</span>
+                <div onclick="document.getElementById('usr-file-input').click()" class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                   <span class="material-symbols-outlined text-white text-3xl">photo_camera</span>
+                </div>
+             </div>
+             <input type="file" id="usr-file-input" class="hidden" accept="image/*" onchange="previewUserImage(this)">
+             <p class="text-[10px] text-secondary font-bold uppercase text-center">Foto de Perfil<br>(Máx 2MB)</p>
+          </div>
+
+          <div class="bg-surface-container-low rounded-2xl p-6 border border-outline-variant border-dashed">
+             <h3 class="text-[10px] font-black text-primary uppercase mb-3">Seguridad Corporativa</h3>
+             <ul class="space-y-2">
+                <li class="flex items-center gap-2 text-[10px] text-secondary">
+                   <span class="material-symbols-outlined text-xs text-primary">lock</span>
+                   Cifrado SHA-256 nativo
+                </li>
+                <li class="flex items-center gap-2 text-[10px] text-secondary">
+                   <span class="material-symbols-outlined text-xs text-emerald-500">sync_saved_locally</span>
+                   Protocolo Zero-Touch
+                </li>
+             </ul>
+          </div>
+       </div>
+
+       <!-- Formulario Técnico -->
+       <div class="order-1 md:order-2 md:col-span-2 space-y-6">
+          <div class="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm">
+             <form id="form-01-usuarios-main" class="space-y-6">
+                <input type="hidden" name="UUID" id="form-01-uuid" value="">
+                <!-- Identidad: los campos largos ocupan la fila entera en móvil
+                     y se emparejan a partir de tablet -->
+                <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+                   <div class="col-span-2 md:col-span-1">
+                      <label class="block text-xs font-bold text-on-surface-variant mb-2">Nombre Completo *</label>
+                      <input type="text" name="Nombre_Completo" required autocomplete="name" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+                   </div>
+                   <div class="col-span-2 md:col-span-1">
+                      <label class="block text-xs font-bold text-on-surface-variant mb-2">Email Corporativo *</label>
+                      <input type="email" name="Email" required autocomplete="email" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+                   </div>
+                </div>
+
+                <!-- Credenciales: usuario y contraseña son el par natural, ambos cortos -->
+                <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+                   <div>
+                      <label class="block text-xs font-bold text-on-surface-variant mb-2">DNI / Usuario *</label>
+                      <input type="text" name="DNI" required inputmode="numeric" autocomplete="username" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none font-bold">
+                   </div>
+                   <div>
+                      <label class="block text-xs font-bold text-on-surface-variant mb-2">Contraseña Temporal *</label>
+                      <input type="password" id="usr-new-pass" required autocomplete="new-password" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+                   </div>
+                </div>
+
+                <!-- Configuración de Mando -->
+                <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5 pt-4 border-t border-outline-variant border-dashed">
+                   <div>
+                      <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-tighter">Rol de Privacidad</label>
+                      <select name="Rol" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-bold focus:ring-0">
+                         <option>Trabajador</option>
+                         <option>Supervisor</option>
+                         <option>Admin</option>
+                      </select>
+                   </div>
+                   <div>
+                      <label class="block text-xs font-bold text-secondary mb-2 uppercase tracking-tighter">Estado de Acceso</label>
+                      <select name="Status" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-bold focus:ring-0">
+                         <option>Activo</option>
+                         <option>Cesado</option>
+                      </select>
+                   </div>
+                </div>
+             </form>
+          </div>
+       </div>
+
+    </div>
+
+</div>
+
+<script>
+  (function initUsuariosEdicion() {
+    const uuidField = document.getElementById('form-01-uuid');
+    if (uuidField && !uuidField.value) {
+      uuidField.value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    }
+  })();
+
+  function previewUserImage(input) {
+    const preview = document.getElementById('usr-photo-preview');
+    const placeholder = document.getElementById('usr-photo-placeholder');
+    if (input.files && input.files[0]) {
+      PWA_SKILLS.compressImage(input.files[0], (AppState.Settings || {}).CalidadCompresion || 'Medio').then(dataUrl => {
+        preview.src = dataUrl;
+        preview.classList.remove('hidden');
+        if (placeholder) placeholder.style.display = 'none';
+      });
+    }
+  }
+
+  async function saveAndHashUser() {
+    const form = document.getElementById('form-01-usuarios-main');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    const rawPass = document.getElementById('usr-new-pass').value;
+    if (!rawPass) { alert('La contraseña es obligatoria.'); return; }
+
+    const formData = new FormData(form);
+    const userData = {};
+    formData.forEach((value, key) => { userData[key] = value; });
+
+    // UUID garantizado
+    if (!userData.UUID) {
+      userData.UUID = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+    }
+
+    // Hash de contraseña (nunca texto plano)
+    userData.Password_Hash = await PWA_SKILLS.hashSHA256(rawPass);
+
+    // Foto de perfil comprimida
+    const photoPreview = document.getElementById('usr-photo-preview');
+    if (photoPreview && !photoPreview.classList.contains('hidden') && photoPreview.src) {
+      userData.Foto_Perfil = photoPreview.src;
+    }
+
+    // Firma del cargo si fue dibujada
+    const sigCanvas = document.getElementById('usr-sign-pad');
+    if (sigCanvas) {
+      const blank = document.createElement('canvas');
+      blank.width = sigCanvas.width; blank.height = sigCanvas.height;
+      if (sigCanvas.toDataURL() !== blank.toDataURL()) {
+        userData.Firma_Cargo = sigCanvas.toDataURL('image/png');
+      }
+    }
+
+    userData.Timestamp = PWA_SKILLS.getPeruTime();
+
+    try {
+      await pushToQueue('01_Usuarios', 'SYNC_OFFLINE_QUEUE', userData);
+      form.reset();
+      photoPreview.classList.add('hidden');
+      document.getElementById('usr-photo-placeholder').style.display = '';
+      document.getElementById('form-01-uuid').value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
+      alert('Usuario guardado. Se sincronizará cuando haya conexión.');
+      changeInternalView('01_Usuarios', 'Resumen');
+    } catch (err) {
+      console.error('Error al guardar usuario:', err);
+      alert('Error al guardar. Revise la consola.');
+    }
+  }
+</script>

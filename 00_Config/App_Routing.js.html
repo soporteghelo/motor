@@ -1,0 +1,1164 @@
+<script>
+/**
+ * =========================================================================
+ * APP ROUTING & MODULE LOADER
+ * =========================================================================
+ * ARCHIVO: App_Routing.js.html
+ * DESCRIPCIÓN: Gestiona la navegación entre módulos y la carga dinámica
+ * de configuraciones (Subconfig). Es el cerebro que decide qué se muestra.
+ */
+
+// El objeto AppState ya viene definido desde Global_Config.js.html
+// Solo aseguramos que las propiedades necesarias para el ruteo existan:
+if(!AppState.currentView) AppState.currentView = 'Login';
+
+/**
+ * Inicializador Maestro
+ */
+async function initApp() {
+  console.log("🚀 Iniciando Ruteador...");
+
+  // 1. Inicializar DB Offline (con timeout de 3s por si falla silenciosamente)
+  await Promise.race([
+    initOfflineDB(),
+    new Promise(resolve => setTimeout(resolve, 3000))
+  ]);
+
+  // 2. Aplicar configuraciones guardadas (colores, nombre app, etc.)
+  if (typeof applyAppSettings === 'function') applyAppSettings();
+
+  // 3. Sembrar usuario demo si no existe
+  if (typeof seedDemoUsers === 'function') await seedDemoUsers();
+
+  // 4. Kill-switch: verificar expiración de sesión (8 horas)
+  const sessionExpiry = localStorage.getItem('pwa_session_expiry');
+  if (sessionExpiry && Date.now() > parseInt(sessionExpiry)) {
+    AppState.clearSession();
+    showView('Login');
+    return;
+  }
+
+  // 5. Kill-switch: verificar status "CESADO" guardado localmente
+  const localStatus = AppState.User.Status;
+  if (localStatus && localStatus.toUpperCase() === 'CESADO') {
+    alert('Su acceso ha sido revocado corporativamente. Contacte al administrador.');
+    AppState.clearSession();
+    showView('Login');
+    return;
+  }
+
+  // 6. Verificar Sesión
+  if (!AppState.User.Token) {
+    showView('Login');
+  } else {
+    showView('Menu');
+  }
+}
+
+/**
+ * Cambia la vista principal del contenedor
+ * @param {string} viewID - Login, Menu o el nombre de un módulo (ej: 01_Reportes)
+ */
+function showView(viewID, options) {
+  options = options || {};
+  // Un filtro abierto desde el resumen del drawer pertenece solamente a esa
+  // navegación. Cualquier acceso normal (menú, footer, dashboard) vuelve a
+  // mostrar el módulo sin arrastrar un filtro anterior.
+  if (!options.keepDrawerWorkFilter && typeof drawerWorkActiveFilter !== 'undefined' && drawerWorkActiveFilter) {
+    drawerWorkActiveFilter = null;
+    const staleNotice = document.getElementById('drawer-work-filter-notice');
+    if (staleNotice) staleNotice.remove();
+  }
+  const container = document.getElementById('main-container');
+  const appTitle = document.getElementById('app-title');
+    // Limpiar clases activas en sidebar si aplica
+    document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+    
+    // Skill #15/17: Control de Visibilidad y Limpieza de Interfaz
+    const syncBtn = document.getElementById('ui-global-sync-btn');
+    const footer = document.getElementById('main-footer');
+
+    // Mantiene el estado visual de la navegaciÃ³n inferior sin interferir
+    // con los controles de permisos que hace showView mÃ¡s abajo.
+    document.querySelectorAll('[data-footer-view]').forEach(button => {
+      const isActive = button.dataset.footerView === viewID;
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-current', isActive ? 'page' : 'false');
+    });
+    
+    // Limpieza del SLOT de filtros que ahora está en la vista clonada (usar querySelector sobre el contenedor)
+    const activeFilterSlot = container.querySelector('#ui-filter-slot');
+    if (activeFilterSlot) activeFilterSlot.innerHTML = '';
+
+    if (viewID !== 'Login' && viewID !== 'Menu') {
+        if (syncBtn) syncBtn.style.display = 'flex';
+        if (footer) footer.style.display = 'grid';
+    } else {
+        if (syncBtn) syncBtn.style.display = 'none';
+        if (footer) footer.style.display = (viewID === 'Menu' ? 'grid' : 'none');
+        AppState.activeModule = null;
+    }
+
+  // Actualizar el link activo del drawer
+  if (typeof updateDrawerActiveLink === 'function') updateDrawerActiveLink(viewID);
+
+  // Limpiar antes de inyectar
+  container.innerHTML = '';
+  
+  if (viewID === 'Login') {
+    appTitle.innerText = "Acceso - PWA";
+    container.innerHTML = renderLogin();
+  } 
+  else if (viewID === 'Menu') {
+    appTitle.innerText = "Menú Principal";
+    container.innerHTML = renderMenu();
+    // Los <script> insertados vía innerHTML no se ejecutan: la carga de datos
+    // del panel debe dispararse explícitamente desde aquí.
+    setTimeout(() => loadDashboardData(false), 40);
+  }
+  else {
+    // Control de acceso: un módulo desactivado o sin permiso de lectura no se
+    // abre ni escribiendo la ruta a mano. La comprobación va ANTES de inyectar.
+    if (typeof PERMISOS !== 'undefined' && !PERMISOS.moduloVisible(viewID)) {
+      const motivo = !PERMISOS.moduloActivo(viewID)
+        ? 'Este módulo no está incluido en el plan de tu empresa.'
+        : 'Tu rol (' + PERMISOS.etiqueta() + ') no tiene acceso a este módulo.';
+      container.innerHTML =
+        '<div class="ds-empty" role="status" style="min-height:60vh">' +
+        '<span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">lock</span>' +
+        '<h4>Acceso no disponible</h4><p>' + motivo + '</p>' +
+        '<button type="button" class="ds-empty-action" onclick="showView(\'Menu\')">' +
+        '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">home</span>Volver al panel</button></div>';
+      appTitle.innerText = 'Acceso restringido';
+      AppState.activeModule = null;
+      return;
+    }
+
+    // Carga de Módulos (Ej: 03_Inspecciones)
+    AppState.activeModule = viewID;
+    appTitle.innerText = viewID.replace(/^\d+_/, '').replace(/_/g, ' ');
+    
+    // Inyectar TODAS las vistas del módulo (Resumen, Edicion, Detalle)
+    const views = ['resumen', 'edicion', 'detalle'];
+    let foundAny = false;
+    
+    views.forEach(v => {
+      const viewDOM = document.getElementById(`module-${viewID.toLowerCase()}-${v}`);
+      if (viewDOM) {
+        container.appendChild(viewDOM.cloneNode(true));
+        foundAny = true;
+      }
+    });
+
+    if (!foundAny) {
+      // Fallback: buscar cualquier elemento cuyo ID contenga el moduleID (ej: 00-admin-container)
+      const altSlug = viewID.toLowerCase().replace(/_/g, '-');
+      document.querySelectorAll(`#module-registry [id*="${altSlug}"]`).forEach(el => {
+        container.appendChild(el.cloneNode(true));
+        foundAny = true;
+      });
+    }
+
+    if (!foundAny) {
+      container.innerHTML = `<p style="color:red; text-align:center;">Error: No se encontraron vistas para [${viewID}].</p>`;
+    } else {
+      // Por defecto mostrar el Resumen al entrar
+      changeInternalView(viewID, 'Resumen');
+    }
+  }
+}
+
+/**
+ * Controla la navegación interna entre las 3 vistas obligatorias
+ * @param {string} moduleID - ID del módulo
+ * @param {string} viewType - Resumen, Edicion o Detalle
+ * @param {string} recordID - Opcional para carga de datos en Detalle/Edicion
+ */
+function changeInternalView(moduleID, viewType, recordID = null) {
+  try {
+    console.log(`🔄 Cambiando vista interna: ${moduleID} -> ${viewType}`);
+    const modLower = moduleID.toLowerCase();
+    // Normalización de nombres de vistas (Soporte Multi-idioma Detail/Detalle)
+    let viewMap = {
+      'detail': 'detalle',
+      'edit': 'edicion',
+      'edition': 'edicion',
+      'summary': 'resumen',
+      'resumen': 'resumen',
+      'detalle': 'detalle',
+      'edicion': 'edicion'
+    };
+    const vtLower = viewType.toLowerCase();
+    const vtRef = viewMap[vtLower] || vtLower;
+
+    console.log(`🎯 Buscando elemento con patrón: [${modLower}] + [${vtRef}]`);
+
+    // 1. Ocultar todas las vistas del módulo actual dentro del contenedor
+    const allViews = document.querySelectorAll('#main-container .module-view');
+    allViews.forEach(el => el.style.display = 'none');
+
+    // 2. Identificar y activar la vista solicitada (Selector flexible para ID)
+    const activeEl = document.querySelector(`#main-container [id*="${modLower}"][id*="${vtRef}"]`);
+    
+    if (!activeEl) {
+        console.error(`❌ No se pudo localizar el elemento de vista para modulo: ${modLower} y vista: ${vtRef}`);
+        // Fallback: tratar de buscar por ID exacto si el selector flexible falla
+        const fallbackId = `module-${modLower}-${vtRef}`;
+        const fallbackEl = document.getElementById(fallbackId);
+        if(!fallbackEl) {
+          console.error("❌ Fallback de ID exacto también falló.");
+          return;
+        }
+        fallbackEl.style.display = 'block';
+        return;
+    }
+
+    activeEl.style.display = 'block';
+
+    // Skill #17: Gestión de Filtros
+    if (vtLower === 'resumen') {
+        // FIX-13: Barra de búsqueda reutilizable
+        const _searchPlaceholders = {
+          '01_Usuarios': 'Buscar por nombre, DNI...',
+          '02_Reportes': 'Buscar reportes...',
+          '03_Inspecciones': 'Buscar en Inspecciones...',
+          '04_Actos_Condiciones': 'Buscar por reportante, área, tipo...',
+          '05_Incidentes': 'Buscar por afectado, área, tipo...',
+          '06_Capacitaciones': 'Buscar por nombre, tema, instructor...',
+          '07_IPERC': 'Buscar por proceso, área, tarea...',
+          '08_PETAR': 'Buscar por tipo de trabajo, área, empresa...',
+          '09_EPP': 'Buscar por trabajador, área, equipo...',
+          '10_Charlas': 'Buscar por tema, área, expositor...'
+        };
+        PWA_SKILLS.renderSearchBar('ui-search-bar-slot', _searchPlaceholders[moduleID] || 'Buscar...');
+        // Skill #19: Renderizado dinámico de filtros basado en Subconfig
+        PWA_SKILLS.renderDynamicFilters(moduleID);
+        // Módulos con carga dinámica en vista resumen
+        const resumenFn = `loadResumen_${moduleID}`;
+        if (typeof window[resumenFn] === 'function') setTimeout(() => window[resumenFn](), 50);
+        // Skill #24: tabla → tarjetas en móvil. Se aplica a TODO módulo con tabla,
+        // después de que su loader haya pintado las filas.
+        setTimeout(enhanceActiveTable, 160);
+        // Retira de la vista los botones que este rol no puede usar y avisa
+        // del alcance de datos aplicado.
+        if (typeof PERMISOS !== 'undefined') setTimeout(() => PERMISOS.aplicarVista(moduleID), 180);
+    }
+    else if (vtRef === 'edicion') {
+        // Skill 11: Auto-inicialización de Pizarras de Firma
+        setTimeout(() => {
+          const pads = activeEl.querySelectorAll('canvas[id*="sign"], canvas[id*="signature"]');
+          pads.forEach(p => PWA_SKILLS.initSignaturePad(p.id));
+          console.log(`✍️ Signature Pads inicializados en ${moduleID}`);
+        }, 300);
+        // Módulos con carga dinámica en vista edición
+        const edicionFn = `loadEdicion_${moduleID}`;
+        if (typeof window[edicionFn] === 'function') setTimeout(() => window[edicionFn](recordID), 50);
+    }
+    
+    // Si entramos a DETALLE, disparamos el motor de renderizado de la Regla 12
+    // vtRef ya normaliza "Detail" y "Detalle" al identificador de la vista.
+    // Usarlo aquí garantiza que el cargador reciba el registro seleccionado.
+    if (vtRef === 'detalle' && recordID) {
+      const renderFunctionName = `loadDetail_${moduleID}`;
+      if (typeof window[renderFunctionName] === "function") {
+         window[renderFunctionName](recordID);
+      }
+    }
+  } catch (err) {
+    console.error("🔥 Error crítico en ruteo interno:", err);
+  }
+}
+
+/**
+ * Sistema de diseño: adapta la tabla activa a tarjetas en móvil y mantiene
+ * el contador de resultados sincronizado. Segura de llamar varias veces.
+ * Se invoca desde el router y tras cualquier render dinámico de filas.
+ */
+function enhanceActiveTable() {
+  const tbody = document.querySelector('#main-container table tbody');
+  if (!tbody || !tbody.id) return;
+  PWA_SKILLS.enhanceTable(tbody.id);
+}
+
+/**
+ * Renders temporales (Simulados - Tu IA los hará hermosos en cada Mod_X.html)
+ */
+/**
+ * Renders temporales (Enterprise Login)
+ */
+function renderLogin() {
+  return `
+    <div class="max-w-[450px] mx-auto mt-20 animate-in fade-in zoom-in duration-500">
+       <div class="bg-white rounded-[2rem] border border-outline-variant p-10 shadow-2xl relative overflow-hidden">
+          <!-- Decoración visual -->
+          <div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl"></div>
+          
+          <div class="flex flex-col items-center mb-10">
+             <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20 rotate-3">
+                <span class="material-symbols-outlined text-white text-3xl">verified_user</span>
+             </div>
+             <h1 class="text-2xl font-black text-on-surface tracking-tighter">ScriptManager</h1>
+             <p class="text-xs text-secondary font-bold uppercase tracking-widest mt-1">Acceso Corporativo</p>
+          </div>
+
+          <div class="space-y-6">
+             <div>
+                <label class="block text-[10px] font-black text-secondary uppercase mb-2 ml-1">Identificación (DNI)</label>
+                <div class="relative">
+                   <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">person</span>
+                   <input type="text" id="login-dni" placeholder="Ej: 772210..." class="w-full h-14 pl-12 pr-4 rounded-2xl border border-outline-variant bg-surface-container-lowest text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
+                </div>
+             </div>
+
+             <div>
+                <label class="block text-[10px] font-black text-secondary uppercase mb-2 ml-1">Contraseña de Seguridad</label>
+                <div class="relative">
+                   <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">vpn_key</span>
+                   <input type="password" id="login-pass" placeholder="••••••••" class="w-full h-14 pl-12 pr-12 rounded-2xl border border-outline-variant bg-surface-container-lowest text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
+                   <button type="button" onclick="toggleLoginPassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-outline hover:text-primary transition-colors" tabindex="-1">
+                      <span class="material-symbols-outlined text-xl" id="login-pass-eye">visibility</span>
+                   </button>
+                </div>
+             </div>
+
+             <button onclick="handleLogin()" class="w-full h-14 bg-primary text-on-primary rounded-2xl font-bold shadow-xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
+                Ingresar al Sistema
+                <span class="material-symbols-outlined text-xl">chevron_right</span>
+             </button>
+          </div>
+
+          <div class="mt-10 text-center space-y-2">
+             <p class="text-[10px] text-secondary font-medium italic">Protegido por Cifrado SHA-256 nativo</p>
+             <div class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/5 border border-primary/20">
+               <span class="material-symbols-outlined text-primary text-[16px]">key</span>
+               <p class="text-[11px] text-primary font-bold">Demo: <span class="font-black">admin</span> / <span class="font-black">admin123</span></p>
+             </div>
+          </div>
+       </div>
+    </div>
+  `;
+}
+
+function toggleLoginPassword() {
+  const input = document.getElementById('login-pass');
+  const eye   = document.getElementById('login-pass-eye');
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (eye) eye.innerText = 'visibility_off';
+  } else {
+    input.type = 'password';
+    if (eye) eye.innerText = 'visibility';
+  }
+}
+
+/**
+ * =========================================================================
+ * PANEL PRINCIPAL — Disposición por prioridad operativa
+ * =========================================================================
+ * Sistema de diseño: "Data-Dense Dashboard" (design-system/motor-pwa/MASTER.md)
+ *
+ * Orden de lectura (patrón F / content-priority):
+ *   1. Contexto  — quién soy y qué tan fresco es el dato (franja delgada)
+ *   2. Estado    — 5 indicadores operativos, cada uno navega CON filtro aplicado
+ *   3. Atención  — lo accionable primero: alertas arriba a la izquierda
+ *   4. Análisis  — distribución y tasa de cierre, en segundo plano
+ *   5. Accesos   — navegación pura, sin repetir métricas
+ *
+ * Antes: el saludo ocupaba 826×160px arriba y las mismas cifras se repetían
+ * en tres bloques distintos. Aquí cada dato aparece UNA vez.
+ */
+function renderMenu() {
+  const userName = AppState?.User?.Nombre || 'Administrador';
+  const userRol  = AppState?.User?.Rol   || 'Admin';
+  const now      = new Date();
+  const dateStr  = now.toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' });
+  const hour     = now.getHours();
+  const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+
+  return `
+<style>
+/* ── Tarjeta de indicador: compacta, accionable, con área táctil completa ── */
+.ds-kpi {
+  display:flex; align-items:center; gap:12px; width:100%;
+  padding:12px 14px; border-radius:16px; text-align:left;
+  background:var(--ds-surface); border:1px solid var(--ds-border);
+  cursor:pointer; transition:border-color 180ms var(--ds-ease), box-shadow 180ms var(--ds-ease), transform 180ms var(--ds-ease);
+}
+.ds-kpi:hover { border-color:var(--color-primary); box-shadow:0 4px 14px rgba(0,6,102,0.10); transform:translateY(-2px); }
+.ds-kpi:active { transform:translateY(0); }
+.ds-kpi-ico { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.ds-kpi-val { font-size:26px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+.ds-kpi-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; margin-top:4px; color:var(--ds-fg-muted); }
+.ds-kpi-share { margin-left:auto; font-size:11px; font-weight:700; color:var(--ds-fg-muted); font-variant-numeric:tabular-nums; }
+/* La tarjeta marcada como crítica se distingue por borde Y por icono (color-not-only) */
+.ds-kpi.is-critical { border-left:4px solid #dc2626; }
+/* En pantallas estrechas el porcentaje sube a la esquina para que la etiqueta
+   ("EN PROCESO", "ALTO RIESGO") no se parta en dos líneas */
+@media (max-width:479px) {
+  .ds-kpi { position:relative; gap:10px; padding:12px; }
+  .ds-kpi-share { position:absolute; top:10px; right:12px; margin-left:0; }
+  .ds-kpi-lbl { letter-spacing:0.04em; }
+}
+
+/* ── Panel ── */
+.ds-panel { background:var(--ds-surface); border:1px solid var(--ds-border); border-radius:18px; }
+.ds-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px 10px; }
+.ds-panel-title { font-size:13px; font-weight:800; color:var(--ds-fg); display:flex; align-items:center; gap:7px; }
+
+/* ── Barra apilada: toda la distribución de un módulo en una sola línea ── */
+.ds-stack { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--ds-surface-sunken); }
+.ds-stack > span { height:100%; transition:width 700ms var(--ds-ease); }
+.ds-legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
+.ds-legend button { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--ds-fg-muted); background:none; border:0; cursor:pointer; padding:2px 0; }
+.ds-legend button:hover { color:var(--color-primary); }
+.ds-legend i { width:8px; height:8px; border-radius:3px; display:inline-block; flex-shrink:0; }
+.ds-legend b { font-variant-numeric:tabular-nums; color:var(--ds-fg); }
+
+/* ── Escala de severidad: un token por tema, nunca hex en línea ──
+   En claro el "crítico" es casi negro; en oscuro debe ACLARARSE, no invertirse
+   (regla color-dark-mode). Sin esto, la alerta crítica desaparecía en oscuro. */
+:root {
+  --sev-crit-fg:#111827; --sev-crit-bg:rgba(17,24,39,0.07);   --sev-crit-bd:rgba(17,24,39,0.22);
+  --sev-high-fg:#b91c1c; --sev-high-bg:rgba(220,38,38,0.08);  --sev-high-bd:rgba(220,38,38,0.25);
+  --sev-med-fg:#b45309;  --sev-med-bg:rgba(217,119,6,0.09);   --sev-med-bd:rgba(217,119,6,0.25);
+  --sev-ok-fg:#047857;   --sev-ok-bg:rgba(16,185,129,0.10);   --sev-ok-bd:rgba(16,185,129,0.25);
+}
+[data-theme="dark"] {
+  --sev-crit-fg:#e5e7eb; --sev-crit-bg:rgba(229,231,235,0.10); --sev-crit-bd:rgba(229,231,235,0.24);
+  --sev-high-fg:#fca5a5; --sev-high-bg:rgba(248,113,113,0.13); --sev-high-bd:rgba(248,113,113,0.30);
+  --sev-med-fg:#fcd34d;  --sev-med-bg:rgba(252,211,77,0.13);   --sev-med-bd:rgba(252,211,77,0.30);
+  --sev-ok-fg:#6ee7b7;   --sev-ok-bg:rgba(110,231,183,0.12);   --sev-ok-bd:rgba(110,231,183,0.28);
+}
+
+/* ── Alerta accionable ── */
+.ds-alert {
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:11px 14px; border-radius:12px; border:1px solid transparent;
+  cursor:pointer; transition:transform 150ms var(--ds-ease), box-shadow 150ms var(--ds-ease);
+}
+.ds-alert:hover { transform:translateX(3px); box-shadow:0 2px 10px rgba(0,0,0,0.07); }
+.ds-alert.sev-crit { background:var(--sev-crit-bg); border-color:var(--sev-crit-bd); color:var(--sev-crit-fg); }
+.ds-alert.sev-high { background:var(--sev-high-bg); border-color:var(--sev-high-bd); color:var(--sev-high-fg); }
+.ds-alert.sev-med  { background:var(--sev-med-bg);  border-color:var(--sev-med-bd);  color:var(--sev-med-fg); }
+.ds-alert.sev-ok   { background:var(--sev-ok-bg);   border-color:var(--sev-ok-bd);   color:var(--sev-ok-fg); }
+.ds-alert.sev-neutral { background:var(--ds-surface-sunken); color:var(--ds-fg); }
+.ds-alert .ds-sev-chip {
+  font-size:9px; font-weight:900; padding:2px 7px; border-radius:999px;
+  border:1px solid currentColor; flex-shrink:0; text-transform:uppercase; letter-spacing:0.04em;
+}
+.ds-alert-n { font-size:19px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; flex-shrink:0; min-width:30px; }
+.ds-alert-tx { font-size:12px; font-weight:600; line-height:1.35; flex:1; }
+
+/* ── Acceso a módulo ── */
+.ds-mod {
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:14px; border-radius:16px; background:var(--ds-surface);
+  border:1px solid var(--ds-border); cursor:pointer;
+  transition:border-color 180ms var(--ds-ease), transform 180ms var(--ds-ease);
+}
+.ds-mod:hover { border-color:var(--color-primary); transform:translateY(-2px); }
+</style>
+
+<div class="max-w-[1400px] mx-auto">
+
+  <!-- ═══ 1. CONTEXTO — una franja, no un banner ═══ -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="min-w-0">
+      <h2 class="text-lg sm:text-xl font-bold text-on-surface leading-tight truncate">
+        ${greeting}, ${userName}
+      </h2>
+      <p class="text-[11px] text-on-surface-variant first-letter:uppercase">${dateStr} · ${userRol}</p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <span id="dash-updated" class="text-[10px] font-semibold text-on-surface-variant"></span>
+      <button type="button" onclick="loadDashboardData(true)"
+        class="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-[11px] font-bold text-primary hover:bg-surface-container transition-colors"
+        aria-label="Actualizar indicadores del panel">
+        <span class="material-symbols-outlined text-[15px]" id="dash-refresh-ico" aria-hidden="true">refresh</span>
+        Actualizar
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══ 2. ACCESOS — navegación principal del sistema ═══ -->
+  <section aria-labelledby="dash-modules-title">
+    <h3 class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.1em] mb-2 px-1" id="dash-modules-title">Ir a un módulo</h3>
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <button type="button" class="ds-mod" onclick="showView('03_Inspecciones')">
+        <span class="w-9 h-9 rounded-xl bg-primary-fixed text-on-primary-fixed flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">fact_check</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Inspecciones</span>
+          <span class="block text-[10px] text-on-surface-variant">Gestión en campo</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('05_Incidentes')">
+        <span class="w-9 h-9 rounded-xl bg-red-100 text-red-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">personal_injury</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Incidentes</span>
+          <span class="block text-[10px] text-on-surface-variant">Registro y seguimiento</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('06_Capacitaciones')">
+        <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">school</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Capacitaciones</span>
+          <span class="block text-[10px] text-on-surface-variant">Formación y asistencia</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('07_IPERC')">
+        <span class="w-9 h-9 rounded-xl bg-violet-100 text-violet-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">grid_view</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Matriz IPERC</span>
+          <span class="block text-[10px] text-on-surface-variant">Riesgos y controles</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('08_PETAR')">
+        <span class="w-9 h-9 rounded-xl bg-orange-100 text-orange-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">assignment_turned_in</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Permisos PETAR</span>
+          <span class="block text-[10px] text-on-surface-variant">Trabajo de alto riesgo</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('09_EPP')">
+        <span class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">shield</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Entrega de EPP</span>
+          <span class="block text-[10px] text-on-surface-variant">Equipos de protección</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('10_Charlas')">
+        <span class="w-9 h-9 rounded-xl bg-pink-100 text-pink-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">campaign</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Charlas 5 minutos</span>
+          <span class="block text-[10px] text-on-surface-variant">Comunicación diaria</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('04_Actos_Condiciones')">
+        <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">report_problem</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Actos y Cond.</span>
+          <span class="block text-[10px] text-on-surface-variant">Sub-estándar</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('02_Reportes')">
+        <span class="w-9 h-9 rounded-xl bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">insert_chart</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Reportes</span>
+          <span class="block text-[10px] text-on-surface-variant">Análisis</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('01_Usuarios')">
+        <span class="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">manage_accounts</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Usuarios</span>
+          <span class="block text-[10px] text-on-surface-variant">Personal</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('00_Admin')">
+        <span class="w-9 h-9 rounded-xl bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">admin_panel_settings</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">SuperAdmin</span>
+          <span class="block text-[10px] text-on-surface-variant">Auditoría</span>
+        </span>
+      </button>
+      <button type="button" class="ds-mod" onclick="showView('04_Configuraciones')">
+        <span class="w-9 h-9 rounded-xl bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">settings</span>
+        </span>
+        <span class="min-w-0">
+          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Configuración</span>
+          <span class="block text-[10px] text-on-surface-variant">Ajustes</span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+</div>
+  `;
+}
+
+/**
+ * Puebla el panel con los datos operativos.
+ *
+ * NOTA TÉCNICA: antes esta lógica vivía dentro del string de renderMenu(), y
+ * los <script> insertados con innerHTML NO se ejecutan — por eso el panel
+ * mostraba "—" de forma permanente. Ahora es una función real que showView()
+ * invoca después de inyectar el HTML.
+ *
+ * @param {boolean} manual - true si la disparó el usuario (muestra realimentación)
+ */
+function loadDashboardData(manual) {
+  const ico = document.getElementById('dash-refresh-ico');
+  if (manual && ico) {
+    ico.classList.add('animate-spin');
+    setTimeout(() => ico.classList.remove('animate-spin'), 700);
+  }
+
+  // Sello de frescura del panel.
+  const stamp = document.getElementById('dash-updated');
+  if (stamp) {
+    const h = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    stamp.textContent = 'Actualizado ' + h;
+  }
+}
+
+/**
+ * Lógica de Login (SHA-256 Integration)
+ */
+async function handleLogin() {
+  const dni = document.getElementById('login-dni').value.trim();
+  const pass = document.getElementById('login-pass').value;
+
+  if (!dni || !pass) {
+    PWA_SKILLS.toast('Ingresa tu DNI y contraseña.', 'warning');
+    if (!dni) document.getElementById('login-dni').focus();
+    else document.getElementById('login-pass').focus();
+    return;
+  }
+
+  const hash = await PWA_SKILLS.hashSHA256(pass);
+
+  const onLoginSuccess = (u) => {
+    AppState.updateSession({
+      DNI: u.DNI || dni,
+      Token: hash,
+      Status: u.Status || 'Activo',
+      Nombre: u.Nombre_Completo || '',
+      Email: u.Email || '',
+      Rol: u.Rol || 'Trabajador'
+    });
+    const timeoutMin = parseInt((typeof getAppSettings === 'function' ? getAppSettings().Session_Timeout : null) || '480');
+    localStorage.setItem('pwa_session_expiry', String(Date.now() + timeoutMin * 60 * 1000));
+    showView('Menu');
+  };
+
+  const tryOfflineLogin = async () => {
+    if (typeof authenticateOffline === 'function') {
+      const offlineUser = await authenticateOffline(dni, hash);
+      if (offlineUser) {
+        console.log('✅ Login offline exitoso para:', dni);
+        onLoginSuccess(offlineUser);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Usar DataService (soporta Sheets y Supabase de forma transparente)
+  try {
+    const parsed = await DataService.auth(dni, hash);
+    if (parsed.status === 'CESADO') {
+      PWA_SKILLS.toast('Acceso revocado. Contacte al administrador.', 'error', 5000);
+      return;
+    }
+    if (parsed.status === 'OK' && parsed.userData) {
+      onLoginSuccess(parsed.userData);
+      return;
+    }
+    const ok = await tryOfflineLogin();
+    if (!ok) PWA_SKILLS.toast(parsed.msg || 'Credenciales inválidas.', 'error');
+  } catch (err) {
+    console.warn('Servidor no disponible, intentando login offline:', err);
+    const ok = await tryOfflineLogin();
+    if (!ok) PWA_SKILLS.toast('Sin conexión. Verifica tus credenciales demo.', 'error');
+  }
+}
+
+/**
+ * Lógica de Logout (Voluntario)
+ */
+function handleLogout() {
+  PWA_SKILLS.toast('Sesión cerrada. ¡Hasta pronto!', 'info', 2000);
+  setTimeout(() => AppState.clearSession(), 600);
+}
+
+// Iniciar aplicación al cargar
+window.addEventListener('DOMContentLoaded', initApp);
+
+// -----------------------------------------------------------------------
+// Navigation Drawer (Regla: Menú lateral con animación slide)
+// -----------------------------------------------------------------------
+function setDrawerNavExpanded(expanded) {
+  const extra = document.getElementById('drawer-nav-extra');
+  const button = document.getElementById('drawer-nav-more');
+  if (!extra || !button) return;
+
+  extra.hidden = !expanded;
+  button.setAttribute('aria-expanded', String(expanded));
+  const label = button.querySelector('[data-drawer-more-label]');
+  const icon = button.querySelector('.material-symbols-outlined');
+  if (label) label.textContent = expanded ? 'Ver menos módulos' : 'Ver más módulos';
+  if (icon) icon.textContent = expanded ? 'expand_less' : 'expand_more';
+
+  if (expanded) {
+    requestAnimationFrame(() => extra.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }
+}
+
+function openActiveUserProfile() {
+  const dni = (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null;
+  if (!dni) {
+    if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('No se encontró una sesión activa.', 'warning');
+    return;
+  }
+  const drawer = document.getElementById('nav-drawer');
+  if (drawer && drawer.classList.contains('drawer-open')) toggleNavDrawer();
+  showView('01_Usuarios');
+  setTimeout(() => changeInternalView('01_Usuarios', 'Detalle', dni), 60);
+}
+
+const DRAWER_WORK_MODULES = [
+  { id: '03_Inspecciones',      label: 'Inspecciones' },
+  { id: '02_Reportes',          label: 'Reportes' },
+  { id: '04_Actos_Condiciones', label: 'Actos y condiciones' },
+  { id: '05_Incidentes',        label: 'Incidentes' },
+  { id: '06_Capacitaciones',    label: 'Capacitaciones' },
+  { id: '07_IPERC',             label: 'Matriz IPERC' },
+  { id: '08_PETAR',             label: 'Permisos PETAR' },
+  { id: '09_EPP',               label: 'Entrega de EPP' },
+  { id: '10_Charlas',           label: 'Charlas 5 minutos' }
+];
+let drawerWorkSummaryCache = { key: '', at: 0, data: null };
+let drawerWorkActiveFilter = null;
+
+function drawerSummaryDate(value) {
+  const text = String(value || '').trim();
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : null;
+}
+
+function drawerSummaryIsPending(record) {
+  const stateKeys = Object.keys(record).filter(key => /(^|_)(estado|status|situacion)(_|$)/i.test(key));
+  if (!stateKeys.length) return false;
+  const state = stateKeys.map(key => String(record[key] || '')).join(' ').toLowerCase();
+  return state !== '' && !/(cerrad|complet|finaliz|atendid|archivad|anulad|cancelad|entregad)/.test(state);
+}
+
+function drawerSummaryIsOverdue(record, today) {
+  const dueKeys = Object.keys(record).filter(key => /(plazo|fecha.*(limite|venc|compromiso|programad)|vencimiento)/i.test(key));
+  const dates = dueKeys.map(key => drawerSummaryDate(record[key])).filter(Boolean);
+  return dates.some(date => date < today);
+}
+
+function renderDrawerWorkSummary(items, isAdmin) {
+  const body = document.getElementById('drawer-work-summary-body');
+  const scope = document.getElementById('drawer-work-summary-scope');
+  if (!body || !scope) return;
+
+  scope.textContent = isAdmin ? 'Todos los registros' : 'Solo tus pendientes';
+  const active = items.filter(item => item.pending > 0);
+  if (!active.length) {
+    body.innerHTML = '<p class="drawer-work-empty">No hay pendientes registrados para tu alcance.</p>';
+    return;
+  }
+
+  const maxPending = Math.max.apply(null, active.map(item => item.pending));
+  body.innerHTML = active.map(item => {
+    const pendingWidth = Math.max(8, Math.round(item.pending / maxPending * 100));
+    const overdueWidth = item.overdue ? Math.max(8, Math.round(item.overdue / item.pending * pendingWidth)) : 0;
+    return '<div class="drawer-work-row">' +
+      '<button type="button" class="drawer-work-name" title="Ver pendientes" onclick="openDrawerWorkModule(\'' + item.id + '\', \'pendientes\')">' + item.label + '</button>' +
+      '<button type="button" class="drawer-work-bar" title="Ver pendientes" aria-label="' + item.pending + ' pendientes, ' + item.overdue + ' vencidos" onclick="openDrawerWorkModule(\'' + item.id + '\', \'pendientes\')">' +
+        '<span class="drawer-work-bar-pending" style="width:' + pendingWidth + '%"></span>' +
+        (overdueWidth ? '<span class="drawer-work-bar-overdue" style="width:' + overdueWidth + '%"></span>' : '') +
+      '</button>' +
+      '<span class="drawer-work-actions">' +
+        '<button type="button" class="drawer-work-count" title="Ver pendientes" onclick="openDrawerWorkModule(\'' + item.id + '\', \'pendientes\')">' + item.pending + '</button>' +
+        (item.overdue ? '<button type="button" class="drawer-work-overdue" title="Ver vencidos" onclick="openDrawerWorkModule(\'' + item.id + '\', \'vencidos\')">' + item.overdue + '</button>' : '') +
+      '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function drawerWorkRowMatches(row, filterKind) {
+  const text = String(row.innerText || '').toLowerCase();
+  const closed = /(cerrad|complet|finaliz|atendid|archivad|anulad|cancelad|entregad)/.test(text);
+  const pending = !closed && /(pendiente|en proceso|programad|reportad|investigaci|acciones abiertas|abierto|solicitad|revisi[oó]n|borrador|firma|actualizaci[oó]n|no realizada)/.test(text);
+  if (!pending) return false;
+  if (filterKind !== 'vencidos') return true;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dates = String(row.innerText || '').match(/\b(?:\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})\b/g) || [];
+  return dates.map(drawerSummaryDate).filter(Boolean).some(date => date < today);
+}
+
+function drawerWorkActiveRowMatches(row) {
+  const active = drawerWorkActiveFilter;
+  if (!active || typeof AppState === 'undefined' || AppState.activeModule !== active.moduleId) return true;
+
+  // Los UUID provienen exactamente de los mismos registros usados para crear
+  // los contadores del drawer. Se buscan también en el onclick de la fila,
+  // porque algunos módulos no muestran el UUID como texto visible.
+  if (active.uuids && active.uuids.length) {
+    const rowSource = String(row.outerHTML || row.innerText || '').toLowerCase();
+    return active.uuids.some(uuid => rowSource.includes(uuid));
+  }
+
+  // Compatibilidad con datos antiguos o registros sin UUID.
+  return drawerWorkRowMatches(row, active.kind);
+}
+
+function renderDrawerWorkFilterNotice(filterKind, visible, total) {
+  const oldNotice = document.getElementById('drawer-work-filter-notice');
+  if (oldNotice) oldNotice.remove();
+
+  const table = document.querySelector('#main-container table');
+  if (!table || !table.parentElement || !table.parentElement.parentElement) return;
+
+  const label = filterKind === 'vencidos' ? 'vencidos' : 'pendientes';
+  const notice = document.createElement('div');
+  notice.id = 'drawer-work-filter-notice';
+  notice.className = 'mb-3 flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] font-semibold text-primary';
+  notice.innerHTML = '<span>Mostrando ' + visible + ' de ' + total + ' ' + label + '.</span>' +
+    '<button type="button" class="underline" onclick="clearDrawerWorkFilter()">Ver todos</button>';
+  table.parentElement.parentElement.insertBefore(notice, table.parentElement);
+}
+
+function applyDrawerWorkFilter(moduleId, filterKind) {
+  if (!drawerWorkActiveFilter || drawerWorkActiveFilter.moduleId !== moduleId) return;
+  if (typeof AppState === 'undefined' || AppState.activeModule !== moduleId) return;
+
+  const body = document.querySelector('#main-container table tbody');
+  const rows = body ? Array.from(body.querySelectorAll('tr:not([data-ds-ui])')) : [];
+  rows.forEach(row => { row.style.display = drawerWorkActiveRowMatches(row) ? '' : 'none'; });
+
+  const visible = rows.filter(row => row.style.display !== 'none').length;
+  if (body && typeof PWA_SKILLS !== 'undefined') {
+    PWA_SKILLS._toggleNoResults(body, rows.length > 0 && visible === 0, filterKind);
+  }
+  const countEl = document.querySelector('#main-container #ui-result-count') ||
+    document.querySelector('#main-container [id$="result-count"]');
+  if (countEl) {
+    countEl.textContent = visible === rows.length ? rows.length + ' registros' : visible + ' de ' + rows.length;
+    countEl.style.color = visible < rows.length ? 'var(--color-primary,#000666)' : '';
+  }
+  renderDrawerWorkFilterNotice(filterKind, visible, rows.length);
+}
+
+function applyActiveDrawerWorkFilter() {
+  if (!drawerWorkActiveFilter) return;
+  applyDrawerWorkFilter(drawerWorkActiveFilter.moduleId, drawerWorkActiveFilter.kind);
+}
+
+function clearDrawerWorkFilter() {
+  drawerWorkActiveFilter = null;
+  const notice = document.getElementById('drawer-work-filter-notice');
+  if (notice) notice.remove();
+  if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.applyFilters();
+}
+
+function openDrawerWorkModule(moduleId, filterKind) {
+  const item = (drawerWorkSummaryCache.data || []).find(summary => summary.id === moduleId);
+  const sourceIds = item
+    ? (filterKind === 'vencidos' ? item.overdueIds : item.pendingIds)
+    : [];
+  drawerWorkActiveFilter = {
+    moduleId: moduleId,
+    kind: filterKind === 'vencidos' ? 'vencidos' : 'pendientes',
+    uuids: (sourceIds || []).map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
+  };
+
+  const drawer = document.getElementById('nav-drawer');
+  if (drawer && drawer.classList.contains('drawer-open')) toggleNavDrawer();
+  showView(moduleId, { keepDrawerWorkFilter: true });
+
+  // Primera aplicación para tablas ya pintadas y reintentos de respaldo para
+  // cargas asíncronas. El renderizador común vuelve a aplicarlo al terminar.
+  [80, 240, 600, 1200, 2500, 5000].forEach(delay => {
+    setTimeout(applyActiveDrawerWorkFilter, delay);
+  });
+}
+
+async function loadDrawerWorkSummary(force) {
+  const body = document.getElementById('drawer-work-summary-body');
+  if (!body || typeof DataService === 'undefined') return;
+
+  const isAdmin = typeof PERMISOS !== 'undefined' && PERMISOS.esAlMenos('Admin');
+  const userDni = (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI || '' : '';
+  const cacheKey = (isAdmin ? 'all' : 'own') + ':' + userDni;
+  const fresh = drawerWorkSummaryCache.key === cacheKey && Date.now() - drawerWorkSummaryCache.at < 60000;
+  if (!force && fresh && drawerWorkSummaryCache.data) {
+    renderDrawerWorkSummary(drawerWorkSummaryCache.data, isAdmin);
+    return;
+  }
+
+  body.innerHTML = '<p class="drawer-work-empty">Actualizando pendientes…</p>';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const items = await Promise.all(DRAWER_WORK_MODULES.map(async module => {
+    try {
+      if (typeof PERMISOS !== 'undefined' && !PERMISOS.moduloVisible(module.id)) return null;
+      const response = await DataService.read(module.id);
+      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
+      const rows = Array.isArray(parsed && parsed.payload) ? parsed.payload : [];
+      const scopedRows = isAdmin || typeof PERMISOS === 'undefined'
+        ? rows
+        : PERMISOS.filtrarDatos(module.id, rows);
+      const pendingRows = scopedRows.filter(drawerSummaryIsPending);
+      const overdueRows = pendingRows.filter(row => drawerSummaryIsOverdue(row, today));
+      return {
+        id: module.id,
+        label: module.label,
+        pending: pendingRows.length,
+        overdue: overdueRows.length,
+        pendingIds: pendingRows.map(row => row.UUID).filter(Boolean),
+        overdueIds: overdueRows.map(row => row.UUID).filter(Boolean)
+      };
+    } catch (error) {
+      console.warn('No se pudo resumir ' + module.id, error);
+      return null;
+    }
+  }));
+
+  drawerWorkSummaryCache = { key: cacheKey, at: Date.now(), data: items.filter(Boolean) };
+  renderDrawerWorkSummary(drawerWorkSummaryCache.data, isAdmin);
+}
+
+function toggleNavDrawer() {
+  const drawer = document.getElementById('nav-drawer');
+  const overlay = document.getElementById('nav-overlay');
+  if (!drawer || !overlay) return;
+
+  const menuBtn = document.getElementById('btn-menu');
+  const isOpen = drawer.classList.contains('drawer-open');
+
+  if (isOpen) {
+    drawer.classList.remove('drawer-open');
+    overlay.classList.remove('overlay-visible');
+    // escape-routes / focus-management: el foco vuelve al botón que abrió el panel
+    drawer.setAttribute('aria-hidden', 'true');
+    if (menuBtn) {
+      menuBtn.setAttribute('aria-expanded', 'false');
+      menuBtn.focus({ preventScroll: true });
+    }
+  } else {
+    // Cada apertura inicia con los cinco accesos principales y evita un menú largo.
+    setDrawerNavExpanded(false);
+    // Actualizar datos del perfil con la sesión actual
+    const nameEl = document.getElementById('drawer-username');
+    const emailEl = document.getElementById('drawer-email');
+    const avatarEl = document.getElementById('drawer-avatar');
+    
+    if (nameEl && AppState.User.Nombre) {
+      nameEl.textContent = AppState.User.Nombre;
+    }
+    if (emailEl && AppState.User.DNI) {
+      emailEl.textContent = AppState.User.Email || `DNI: ${AppState.User.DNI}`;
+    }
+    if (avatarEl && AppState.User.Nombre) {
+      avatarEl.textContent = AppState.User.Nombre.charAt(0).toUpperCase();
+    }
+    const roleLabel = document.getElementById('drawer-role-label');
+    if (roleLabel && AppState.User.Rol) {
+      roleLabel.textContent = (typeof PERMISOS !== 'undefined') ? PERMISOS.etiqueta() : AppState.User.Rol;
+      if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
+    }
+
+    drawer.classList.add('drawer-open');
+    overlay.classList.add('overlay-visible');
+    drawer.setAttribute('aria-hidden', 'false');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+    setTimeout(() => loadDrawerWorkSummary(false), 60);
+
+    // Foco al primer destino del menú (lector de pantalla y teclado)
+    setTimeout(() => {
+      const first = drawer.querySelector('.drawer-nav-link');
+      if (first) first.focus({ preventScroll: true });
+    }, 120);
+
+    // Refrescar estadísticas al abrir
+    if (typeof refreshDrawerStats === 'function') {
+      setTimeout(refreshDrawerStats, 50); // leve delay para que el DOM esté listo
+    }
+  }
+}
+
+// escape-routes: Escape cierra el panel lateral (patrón esperado en diálogos)
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  const drawer = document.getElementById('nav-drawer');
+  if (drawer && drawer.classList.contains('drawer-open')) toggleNavDrawer();
+});
+
+/**
+ * Actualiza el link activo del drawer según la vista actual.
+ * Llamar desde showView() y changeInternalView()
+ */
+function updateDrawerActiveLink(viewID) {
+  document.querySelectorAll('.drawer-nav-link').forEach(el => el.classList.remove('active'));
+  
+  const map = {
+    'Menu': 'dnav-menu',
+    '03_Inspecciones': 'dnav-03',
+    '01_Usuarios': 'dnav-01',
+    '02_Reportes': 'dnav-02',
+    '00_Admin': 'dnav-00',
+    '04_Configuraciones': 'dnav-04',
+    '04_Actos_Condiciones': 'dnav-04ac',
+    '05_Incidentes': 'dnav-05',
+    '06_Capacitaciones': 'dnav-06',
+    '07_IPERC': 'dnav-07',
+    '08_PETAR': 'dnav-08',
+    '09_EPP': 'dnav-09',
+    '10_Charlas': 'dnav-10'
+  };
+  
+  document.querySelectorAll('.drawer-nav-link[aria-current]').forEach(el => el.removeAttribute('aria-current'));
+
+  const activeId = map[viewID];
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) {
+      el.classList.add('active');
+      el.setAttribute('aria-current', 'page');  // nav-state-active
+    }
+  }
+}
+
+/**
+ * Refresca las barras del drawer con conteos reales de las tablas del DOM.
+ * Se llama al abrir el drawer y al pulsar "Actualizar".
+ */
+function refreshDrawerStats() {
+  // Las filas de interfaz (esqueleto / estado vacío) nunca cuentan como datos
+  function dataRowsOf(tbodyId) {
+    const tbody = document.getElementById(tbodyId);
+    return tbody ? tbody.querySelectorAll('tr:not([data-ds-ui])') : null;
+  }
+
+  function countInTable(tbodyId, colValue) {
+    const rows = dataRowsOf(tbodyId);
+    if (!rows) return null;
+    let count = 0;
+    rows.forEach(row => {
+      if (row.innerText.toLowerCase().includes(colValue.toLowerCase())) count++;
+    });
+    return count;
+  }
+
+  function setBar(statId, barId, count, total) {
+    const statEl = document.getElementById(statId);
+    const barEl  = document.getElementById(barId);
+    if (statEl) statEl.textContent = (count !== null) ? count : '—';
+    if (barEl)  barEl.style.width  = (count !== null && total > 0) ? Math.round((count / total) * 100) + '%' : '0%';
+  }
+
+  function setLabel(labelId, total) {
+    const el = document.getElementById(labelId);
+    if (el) el.textContent = (total !== null) ? `${total} total` : 'sin datos';
+  }
+
+  function setKPI(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (value !== null) ? value : '—';
+  }
+
+  function setBadge(badgeId, count) {
+    const el = document.getElementById(badgeId);
+    if (!el) return;
+    if (count !== null && count > 0) {
+      el.textContent = count;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  }
+
+  // 03 Inspecciones
+  const tbody03  = document.getElementById('inspecciones-table-body');
+  const total03  = tbody03 ? tbody03.querySelectorAll('tr:not([data-ds-ui])').length : null;
+  const pend03   = tbody03 ? countInTable('inspecciones-table-body', 'Pendiente')  : null;
+  const proc03   = tbody03 ? countInTable('inspecciones-table-body', 'En Proceso') : null;
+  const cerr03   = tbody03 ? countInTable('inspecciones-table-body', 'Cerrado')    : null;
+  setLabel('stat-label-03', total03);
+  setBar('stat-03-pendiente', 'bar-03-pendiente', pend03, total03);
+  setBar('stat-03-enproceso', 'bar-03-enproceso', proc03, total03);
+  setBar('stat-03-cerrado',   'bar-03-cerrado',   cerr03, total03);
+  setKPI('kpi-03-pendiente', pend03);
+  setKPI('kpi-03-cerrado-kpi', cerr03);
+  setBadge('dnav-badge-03', pend03);
+
+  // 02 Reportes
+  const tbody02  = document.getElementById('reportes-table-body');
+  const total02  = tbody02 ? tbody02.querySelectorAll('tr:not([data-ds-ui])').length : null;
+  const alto02   = tbody02 ? countInTable('reportes-table-body', 'Alto (Rojo)')     : null;
+  setLabel('stat-label-02', total02);
+  setBar('stat-02-critico', 'bar-02-critico', tbody02 ? countInTable('reportes-table-body', 'Crítico (Negro)') : null, total02);
+  setBar('stat-02-alto',    'bar-02-alto',    alto02, total02);
+  setKPI('kpi-02-alto', alto02);
+  setBadge('dnav-badge-02', alto02);
+
+  // 01 Usuarios
+  const tbody01  = document.getElementById('usuarios-table-body');
+  const total01  = tbody01 ? tbody01.querySelectorAll('tr:not([data-ds-ui])').length : null;
+  const act01    = tbody01 ? countInTable('usuarios-table-body', 'Activo') : null;
+  setLabel('stat-label-01', total01);
+  setBar('stat-01-activo', 'bar-01-activo', act01, total01);
+  setBar('stat-01-cesado', 'bar-01-cesado', tbody01 ? countInTable('usuarios-table-body', 'Cesado') : null, total01);
+  setKPI('kpi-01-activo', act01);
+}
+
+/**
+ * Navega al módulo y aplica automáticamente un filtro pre-seleccionado.
+ * @param {string} moduleID    - Ej: '03_Inspecciones'
+ * @param {string} filterField - Campo del subconfig, ej: 'Estado_Actual'
+ * @param {string} filterValue - Valor a filtrar, ej: 'Pendiente'
+ */
+function navigateWithFilter(moduleID, filterField, filterValue) {
+  // 1. Cerrar drawer
+  toggleNavDrawer();
+
+  // 2. Navegar al módulo (vista Resumen)
+  showView(moduleID);
+
+  // 3. Esperar a que los filtros dinámicos se inyecten y luego aplicarlos
+  setTimeout(() => {
+    // Abrir panel de filtros si está cerrado
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    if (panel && !panel.classList.contains('filter-open')) {
+      panel.classList.add('filter-open');
+      panel.style.maxHeight = '600px';
+      panel.style.opacity   = '1';
+      panel.style.pointerEvents = 'auto';
+      const icon = document.querySelector('#main-container .filter-toggle-icon');
+      if (icon) icon.innerText = 'expand_less';
+    }
+
+    // Establecer el valor en el input/select del filtro
+    const filterInput = document.getElementById(`filter-${filterField}`);
+    if (filterInput) {
+      filterInput.value = filterValue;
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.applyFilters();
+      filterInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, 380);
+}
+
+</script>

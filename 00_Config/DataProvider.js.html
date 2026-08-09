@@ -1,0 +1,431 @@
+<script>
+// =========================================================================
+// DATA PROVIDER — Capa de abstracción de base de datos
+// =========================================================================
+// ARCHIVO: DataProvider.js.html
+//
+// CÓMO USAR:
+//   Todos los módulos llaman a DataService (nunca a google.script.run directamente).
+//   Para cambiar de proveedor:
+//     AppState.DB_PROVIDER = 'sheets';    ← Google Sheets via Apps Script (default)
+//     AppState.DB_PROVIDER = 'supabase';  ← Supabase REST API
+//
+// MIGRACIÓN A SUPABASE:
+//   1. Configura AppState.Supabase.URL y AppState.Supabase.ANON_KEY
+//   2. Ejecuta: node tools/migrate_to_supabase.js  (crea el schema SQL)
+//   3. Pega el SQL en el editor de Supabase
+//   4. Cambia AppState.DB_PROVIDER a 'supabase' en Global_Config.js.html
+//   5. Ejecuta node generate_preview.js y despliega
+// =========================================================================
+
+
+// ── SheetsProvider ── Envuelve google.script.run en Promises
+const SheetsProvider = {
+  _call(payload) {
+    return new Promise((resolve, reject) => {
+      if (typeof google === 'undefined' || !google.script) {
+        reject(new Error('Google Apps Script no disponible.'));
+        return;
+      }
+      // authSessionGuard() del backend valida este token contra la columna DNI
+      // de la tabla de usuarios. Sin enviarlo, TODA acción distinta de
+      // LOGIN_AUTH se rechaza con INVALID_TOKEN.
+      const conSesion = Object.assign({
+        userToken: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.DNI : null
+      }, payload);
+
+      google.script.run
+        .withSuccessHandler(res => {
+          let parsed;
+          try { parsed = typeof res === 'string' ? JSON.parse(res) : res; }
+          catch (e) { resolve({ status: 'ERROR', msg: 'Respuesta inválida del servidor.' }); return; }
+
+          // Respuestas de sesión: se avisa en vez de fallar en silencio
+          if (parsed && parsed.status === 'FORCE_LOGOUT') {
+            if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Acceso revocado. Vuelve a iniciar sesión.', 'error', 5000);
+            if (typeof AppState !== 'undefined') setTimeout(() => AppState.clearSession(), 1200);
+          } else if (parsed && parsed.status === 'INVALID_TOKEN') {
+            console.warn('[Sesión] El servidor no reconoce el token:', parsed.msg);
+          }
+          resolve(parsed);
+        })
+        .withFailureHandler(err => reject(err))
+        .serverRouter(JSON.stringify(conSesion));
+    });
+  },
+
+  readTemplate(module) {
+    return this._call({ action: 'READ_TEMPLATE', moduleName: module });
+  },
+  saveTemplate(module, docId) {
+    return this._call({
+      action: 'SAVE_TEMPLATE', moduleName: module, docId: docId,
+      autor: (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.Nombre : ''
+    });
+  },
+
+  auth(dni, hash) {
+    return this._call({ action: 'LOGIN_AUTH', userDNI: dni, userPassHash: hash });
+  },
+  read(module) {
+    return this._call({ action: 'READ_DB', moduleName: module });
+  },
+  readDelta(module, lastSync) {
+    return this._call({ action: 'READ_DELTA', moduleName: module, lastSyncDate: lastSync });
+  },
+  create(module, data) {
+    return this.syncQueue(module, [{ action: 'INSERT', payload: data, childPayload: [] }]);
+  },
+  update(module, data) {
+    return this.syncQueue(module, [{ action: 'UPDATE', payload: data, childPayload: [] }]);
+  },
+  delete(module, uuid) {
+    return this.syncQueue(module, [{ action: 'DELETE', payload: { UUID: uuid }, childPayload: [] }]);
+  },
+  syncQueue(module, items) {
+    // El backend requiere el subconfig para mapear columnas. Se busca en el scope global.
+    const subKey = 'SUBCONFIG_' + module.toUpperCase().replace(/-/g, '_');
+    const subconfig = (typeof window !== 'undefined' && window[subKey]) || null;
+
+    return this._call({
+      action: 'SYNC_OFFLINE_QUEUE',
+      moduleName: module,
+      ...(subconfig ? { subconfig } : {}),
+      dataArray: items.map(i => ({ ...i.payload, _action: i.action })),
+      childDataArray: items.flatMap(i => i.childPayload || [])
+    });
+  },
+  getConfig() {
+    return this._call({ action: 'GET_CONFIG' });
+  },
+  saveConfig(settings) {
+    return this._call({ action: 'SAVE_CONFIG', settings });
+  }
+};
+
+
+// ── SupabaseProvider ── Llamadas directas a Supabase PostgREST API
+const SupabaseProvider = {
+  get _url()  { return (AppState.Supabase || {}).URL      || ''; },
+  get _key()  { return (AppState.Supabase || {}).ANON_KEY || ''; },
+  get _snake(){ return (AppState.Supabase || {}).USE_SNAKE_CASE === true; },
+
+  _headers(extra = {}) {
+    return {
+      'Content-Type': 'application/json',
+      'apikey': this._key,
+      'Authorization': `Bearer ${AppState.User?.SupabaseJWT || this._key}`,
+      ...extra
+    };
+  },
+
+  // Convierte '02_Reportes' → 'reportes' (o mantiene la mayúscula según config)
+  _table(module) {
+    const base = module.replace(/^\d+_/, '');
+    return this._snake ? base.toLowerCase() : base;
+  },
+
+  // Campo de timestamp para ordenar (configurable por módulo)
+  _tsField(module) {
+    const map = (AppState.Supabase || {}).TS_FIELDS || {};
+    return map[module] || 'Fecha_Registro';
+  },
+
+  async _fetch(path, options = {}) {
+    const url = `${this._url}/rest/v1${path}`;
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers: { ...this._headers(), ...(options.headers || {}) }
+      });
+      const body = res.status !== 204 ? await res.json() : null;
+      if (!res.ok) {
+        const msg = (body && (body.message || body.hint || body.details)) || `HTTP ${res.status}`;
+        return { status: 'ERROR', msg };
+      }
+      return { status: 'OK', _raw: body };
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Error de red: ' + e.message };
+    }
+  },
+
+  // ── Archivos: Supabase Storage sustituye a Google Drive ────────────────
+  //
+  // RUTA:  <empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>
+  // La empresa va primero porque las políticas del bucket aíslan por carpeta.
+  //
+  // Buckets:  evidencias (privado) · documentos (privado) · publico
+  _bucketDe(tipo) {
+    const t = String(tipo || '').toLowerCase();
+    if (t === 'logo' || t === 'publico') return 'publico';
+    if (t === 'pdf'  || t === 'file')    return 'documentos';
+    return 'evidencias';                 // fotos y firmas
+  },
+
+  /** dataURL (cámara/firma) → Blob, sin librerías */
+  _aBlob(dataUrl) {
+    const [cab, b64] = String(dataUrl).split(',');
+    const mime = (cab.match(/data:([^;]+)/) || [])[1] || 'application/octet-stream';
+    const bin  = atob(b64);
+    const buf  = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type: mime });
+  },
+
+  _extDe(mime) {
+    return ({ 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp',
+              'application/pdf':'pdf' })[mime] || 'bin';
+  },
+
+  /**
+   * Sube un archivo y devuelve su ruta (no la URL): las URLs firmadas
+   * caducan, la ruta no. Se guarda la ruta en la columna del registro.
+   * @param {File|Blob|string} archivo  File, Blob o dataURL
+   * @returns {Promise<{ruta:string, bucket:string}>}
+   */
+  async subirArchivo(modulo, uuid, campo, archivo, indice) {
+    const empresa = (AppState.User || {}).EmpresaId || 'sin-empresa';
+    const blob    = (typeof archivo === 'string') ? this._aBlob(archivo) : archivo;
+    const bucket  = this._bucketDe(blob.type === 'application/pdf' ? 'pdf' : 'imagen');
+    const ext     = (archivo && archivo.name && archivo.name.indexOf('.') !== -1)
+      ? archivo.name.split('.').pop().toLowerCase()
+      : this._extDe(blob.type);
+
+    const ruta = [empresa, modulo, uuid, campo + '_' + (indice || 0) + '.' + ext].join('/');
+
+    const res = await fetch(`${this._url}/storage/v1/object/${bucket}/${ruta}`, {
+      method: 'POST',
+      headers: {
+        'apikey': this._key,
+        'Authorization': `Bearer ${AppState.User?.SupabaseJWT || this._key}`,
+        'Content-Type': blob.type || 'application/octet-stream',
+        'x-upsert': 'true'
+      },
+      body: blob
+    });
+
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { const j = await res.json(); msg = j.message || j.error || msg; } catch (e) {}
+      throw new Error('No se pudo subir ' + campo + ': ' + msg);
+    }
+    return { ruta, bucket };
+  },
+
+  /**
+   * Sube todos los campos de archivo de un registro y sustituye su valor por
+   * la ruta almacenada. Es el equivalente a processFilesForItem() de Apps
+   * Script, pero del lado del cliente.
+   */
+  async subirArchivosDe(modulo, datos) {
+    const clave = 'SUBCONFIG_' + String(modulo).toUpperCase().replace(/[^A-Z0-9_]/g, '');
+    const cfg = window[clave];
+    if (!cfg || !cfg.Variables) return datos;
+
+    const salida = Object.assign({}, datos);
+    const tiposArchivo = ['Image', 'Image_Collection', 'Signature', 'File'];
+
+    for (const campo in cfg.Variables) {
+      const def = cfg.Variables[campo] || {};
+      if (tiposArchivo.indexOf(def.type) === -1) continue;
+      const valor = salida[campo];
+      if (!valor) continue;
+
+      // Un campo puede traer varias imágenes separadas por coma
+      const partes = String(valor).split(',').map(v => v.trim()).filter(Boolean);
+      const rutas = [];
+      for (let i = 0; i < partes.length; i++) {
+        // Si ya es una ruta guardada (no un dataURL), se respeta
+        if (partes[i].indexOf('data:') !== 0 && partes[i].indexOf('http') !== 0) {
+          rutas.push(partes[i]); continue;
+        }
+        if (partes[i].indexOf('http') === 0) { rutas.push(partes[i]); continue; }
+        const r = await this.subirArchivo(modulo, salida.UUID, campo, partes[i], i);
+        rutas.push(r.ruta);
+      }
+      salida[campo]            = rutas.join(',');
+      salida[campo + '_Path']  = rutas.join(',');
+      salida[campo + '_ID']    = rutas[0] || '';
+    }
+    return salida;
+  },
+
+  /**
+   * URL temporal para mostrar un archivo privado. Las vistas de Detalle la
+   * usan en lugar de la URL de Drive.
+   * @param {number} segundos  validez del enlace (1 hora por defecto)
+   */
+  async urlFirmada(ruta, bucket, segundos) {
+    if (!ruta) return '';
+    const b = bucket || 'evidencias';
+    // Storage no cuelga de /rest/v1, así que se compone la ruta a mano
+    try {
+      const res = await fetch(`${this._url}/storage/v1/object/sign/${b}/${ruta}`, {
+        method: 'POST',
+        headers: this._headers(),
+        body: JSON.stringify({ expiresIn: segundos || 3600 })
+      });
+      if (!res.ok) return '';
+      const j = await res.json();
+      return this._url + '/storage/v1' + j.signedURL;
+    } catch (e) { return ''; }
+  },
+
+  async auth(dni, hash) {
+    const table = this._table('01_Usuarios');
+    const r = await this._fetch(`/${table}?DNI=eq.${encodeURIComponent(dni)}&select=*`);
+    if (r.status !== 'OK') return r;
+    const users = r._raw;
+    if (!users || !users.length) return { status: 'ERROR', msg: 'Usuario no encontrado.' };
+    const u = users[0];
+    if (u.Password_Hash !== hash) return { status: 'ERROR', msg: 'Contraseña incorrecta.' };
+    if (u.Status === 'Cesado') return { status: 'CESADO', msg: 'Acceso revocado. Contacte al administrador.' };
+    return {
+      status: 'OK',
+      userData: {
+        UUID:            u.UUID,
+        DNI:             u.DNI,
+        Nombre_Completo: u.Nombre_Completo,
+        Email:           u.Email,
+        Rol:             u.Rol,
+        Status:          u.Status
+      }
+    };
+  },
+
+  async read(module) {
+    const tsField = this._tsField(module);
+    const r = await this._fetch(`/${this._table(module)}?order=${tsField}.desc.nullslast`);
+    if (r.status !== 'OK') return r;
+    return { status: 'OK', payload: r._raw || [], msg: (r._raw || []).length + ' registros' };
+  },
+
+  async readDelta(module, lastSync) {
+    const tsField = this._tsField(module);
+    const ts = encodeURIComponent(lastSync);
+    const r = await this._fetch(`/${this._table(module)}?${tsField}=gte.${ts}&order=${tsField}.asc`);
+    if (r.status !== 'OK') return r;
+    return { status: 'OK', payload: r._raw || [] };
+  },
+
+  async create(module, data) {
+    // 1. Los archivos van primero a Storage; en la fila queda su ruta
+    let fila;
+    try {
+      fila = await this.subirArchivosDe(module, data);
+    } catch (e) {
+      return { status: 'ERROR', msg: e.message };
+    }
+    // 2. Sello de empresa y autor: RLS los exige y son la base del alcance
+    fila.empresa_id     = (AppState.User || {}).EmpresaId || null;
+    fila.creado_por_dni = (AppState.User || {}).DNI || '';
+
+    const r = await this._fetch(`/${this._table(module)}`, {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(fila)
+    });
+    return r.status === 'OK' ? { status: 'OK', uuid: fila.UUID } : r;
+  },
+
+  async update(module, data) {
+    const uuid = data.UUID;
+    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para actualizar.' };
+    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify(data)
+    });
+    return r.status === 'OK' ? { status: 'OK' } : r;
+  },
+
+  async delete(module, uuid) {
+    if (!uuid) return { status: 'ERROR', msg: 'UUID requerido para eliminar.' };
+    const r = await this._fetch(`/${this._table(module)}?UUID=eq.${encodeURIComponent(uuid)}`, {
+      method: 'DELETE'
+    });
+    return r.status === 'OK' ? { status: 'OK' } : r;
+  },
+
+  async syncQueue(module, items) {
+    let success = 0, errors = 0;
+    for (const item of items) {
+      const act = (item.action || 'INSERT').toUpperCase();
+      let r;
+      if      (act === 'DELETE') r = await this.delete(module, item.payload.UUID);
+      else if (act === 'UPDATE') r = await this.update(module, item.payload);
+      else                       r = await this.create(module, item.payload);
+      if (r.status === 'OK') success++; else errors++;
+    }
+    return {
+      status: errors === 0 ? 'OK' : 'PARTIAL',
+      processed: items.length,
+      success,
+      errors
+    };
+  },
+
+  async getConfig() {
+    const table = this._table('04_Configuraciones');
+    const r = await this._fetch(`/${table}?select=Clave,Valor`);
+    if (r.status !== 'OK') return r;
+    const cfg = {};
+    (r._raw || []).forEach(row => { if (row.Clave) cfg[row.Clave] = row.Valor; });
+    return { status: 'OK', payload: cfg };
+  },
+
+  async saveConfig(settings) {
+    const table = this._table('04_Configuraciones');
+    const rows = Object.keys(settings).map(k => ({ Clave: k, Valor: settings[k] }));
+    const r = await this._fetch(`/${table}`, {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+    return r.status === 'OK' ? { status: 'OK' } : r;
+  },
+
+  // Plantillas PDF: tabla 'plantillas' con clave = módulo
+  async readTemplate(module) {
+    const r = await this._fetch(`/plantillas?Modulo=eq.${encodeURIComponent(module)}&select=*`);
+    if (r.status !== 'OK') return r;
+    const fila = (r._raw || [])[0];
+    return { status: 'OK', payload: fila ? { DOC_ID: fila.Doc_Id } : null };
+  },
+  async saveTemplate(module, docId) {
+    const r = await this._fetch('/plantillas', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{
+        Modulo: module, Doc_Id: docId,
+        Actualizado: new Date().toISOString(),
+        Autor: (AppState.User || {}).Nombre || ''
+      }])
+    });
+    return r.status === 'OK' ? { status: 'OK' } : r;
+  }
+};
+
+
+// ── DataService ── Singleton que auto-selecciona el proveedor activo
+const DataService = {
+  get provider() {
+    const cfg = AppState.Supabase || {};
+    if (AppState.DB_PROVIDER === 'supabase' && cfg.URL && cfg.ANON_KEY) {
+      return SupabaseProvider;
+    }
+    return SheetsProvider;
+  },
+  auth:       (dni, hash)        => DataService.provider.auth(dni, hash),
+  read:       (module)           => DataService.provider.read(module),
+  readDelta:  (module, lastSync) => DataService.provider.readDelta(module, lastSync),
+  create:     (module, data)     => DataService.provider.create(module, data),
+  update:     (module, data)     => DataService.provider.update(module, data),
+  delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
+  syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
+  getConfig:  ()                 => DataService.provider.getConfig(),
+  saveConfig: (settings)         => DataService.provider.saveConfig(settings),
+  readTemplate: (module)              => DataService.provider.readTemplate(module),
+  saveTemplate: (module, docId)       => DataService.provider.saveTemplate(module, docId),
+};
+</script>

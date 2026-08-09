@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motor PWA: constructor de módulos"
+  short_description: "Construye módulos de MOTOR con su arquitectura estándar"
+  default_prompt: "Usa $motor-pwa-builder para crear o ampliar un módulo de MOTOR."

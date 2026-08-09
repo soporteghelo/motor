@@ -1,0 +1,117 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 05_Incidentes
+ * =========================================================================
+ * Registro e investigación de incidentes, accidentes y cuasi accidentes.
+ *
+ * POR QUÉ ESTE MÓDULO
+ * Es el único registro que toda autoridad laboral exige sin excepción, y el
+ * que más se improvisa en hojas sueltas. Aquí se guarda el hecho, su
+ * clasificación, la investigación de causas y las acciones correctivas con
+ * responsable y plazo — que son las que cierran el ciclo.
+ *
+ * DISEÑO NEUTRO POR INDUSTRIA
+ * Las listas evitan vocabulario de un solo sector: sirven igual en minería,
+ * construcción, planta, logística o servicios. Se ajustan editando este
+ * archivo, sin tocar las vistas.
+ * =========================================================================
+ */
+
+var SUBCONFIG_05_INCIDENTES = {
+
+  Config_Modular: {
+    NombreInterno:          "05_Incidentes",
+    Titulo:                 "Incidentes y Accidentes",
+    DRIVE_FOLDER_NAME:      "05_Incidentes_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "ACCIONES",      // acciones correctivas del hallazgo
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    // Filas dinámicas: el plan de acción que cierra la investigación
+    Relational_Fields: [
+      { name: "Accion",       label: "Acción correctiva", type: "text", colSpan: "md:col-span-5" },
+      { name: "Responsable",  label: "Responsable",       type: "text", colSpan: "md:col-span-3" },
+      { name: "Fecha_Limite", label: "Fecha límite",      type: "date", colSpan: "md:col-span-2" },
+      { name: "Estado_Accion",label: "Estado",            type: "text", colSpan: "md:col-span-2" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":              { type: "Hidden_UUID", required: true,  isFilter: false },
+
+    // ── Qué pasó ──
+    "Fecha_Evento":      { type: "Date", required: true,  isFilter: true,  label: "Fecha del evento" },
+    "Hora_Evento":       { type: "Text", required: false, isFilter: false, label: "Hora" },
+    "Tipo_Evento":       { type: "Enum", required: true,  isFilter: true,  label: "Tipo de evento",
+                           acceptedValues: [
+                             "Cuasi accidente",
+                             "Incidente peligroso",
+                             "Accidente sin tiempo perdido",
+                             "Accidente con tiempo perdido",
+                             "Enfermedad ocupacional"
+                           ], allowOtherValues: false },
+    "Gravedad":          { type: "Enum", required: true,  isFilter: true,  label: "Gravedad",
+                           acceptedValues: ["Leve", "Grave", "Mortal"], allowOtherValues: false },
+    "Area":              { type: "Enum", required: true,  isFilter: true,  label: "Área",
+                           acceptedValues: [
+                             "Operaciones", "Mantenimiento", "Almacén", "Logística",
+                             "Producción", "Administración", "Obra / Campo", "Laboratorio"
+                           ], allowOtherValues: true },
+    "Lugar_Exacto":      { type: "Text", required: false, isFilter: false, label: "Lugar exacto" },
+    "Descripcion":       { type: "Text", required: true,  isFilter: false, label: "Descripción de lo ocurrido" },
+
+    // ── A quién ── (DNI siempre Text: preserva ceros a la izquierda)
+    "Trabajador_DNI":    { type: "REF",  required: false, isFilter: false, label: "Trabajador afectado",
+                           relationalDataOrigin: "01_Usuarios" },
+    "Nombre_Trabajador": { type: "Text", required: false, isFilter: true,  label: "Nombre del afectado" },
+    "Puesto":            { type: "Text", required: false, isFilter: false, label: "Puesto" },
+    "Parte_Afectada":    { type: "Enum", required: false, isFilter: false, label: "Parte del cuerpo afectada",
+                           acceptedValues: [
+                             "No aplica", "Cabeza", "Ojos", "Rostro", "Cuello", "Tronco / espalda",
+                             "Brazos", "Manos / dedos", "Piernas", "Pies", "Órganos internos", "Múltiples"
+                           ], allowOtherValues: false },
+    "Dias_Descanso":     { type: "Text", required: false, isFilter: false, label: "Días de descanso médico" },
+    "Testigos":          { type: "Text", required: false, isFilter: false, label: "Testigos" },
+
+    // ── Por qué pasó ── (el análisis que evita la repetición)
+    "Causa_Inmediata":   { type: "Text", required: false, isFilter: false, label: "Causa inmediata" },
+    "Causa_Basica":      { type: "Text", required: false, isFilter: false, label: "Causa básica" },
+    "Categoria_Causa":   { type: "Enum", required: false, isFilter: true,  label: "Categoría de causa raíz",
+                           acceptedValues: [
+                             "Factor personal", "Factor del trabajo", "Método / procedimiento",
+                             "Equipo / herramienta", "Entorno / condiciones", "Gestión / supervisión"
+                           ], allowOtherValues: false },
+
+    // ── Seguimiento ──
+    "Estado":            { type: "Enum", required: true,  isFilter: true,  label: "Estado",
+                           acceptedValues: ["Reportado", "En investigación", "Con acciones abiertas", "Cerrado"],
+                           allowOtherValues: false },
+    "Investigador_DNI":  { type: "REF",  required: false, isFilter: false, label: "Investigador responsable",
+                           relationalDataOrigin: "01_Usuarios",
+                           slice: { column: "Rol", value: "Supervisor" } },
+    "Fecha_Cierre":      { type: "Date", required: false, isFilter: false, label: "Fecha de cierre" },
+
+    // ── Evidencia (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Evidencia_Fotos":   { type: "Image_Collection", required: false, isFilter: false, label: "Evidencia fotográfica" },
+    "Evidencia_Fotos_ID":   { type: "Hidden", required: false },
+    "Evidencia_Fotos_Path": { type: "Hidden", required: false },
+
+    "Firma_Investigador":      { type: "Signature", required: false, isFilter: false, label: "Firma del investigador" },
+    "Firma_Investigador_ID":   { type: "Hidden", required: false },
+    "Firma_Investigador_Path": { type: "Hidden", required: false },
+
+    "Reportado_Por":     { type: "Text", required: false, isFilter: false, label: "Reportado por" },
+    "Fecha_Registro":    { type: "Hidden", required: false }
+  }
+};
+</script>

@@ -1,0 +1,142 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 07_IPERC
+ * =========================================================================
+ * Identificación de Peligros, Evaluación de Riesgos y Controles.
+ *
+ * POR QUÉ ESTE MÓDULO
+ * Es la columna vertebral del sistema: de aquí salen los controles que
+ * justifican todo lo demás (permisos, capacitaciones, EPP). Un IPERC en
+ * papel se desactualiza y nadie lo consulta; aquí cada peligro se evalúa
+ * con la matriz y el nivel de riesgo se calcula solo, de modo que no
+ * dependa del criterio de quien llena la fila.
+ *
+ * MATRIZ DE VALORACIÓN (5×5, estándar en SSO)
+ *   Nivel = Probabilidad (1-5) × Severidad (1-5)
+ *     1-4   Trivial       aceptable sin acción
+ *     5-8   Tolerable     mantener controles
+ *     9-12  Moderado      requiere acción planificada
+ *    15-16  Importante    no iniciar hasta reducirlo
+ *    20-25  Intolerable   trabajo prohibido
+ *
+ * La evaluación se hace DOS veces por peligro: riesgo inicial (sin
+ * controles) y riesgo residual (con ellos). La diferencia demuestra que
+ * los controles sirven — eso es lo que revisa una auditoría.
+ * =========================================================================
+ */
+
+var SUBCONFIG_07_IPERC = {
+
+  Config_Modular: {
+    NombreInterno:          "07_IPERC",
+    Titulo:                 "Matriz IPERC",
+    DRIVE_FOLDER_NAME:      "07_IPERC_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "PELIGROS",
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    // Cada fila es un peligro evaluado. El nivel de riesgo es de tipo
+    // 'display': lo calcula el formulario, no se escribe a mano.
+    Relational_Fields: [
+      { name: "Peligro",     label: "Peligro",   type: "text", fullWidth: true, colSpan: "md:col-span-3",
+        placeholder: "Ej: superficie a 3 m sin barandas" },
+      { name: "Riesgo",      label: "Riesgo",    type: "text", fullWidth: true, colSpan: "md:col-span-3",
+        placeholder: "Ej: caída a distinto nivel" },
+      { name: "Probabilidad",label: "Prob.",     type: "select", colSpan: "md:col-span-1",
+        options: [
+          { value: "1", label: "1 · Muy baja" }, { value: "2", label: "2 · Baja" },
+          { value: "3", label: "3 · Media" },    { value: "4", label: "4 · Alta" },
+          { value: "5", label: "5 · Muy alta" }
+        ] },
+      { name: "Severidad",   label: "Sev.",      type: "select", colSpan: "md:col-span-1",
+        options: [
+          { value: "1", label: "1 · Insignificante" }, { value: "2", label: "2 · Menor" },
+          { value: "3", label: "3 · Moderada" },       { value: "4", label: "4 · Mayor" },
+          { value: "5", label: "5 · Catastrófica" }
+        ] },
+      { name: "Nivel_Riesgo",label: "Nivel",     type: "display", colSpan: "md:col-span-2" },
+      { name: "Jerarquia",   label: "Control",   type: "select", fullWidth: true, colSpan: "md:col-span-2",
+        options: ["Eliminación", "Sustitución", "Control de ingeniería", "Control administrativo", "EPP"] },
+      { name: "Controles",   label: "Controles a aplicar", type: "text", fullWidth: true, colSpan: "md:col-span-11",
+        placeholder: "Medidas concretas, no genéricas" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: false, canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":              { type: "Hidden_UUID", required: true, isFilter: false },
+
+    // ── Alcance de la matriz ──
+    "Proceso":           { type: "Text", required: true, isFilter: true, label: "Proceso o actividad" },
+    "Tipo_IPERC":        { type: "Enum", required: true, isFilter: true, label: "Tipo de IPERC",
+                           acceptedValues: ["Línea base", "Continuo", "Específico"], allowOtherValues: false },
+    "Area":              { type: "Enum", required: true, isFilter: true, label: "Área",
+                           acceptedValues: [
+                             "Operaciones", "Mantenimiento", "Almacén", "Logística",
+                             "Producción", "Administración", "Obra / Campo", "Laboratorio"
+                           ], allowOtherValues: true },
+    "Puesto_Tarea":      { type: "Text", required: false, isFilter: false, label: "Puesto o tarea evaluada" },
+
+    // ── Vigencia y responsables ──
+    "Fecha_Elaboracion": { type: "Date", required: true,  isFilter: true,  label: "Fecha de elaboración" },
+    "Fecha_Revision":    { type: "Date", required: false, isFilter: true,  label: "Próxima revisión" },
+    "Elaborado_Por":     { type: "REF",  required: false, isFilter: false, label: "Elaborado por",
+                           relationalDataOrigin: "01_Usuarios" },
+    "Revisado_Por":      { type: "REF",  required: false, isFilter: false, label: "Revisado por",
+                           relationalDataOrigin: "01_Usuarios",
+                           slice: { column: "Rol", value: "Supervisor" } },
+    "Participantes":     { type: "Text", required: false, isFilter: false, label: "Participantes de la evaluación" },
+
+    "Estado":            { type: "Enum", required: true, isFilter: true, label: "Estado",
+                           acceptedValues: ["Borrador", "En revisión", "Aprobado", "Requiere actualización"],
+                           allowOtherValues: false },
+
+    // Se guarda calculado desde los peligros: permite filtrar y ordenar sin
+    // tener que leer la tabla hija completa.
+    "Riesgo_Maximo":     { type: "Enum", required: false, isFilter: true, label: "Riesgo residual máximo",
+                           acceptedValues: ["Trivial", "Tolerable", "Moderado", "Importante", "Intolerable"],
+                           allowOtherValues: false },
+    "Total_Peligros":    { type: "Text", required: false, isFilter: false, label: "Peligros identificados" },
+    "Observaciones":     { type: "Text", required: false, isFilter: false, label: "Observaciones" },
+
+    // ── Evidencia (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Firma_Responsable":      { type: "Signature", required: false, isFilter: false, label: "Firma del responsable" },
+    "Firma_Responsable_ID":   { type: "Hidden", required: false },
+    "Firma_Responsable_Path": { type: "Hidden", required: false },
+
+    "Registrado_Por":    { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
+    "Fecha_Registro":    { type: "Hidden", required: false }
+  },
+
+  /**
+   * Valoración compartida por el formulario, el listado y el detalle.
+   * Vive en el subconfig para que cambiar la matriz de la empresa sea
+   * editar un solo archivo, sin tocar ninguna vista.
+   */
+  Matriz: {
+    niveles: [
+      { max: 4,  clave: "Trivial",     accion: "Aceptable. Mantener control." },
+      { max: 8,  clave: "Tolerable",   accion: "Mantener controles y verificar periódicamente." },
+      { max: 12, clave: "Moderado",    accion: "Requiere acción planificada con plazo." },
+      { max: 16, clave: "Importante",  accion: "No iniciar el trabajo hasta reducir el riesgo." },
+      { max: 25, clave: "Intolerable", accion: "Trabajo prohibido. Detener hasta control efectivo." }
+    ],
+    evaluar: function(p, s) {
+      const prob = parseInt(p, 10), sev = parseInt(s, 10);
+      if (!prob || !sev) return null;
+      const valor = prob * sev;
+      const nivel = this.niveles.find(n => valor <= n.max) || this.niveles[this.niveles.length - 1];
+      return { valor: valor, clave: nivel.clave, accion: nivel.accion };
+    }
+  }
+};
+</script>

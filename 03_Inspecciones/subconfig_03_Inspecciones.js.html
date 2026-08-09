@@ -1,0 +1,100 @@
+<script>
+/**
+ * =========================================================================
+ * ⚙️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "03_Inspecciones"
+ * =========================================================================
+ * ARCHIVO: 03_Inspecciones/subconfig_03_Inspecciones.js.html
+ */
+
+var SUBCONFIG_03_INSPECCIONES = {
+  
+  Config_Modular: {
+    NombreInterno: "03_Inspecciones",
+    Titulo: "Inspecciones Técnicas",
+    DRIVE_FOLDER_NAME: "03_Inspecciones_Docs",
+    GOOGLE_DOC_TEMPLATE_ID: "", 
+    EMAIL_TEMPLATE_ID: "", // ID de Google Docs para notificaciones
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "CHILD", 
+    RELATIONAL_KEY: "UUID",
+    TABLE_NAME: "MAIN",
+    
+    // Esquema para Filas Dinámicas (Tabla Hija)
+    Relational_Fields: [
+      { name: "Hallazgo", label: "Descripción del Hallazgo", type: "text", colSpan: "md:col-span-6" },
+      { name: "Riesgo", label: "Nivel Riesgo", type: "text", colSpan: "md:col-span-3" },
+      { name: "Recomendacion", label: "Acción Sugerida", type: "text", colSpan: "md:col-span-3" }
+    ],
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID": { type: "Hidden_UUID", required: true, isFilter: false },
+    "Fecha_Peru": { type: "Date", required: true, isFilter: true },
+    "Auditor_DNI": { 
+        type: "REF", 
+        required: true, 
+        isFilter: true, 
+        relationalDataOrigin: "01_Usuarios",
+        slice: { column: "Rol", value: "Supervisor" } // Solo supervisores pueden auditar
+    },
+    
+    "Area_Inspeccion": { 
+        type: "Enum", 
+        required: true, 
+        isFilter: true,
+        acceptedValues: ["Mina", "Planta", "Talleres", "Logística"],
+        allowOtherValues: false
+    },
+
+    "Tipo_Hallazgo": {
+        type: "Enum",
+        required: true,
+        isFilter: true,
+        acceptedValues: ["Seguridad", "Mantenimiento", "Ambiental"],
+        allowOtherValues: true
+    },
+
+    "Descripcion_Tecnica": { type: "Text", required: true, isFilter: false },
+
+    "Estado_Actual": {
+        type: "Enum",
+        required: true,
+        isFilter: true,
+        acceptedValues: ["Pendiente", "En Proceso", "Cerrado"],
+        defaultValue: "Pendiente"
+    },
+
+    "Responsable": {
+        type: "REF",
+        required: false,
+        isFilter: true,
+        relationalDataOrigin: "01_Usuarios"
+    },
+
+    "Plazo": { type: "Date", required: false, isFilter: true },
+
+    "Evidencia_Fotos": { type: "Image_Collection", required: false, isFilter: false },
+    "Evidencia_Fotos_ID": { type: "Hidden", required: false },
+    "Evidencia_Fotos_Path": { type: "Hidden", required: false },
+
+    "Firma_Digital": { type: "Signature", required: true, isFilter: false },
+    "Firma_Digital_ID": { type: "Hidden", required: false },
+    "Firma_Digital_Path": { type: "Hidden", required: false }
+  },
+
+  // Configuración de Vistas Segregadas
+  Views: {
+    Summary: "Mod_03_Inspecciones_Resumen",
+    Edition: "Mod_03_Inspecciones_Edicion",
+    Detail: "Mod_03_Inspecciones_Detalle"
+  }
+};
+
+console.log("✅ Subconfig 03_Inspecciones (Estandarizada) cargada.");
+</script>

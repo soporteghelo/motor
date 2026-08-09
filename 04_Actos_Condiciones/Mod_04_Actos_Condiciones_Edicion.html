@@ -1,0 +1,400 @@
+<!-- =========================================================================
+     VISTA: EDICIÓN / MODERACIÓN — MÓDULO 04_Actos_Condiciones
+     ========================================================================= -->
+<div id="module-04_actos_condiciones-edicion" class="module-view" style="display:none;">
+
+  <!-- Header -->
+  <section class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-outline-variant pb-4">
+    <div class="flex items-center gap-4">
+      <button onclick="changeInternalView('04_Actos_Condiciones','Resumen')"
+        class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-secondary border border-outline-variant">
+        <span class="material-symbols-outlined">arrow_back</span>
+      </button>
+      <div>
+        <h1 class="text-xl font-bold text-on-surface" id="act-form-title">Nuevo Reporte</h1>
+        <p class="text-[11px] text-secondary font-medium">Complete los campos obligatorios (*)</p>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="saveActDraft()"
+        class="h-9 px-4 rounded-lg border border-outline text-xs font-semibold text-secondary hover:bg-surface-container-low transition-colors">
+        Borrador
+      </button>
+      <button onclick="submitActReport()"
+        class="h-9 px-6 rounded-lg bg-primary text-on-primary text-xs font-bold shadow-md hover:opacity-90 transition-all flex items-center gap-2">
+        <span class="material-symbols-outlined text-[18px]">send</span>
+        Guardar Reporte
+      </button>
+    </div>
+  </section>
+
+  <input type="hidden" id="act-form-uuid" value="">
+  <div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Sección 1: Datos del Reportante -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-primary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg">person</span>
+        Datos del Reportante
+      </h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5 md:grid-cols-3">
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Nombre Completo *</label>
+          <input type="text" id="act-input-nombre" placeholder="Nombre del reportante..."
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">DNI / Identificación *</label>
+          <input type="text" id="act-input-dni" placeholder="Ej: 76543210"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Fuente</label>
+          <select id="act-input-fuente"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+            <option value="App Móvil">App Móvil</option>
+            <option value="Google Forms">Google Forms</option>
+            <option value="Manual">Manual</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección 2: Clasificación -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-primary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg">category</span>
+        Clasificación del Evento
+      </h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Fecha del Incidente *</label>
+          <input type="date" id="act-input-fecha-incidente"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Área *</label>
+          <select id="act-input-area"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+            <option value="">Seleccione Área...</option>
+            <option>Mina</option><option>Planta</option><option>Talleres</option>
+            <option>Logística</option><option>Administración</option><option>Almacén</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Tipo de Reporte *</label>
+          <select id="act-input-tipo"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+            <option value="">Seleccione Tipo...</option>
+            <option>Acto Subestándar</option>
+            <option>Condición Subestándar</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Categoría *</label>
+          <select id="act-input-categoria"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+            <option value="">Seleccione Categoría...</option>
+            <option>EPP</option><option>Herramientas</option><option>Equipos</option>
+            <option>Procedimientos</option><option>Orden y Limpieza</option>
+            <option>Ergonomía</option><option>Ambiental</option>
+          </select>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-xs font-bold text-secondary mb-2">Nivel de Riesgo *</label>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="act-riesgo-selector">
+            <button type="button" onclick="actSelectRiesgo(this,'Bajo (Verde)')"
+              data-value="Bajo (Verde)" class="act-riesgo-btn h-11 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-800 text-xs font-bold transition-all hover:border-emerald-400">
+              🟢 Bajo
+            </button>
+            <button type="button" onclick="actSelectRiesgo(this,'Medio (Amarillo)')"
+              data-value="Medio (Amarillo)" class="act-riesgo-btn h-11 rounded-xl border-2 border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold transition-all hover:border-amber-400">
+              🟡 Medio
+            </button>
+            <button type="button" onclick="actSelectRiesgo(this,'Alto (Rojo)')"
+              data-value="Alto (Rojo)" class="act-riesgo-btn h-11 rounded-xl border-2 border-red-200 bg-red-50 text-red-800 text-xs font-bold transition-all hover:border-red-400">
+              🔴 Alto
+            </button>
+            <button type="button" onclick="actSelectRiesgo(this,'Crítico (Negro)')"
+              data-value="Crítico (Negro)" class="act-riesgo-btn h-11 rounded-xl border-2 border-gray-700 bg-gray-900 text-white text-xs font-bold transition-all hover:bg-gray-800">
+              ⚫ Crítico
+            </button>
+          </div>
+          <input type="hidden" id="act-input-riesgo" value="">
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección 3: Descripción y Evidencia -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-sm font-bold text-secondary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg">edit_note</span>
+        Descripción y Evidencia
+      </h2>
+      <div class="space-y-5">
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Descripción del Evento *</label>
+          <textarea id="act-input-desc" rows="4"
+            placeholder="Describa el acto o condición observada con el máximo detalle posible. ¿Qué pasó? ¿Dónde exactamente? ¿Quiénes estaban involucrados?"
+            class="w-full p-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-3">Evidencia Fotográfica (opcional)</label>
+          <div class="flex items-center gap-3 flex-wrap">
+            <div onclick="document.getElementById('act-file-input').click()"
+              class="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant bg-surface flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container transition-all text-secondary">
+              <span class="material-symbols-outlined text-2xl">add_a_photo</span>
+              <span class="text-[9px] font-bold mt-0.5 uppercase">Foto</span>
+            </div>
+            <input type="file" id="act-file-input" accept="image/*" style="display:none;" onchange="actHandlePhoto(this)">
+            <div id="act-photo-preview" class="flex gap-2 flex-wrap"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sección 4: Moderación (visible para Admin/Supervisor) -->
+    <div class="bg-white rounded-2xl border-2 border-primary/20 p-6 shadow-sm" id="act-moderation-panel">
+      <h2 class="text-sm font-bold text-primary flex items-center gap-2 mb-5">
+        <span class="material-symbols-outlined text-lg">verified_user</span>
+        Panel de Moderación
+        <span class="text-[9px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">Supervisor / Admin</span>
+      </h2>
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5 md:grid-cols-3">
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Estado del Reporte</label>
+          <select id="act-input-estado"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+            <option value="Pendiente">Pendiente</option>
+            <option value="En Revisión">En Revisión</option>
+            <option value="Aprobado">Aprobado</option>
+            <option value="Rechazado">Rechazado</option>
+            <option value="Cerrado">Cerrado</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">DNI del Moderador</label>
+          <input type="text" id="act-input-moderador" placeholder="DNI del supervisor..."
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Fecha de Moderación</label>
+          <input type="date" id="act-input-fecha-mod"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div class="col-span-2">
+          <label class="block text-xs font-bold text-secondary mb-2">Acción Correctiva Tomada</label>
+          <textarea id="act-input-accion" rows="3"
+            placeholder="Describa las acciones correctivas implementadas..."
+            class="w-full p-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"></textarea>
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Observaciones del Moderador</label>
+          <textarea id="act-input-obs" rows="3"
+            placeholder="Observaciones adicionales..."
+            class="w-full p-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none"></textarea>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Selector visual de riesgo ──────────────────────────────────────────────
+function actSelectRiesgo(btn, value) {
+  document.querySelectorAll('.act-riesgo-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-primary', 'scale-105'));
+  btn.classList.add('ring-2', 'ring-offset-1', 'ring-primary', 'scale-105');
+  document.getElementById('act-input-riesgo').value = value;
+}
+
+// ── Preview foto ───────────────────────────────────────────────────────────
+function actHandlePhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const preview = document.getElementById('act-photo-preview');
+  PWA_SKILLS.compressImage(input.files[0], 'Medio').then(dataUrl => {
+    window._actPhotoData = dataUrl;
+    if (preview) {
+      preview.innerHTML = `<div class="w-20 h-20 rounded-xl border border-outline-variant overflow-hidden relative">
+        <img src="${dataUrl}" class="w-full h-full object-cover">
+        <button onclick="window._actPhotoData=null; document.getElementById('act-photo-preview').innerHTML=''"
+          class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-error text-white flex items-center justify-center text-[10px] font-black">✕</button>
+      </div>`;
+    }
+  });
+}
+
+// ── Guardar borrador ───────────────────────────────────────────────────────
+function saveActDraft() {
+  const data = {
+    UUID:              document.getElementById('act-form-uuid').value,
+    Nombre_Reportante: document.getElementById('act-input-nombre').value,
+    Reportado_Por:     document.getElementById('act-input-dni').value,
+    Area:              document.getElementById('act-input-area').value,
+    Tipo_Reporte:      document.getElementById('act-input-tipo').value,
+    Categoria:         document.getElementById('act-input-categoria').value,
+    Nivel_Riesgo:      document.getElementById('act-input-riesgo').value,
+    Descripcion:       document.getElementById('act-input-desc').value,
+    Fuente:            document.getElementById('act-input-fuente').value
+  };
+  localStorage.setItem('draft_04_Actos_Condiciones', JSON.stringify(data));
+  if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Borrador guardado localmente.', 'info');
+  else alert('Borrador guardado.');
+}
+
+// ── Enviar reporte ─────────────────────────────────────────────────────────
+async function submitActReport() {
+  const nombre  = document.getElementById('act-input-nombre').value.trim();
+  const dni     = document.getElementById('act-input-dni').value.trim();
+  const area    = document.getElementById('act-input-area').value;
+  const tipo    = document.getElementById('act-input-tipo').value;
+  const cat     = document.getElementById('act-input-categoria').value;
+  const riesgo  = document.getElementById('act-input-riesgo').value;
+  const desc    = document.getElementById('act-input-desc').value.trim();
+
+  if (!nombre || !dni || !area || !tipo || !cat || !riesgo || !desc) {
+    if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Complete todos los campos obligatorios (*).', 'warning');
+    else alert('Complete todos los campos obligatorios (*).');
+    return;
+  }
+
+  const uuidEl  = document.getElementById('act-form-uuid');
+  if (!uuidEl.value) uuidEl.value = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'ACT-' + Date.now();
+
+  const today = (typeof PWA_SKILLS !== 'undefined') ? PWA_SKILLS.getPeruTime(false) : new Date().toISOString().split('T')[0];
+
+  const payload = {
+    UUID:              uuidEl.value,
+    Fecha_Reporte:     today,
+    Fecha_Incidente:   document.getElementById('act-input-fecha-incidente').value || today,
+    Reportado_Por:     dni,
+    Nombre_Reportante: nombre,
+    Area:              area,
+    Tipo_Reporte:      tipo,
+    Categoria:         cat,
+    Nivel_Riesgo:      riesgo,
+    Descripcion:       desc,
+    Evidencia_Foto:    window._actPhotoData || '',
+    Estado:            document.getElementById('act-input-estado').value || 'Pendiente',
+    Moderado_Por:      document.getElementById('act-input-moderador').value,
+    Fecha_Moderacion:  document.getElementById('act-input-fecha-mod').value,
+    Accion_Correctiva: document.getElementById('act-input-accion').value,
+    Observaciones_Mod: document.getElementById('act-input-obs').value,
+    Fuente:            document.getElementById('act-input-fuente').value || 'App Móvil',
+    Fecha_Registro:    (typeof PWA_SKILLS !== 'undefined') ? PWA_SKILLS.getPeruTime() : new Date().toISOString()
+  };
+
+  try {
+    if (typeof pushToQueue === 'function') {
+      await pushToQueue('04_Actos_Condiciones', 'SYNC_OFFLINE_QUEUE', payload, []);
+    } else {
+      // Modo demo: agregar al array local
+      if (!window._actData) window._actData = [...window._actDemoData];
+      const idx = window._actData.findIndex(r => r.UUID === payload.UUID);
+      if (idx >= 0) window._actData[idx] = payload;
+      else window._actData.unshift(payload);
+    }
+
+    localStorage.removeItem('draft_04_Actos_Condiciones');
+    window._actPhotoData = null;
+    actResetForm();
+
+    if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Reporte guardado. Se sincronizará con el servidor.', 'success');
+    else alert('Reporte guardado.');
+
+    changeInternalView('04_Actos_Condiciones', 'Resumen');
+  } catch (err) {
+    console.error('Error al guardar reporte:', err);
+    if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast('Error al guardar. Revise la consola.', 'error');
+    else alert('Error al guardar.');
+  }
+}
+
+// ── Reset form ─────────────────────────────────────────────────────────────
+function actResetForm() {
+  ['act-input-nombre','act-input-dni','act-input-desc','act-input-moderador','act-input-accion','act-input-obs']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['act-input-area','act-input-tipo','act-input-categoria','act-input-estado']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.selectedIndex = 0; });
+  document.getElementById('act-input-riesgo').value = '';
+  document.getElementById('act-input-fecha-incidente').value = '';
+  document.getElementById('act-input-fecha-mod').value = '';
+  document.getElementById('act-photo-preview').innerHTML = '';
+  document.querySelectorAll('.act-riesgo-btn').forEach(b => b.classList.remove('ring-2','ring-offset-1','ring-primary','scale-105'));
+  document.getElementById('act-form-uuid').value = '';
+  document.getElementById('act-form-title').textContent = 'Nuevo Reporte';
+}
+
+// ── Cargar datos para edición ──────────────────────────────────────────────
+function loadEdicion_04_Actos_Condiciones(uuid) {
+  if (!uuid) { actResetForm(); return; }
+
+  const data = window._actData || window._actDemoData;
+  const rec  = data ? data.find(r => String(r.UUID) === String(uuid)) : null;
+  if (!rec) return;
+
+  document.getElementById('act-form-title').textContent = 'Editar / Moderar Reporte';
+  document.getElementById('act-form-uuid').value         = rec.UUID;
+  document.getElementById('act-input-nombre').value       = rec.Nombre_Reportante || '';
+  document.getElementById('act-input-dni').value          = rec.Reportado_Por || '';
+  document.getElementById('act-input-fecha-incidente').value = rec.Fecha_Incidente || '';
+  document.getElementById('act-input-desc').value         = rec.Descripcion || '';
+  document.getElementById('act-input-moderador').value    = rec.Moderado_Por || '';
+  document.getElementById('act-input-fecha-mod').value    = rec.Fecha_Moderacion || '';
+  document.getElementById('act-input-accion').value       = rec.Accion_Correctiva || '';
+  document.getElementById('act-input-obs').value          = rec.Observaciones_Mod || '';
+
+  const setSelect = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  setSelect('act-input-area',     rec.Area);
+  setSelect('act-input-tipo',     rec.Tipo_Reporte);
+  setSelect('act-input-categoria',rec.Categoria);
+  setSelect('act-input-estado',   rec.Estado);
+  setSelect('act-input-fuente',   rec.Fuente);
+
+  if (rec.Nivel_Riesgo) {
+    document.getElementById('act-input-riesgo').value = rec.Nivel_Riesgo;
+    document.querySelectorAll('.act-riesgo-btn').forEach(btn => {
+      if (btn.dataset.value === rec.Nivel_Riesgo) btn.classList.add('ring-2','ring-offset-1','ring-primary','scale-105');
+    });
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(function() {
+  const uuidEl = document.getElementById('act-form-uuid');
+  if (uuidEl && !uuidEl.value) {
+    uuidEl.value = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'ACT-' + Date.now();
+  }
+  // Precargar borrador si existe
+  const draft = localStorage.getItem('draft_04_Actos_Condiciones');
+  if (draft) {
+    try {
+      const d = JSON.parse(draft);
+      if (d.UUID) document.getElementById('act-form-uuid').value = d.UUID;
+      if (d.Nombre_Reportante) document.getElementById('act-input-nombre').value = d.Nombre_Reportante;
+      if (d.Reportado_Por)     document.getElementById('act-input-dni').value    = d.Reportado_Por;
+      if (d.Descripcion)       document.getElementById('act-input-desc').value   = d.Descripcion;
+      if (d.Area)              document.getElementById('act-input-area').value   = d.Area;
+      if (d.Tipo_Reporte)      document.getElementById('act-input-tipo').value   = d.Tipo_Reporte;
+      if (d.Categoria)         document.getElementById('act-input-categoria').value = d.Categoria;
+      if (d.Fuente)            document.getElementById('act-input-fuente').value = d.Fuente;
+      if (d.Nivel_Riesgo) {
+        document.getElementById('act-input-riesgo').value = d.Nivel_Riesgo;
+        document.querySelectorAll('.act-riesgo-btn').forEach(btn => {
+          if (btn.dataset.value === d.Nivel_Riesgo) btn.classList.add('ring-2','ring-offset-1','ring-primary','scale-105');
+        });
+      }
+    } catch(e) {}
+  }
+  // Presets de rol
+  const rol = typeof AppState !== 'undefined' ? AppState.User.Rol : 'Worker';
+  if (rol === 'Trabajador') {
+    const panel = document.getElementById('act-moderation-panel');
+    if (panel) { panel.style.opacity = '0.5'; panel.style.pointerEvents = 'none'; }
+  }
+  if (typeof AppState !== 'undefined' && AppState.User.DNI) {
+    const modEl = document.getElementById('act-input-moderador');
+    if (modEl && !modEl.value) modEl.value = AppState.User.DNI;
+  }
+})();
+</script>

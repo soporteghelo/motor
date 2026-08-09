@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motor PWA: diseño"
+  short_description: "Aplica el diseño responsivo Data-Dense de MOTOR"
+  default_prompt: "Usa $motor-pwa-design para mejorar una vista responsiva de MOTOR."

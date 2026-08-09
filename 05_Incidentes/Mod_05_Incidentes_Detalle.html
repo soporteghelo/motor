@@ -1,0 +1,173 @@
+<!-- =========================================================================
+     VISTA: DETALLE — MÓDULO 05_Incidentes
+     ========================================================================= -->
+<div id="module-05_incidentes-detalle" class="module-view" style="display:none;">
+
+  <header class="flex justify-between items-start w-full mb-6 gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <button onclick="changeInternalView('05_Incidentes','Resumen')" aria-label="Volver al listado"
+        class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_back</span>
+      </button>
+      <div class="min-w-0">
+        <h1 id="inc-det-titulo" class="text-lg font-black text-on-surface tracking-tight truncate">Cargando…</h1>
+        <div class="flex items-center gap-2 mt-1 flex-wrap" id="inc-det-badges"></div>
+      </div>
+    </div>
+    <!-- Regla 21: acciones en stack vertical, compactas, sin salto de línea -->
+    <div class="flex flex-col gap-1.5 items-end shrink-0">
+      <button onclick="changeInternalView('05_Incidentes','Edicion', window._incDetalleUUID)"
+        class="h-7 px-3 rounded-lg bg-primary text-on-primary text-[9px] font-bold shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">edit</span>Editar
+      </button>
+      <button onclick="PDF_TEMPLATE.exportarRegistro('05_Incidentes', window._incDetalleUUID, 'Investigación ' + window._incDetalleUUID)"
+        class="h-7 px-3 rounded-lg border border-outline-variant bg-white text-[9px] font-bold text-on-surface hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">picture_as_pdf</span>PDF
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-4xl mx-auto space-y-5">
+
+    <!-- Qué ocurrió -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Qué ocurrió</h2>
+      <div class="grid grid-cols-2 gap-x-4 gap-y-4" id="inc-det-hecho"></div>
+      <div class="mt-4 pt-4 border-t border-outline-variant/50">
+        <p class="text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Descripción</p>
+        <p class="text-[13px] text-on-surface leading-relaxed" id="inc-det-desc">—</p>
+      </div>
+    </div>
+
+    <!-- Persona afectada -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Persona afectada</h2>
+      <div class="grid grid-cols-2 gap-x-4 gap-y-4" id="inc-det-persona"></div>
+    </div>
+
+    <!-- Investigación -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Investigación de causas</h2>
+      <div class="space-y-3" id="inc-det-causas"></div>
+    </div>
+
+    <!-- Plan de acción -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Acciones correctivas</h2>
+      <div id="inc-det-acciones"></div>
+    </div>
+
+    <!-- Evidencia (Regla 12: miniaturas reales desde Drive) -->
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Evidencia fotográfica</h2>
+      <div id="inc-det-fotos" class="min-h-[7rem] bg-surface-container-low rounded-xl border border-dashed border-outline-variant flex items-center justify-center overflow-hidden"></div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-outline-variant p-6 shadow-sm">
+      <h2 class="text-[11px] font-black text-secondary uppercase tracking-widest mb-4 border-b border-outline-variant pb-2">Firma del investigador</h2>
+      <div id="inc-det-firma" class="min-h-[7rem] bg-surface-container-low rounded-xl border border-dashed border-outline-variant flex items-center justify-center overflow-hidden"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function incCampo(etiqueta, valor, ancho) {
+  return '<div class="' + (ancho || '') + '">' +
+    '<p class="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">' + etiqueta + '</p>' +
+    '<p class="text-[13px] font-semibold text-on-surface">' + (valor || '—') + '</p></div>';
+}
+
+async function loadDetail_05_Incidentes(uuid) {
+  window._incDetalleUUID = uuid;
+  const tit = document.querySelector('#main-container #inc-det-titulo');
+  if (tit) tit.textContent = 'Cargando…';
+
+  // Se busca en memoria; si no está, se pide al servidor
+  let datos = window._incData || [];
+  if (!datos.length) {
+    try { datos = JSON.parse(localStorage.getItem('refdata_05_Incidentes')) || []; } catch (e) {}
+  }
+  let r = datos.find(x => String(x.UUID) === String(uuid));
+
+  if (!r) {
+    try {
+      const res = await DataService.read('05_Incidentes');
+      if (res && res.status === 'OK' && Array.isArray(res.payload)) {
+        window._incData = res.payload;
+        r = res.payload.find(x => String(x.UUID) === String(uuid));
+      }
+    } catch (e) { /* se resuelve abajo */ }
+  }
+
+  if (!r) {
+    if (tit) tit.textContent = 'Evento no encontrado';
+    PWA_SKILLS.toast('No se pudo cargar el evento ' + uuid + '.', 'error', 4000);
+    return;
+  }
+
+  if (tit) tit.textContent = (r.Tipo_Evento || 'Evento') + ' · ' + (r.UUID || '');
+
+  const badges = document.querySelector('#main-container #inc-det-badges');
+  if (badges) {
+    badges.innerHTML =
+      (typeof incGravedadBadge === 'function' ? incGravedadBadge(r.Gravedad) : '') +
+      (typeof incEstadoBadge === 'function' ? incEstadoBadge(r.Estado) : '') +
+      '<span class="text-[10px] text-secondary font-semibold">' + (r.Fecha_Evento || '') +
+      (r.Hora_Evento ? ' · ' + r.Hora_Evento : '') + '</span>';
+  }
+
+  const hecho = document.querySelector('#main-container #inc-det-hecho');
+  if (hecho) hecho.innerHTML =
+    incCampo('Tipo de evento', r.Tipo_Evento) +
+    incCampo('Gravedad', r.Gravedad) +
+    incCampo('Área', r.Area) +
+    incCampo('Lugar exacto', r.Lugar_Exacto);
+
+  const desc = document.querySelector('#main-container #inc-det-desc');
+  if (desc) desc.textContent = r.Descripcion || '—';
+
+  const persona = document.querySelector('#main-container #inc-det-persona');
+  if (persona) persona.innerHTML =
+    incCampo('Nombre', r.Nombre_Trabajador) +
+    incCampo('Puesto', r.Puesto) +
+    incCampo('Parte afectada', r.Parte_Afectada) +
+    incCampo('Días de descanso', r.Dias_Descanso) +
+    incCampo('Testigos', r.Testigos, 'col-span-2');
+
+  const causas = document.querySelector('#main-container #inc-det-causas');
+  if (causas) causas.innerHTML =
+    incCampo('Causa inmediata', r.Causa_Inmediata) +
+    incCampo('Causa básica', r.Causa_Basica) +
+    incCampo('Categoría de causa raíz', r.Categoria_Causa) +
+    incCampo('Investigador', r.Investigador_DNI);
+
+  // Acciones correctivas: se leen del registro si vinieron anidadas
+  const cont = document.querySelector('#main-container #inc-det-acciones');
+  if (cont) {
+    const acciones = r._acciones || [];
+    if (!acciones.length) {
+      cont.innerHTML = '<div class="ds-empty" role="status">' +
+        '<span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">assignment_late</span>' +
+        '<h4>Sin acciones registradas</h4>' +
+        '<p>Este evento no tiene plan de acción. Una investigación sin acciones no previene la repetición.</p>' +
+        '<button type="button" class="ds-empty-action" onclick="changeInternalView(\'05_Incidentes\',\'Edicion\',\'' + r.UUID + '\')">' +
+        '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>Agregar acciones</button></div>';
+    } else {
+      cont.innerHTML = '<div class="space-y-2">' + acciones.map(a =>
+        '<div class="flex items-start gap-3 p-3 rounded-xl border border-outline-variant bg-surface-container-low">' +
+        '<span class="material-symbols-outlined text-[17px] text-primary shrink-0" aria-hidden="true">task_alt</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-semibold text-on-surface">' + (a.Accion || '—') + '</p>' +
+        '<p class="text-[10px] text-secondary mt-0.5">' +
+        (a.Responsable ? 'Responsable: ' + a.Responsable : 'Sin responsable') +
+        (a.Fecha_Limite ? ' · Límite: ' + a.Fecha_Limite : '') + '</p></div>' +
+        '<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-surface-variant text-secondary shrink-0">' +
+        (a.Estado_Accion || 'Pendiente') + '</span></div>').join('') + '</div>';
+    }
+  }
+
+  PWA_SKILLS.renderDriveMedia(r.Evidencia_Fotos || '', 'Evidencia_Fotos', 'inc-det-fotos');
+  PWA_SKILLS.renderDriveMedia(r.Firma_Investigador || '', 'Firma_Investigador', 'inc-det-firma');
+}
+</script>

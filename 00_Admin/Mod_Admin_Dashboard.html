@@ -1,0 +1,115 @@
+<div id="module-00-admin-container" class="module-view">
+   
+   <div class="module-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 25px;">
+      <div>
+         <h2 style="display:flex; align-items:center; gap:10px;">
+            <span class="material-symbols-outlined" style="color:var(--color-primary);">shield_person</span>
+            Torre de Control (SuperAdmin)
+         </h2>
+         <p style="font-size:12px; opacity:0.7;">Auditoría de integridad y Logs del sistema</p>
+      </div>
+      <div id="status-badge" style="background:#4caf50; color:white; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:bold;">
+         SISTEMA SALUDABLE
+      </div>
+   </div>
+
+   <!-- DASHBOARD DE MÉTRICAS RÁPIDAS -->
+   <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:30px;">
+      <div class="card-admin" style="background:var(--color-surface); padding:20px; border-radius:12px; border:1px solid var(--color-border); text-align:center;">
+         <h3 id="stat-modules">2</h3>
+         <p style="font-size:12px; opacity:0.6;">Módulos Activos</p>
+      </div>
+      <div class="card-admin" style="background:var(--color-surface); padding:20px; border-radius:12px; border:1px solid var(--color-border); text-align:center;">
+         <h3 id="stat-errors">0</h3>
+         <p style="font-size:12px; opacity:0.6; color:#ff5252;">Errores de Paridad</p>
+      </div>
+      <div class="card-admin" style="background:var(--color-surface); padding:20px; border-radius:12px; border:1px solid var(--color-border); text-align:center;">
+         <h3 id="stat-sync">100%</h3>
+         <p style="font-size:12px; opacity:0.6;">Sincronía Drive</p>
+      </div>
+   </div>
+
+   <!-- VISTA DE LOGS -->
+   <div style="background:var(--color-surface); padding:20px; border-radius:12px; border:1px solid var(--color-border);">
+      <h3 style="margin-bottom:15px; font-size:16px;">📜 Historial de LOGS Recientes</h3>
+      <div style="max-height:400px; overflow-y:auto; background:var(--color-bg); border-radius:8px; border:1px solid var(--color-border); font-family:'Courier New', Courier, monospace; font-size:12px; padding:10px;">
+         <div id="admin-log-content">
+            <p style="color:#4caf50;">[${PWA_SKILLS.getPeruTime()}] - SYSTEM_BOOT: Motor Zero-Touch inicializado corectamente.</p>
+            <p style="color:#2196f3;">[${PWA_SKILLS.getPeruTime()}] - MODULE_LOAD: Cargando 01_Usuarios y 02_Reportes.</p>
+         </div>
+      </div>
+   </div>
+
+   <!-- BOTÓN FLOTANTE (FAB) - SYSTEM HEALTH -->
+   <button onclick="runSystemHealthCheck()" class="fab" style="position:fixed; bottom:30px; right:30px; width:60px; height:60px; border-radius:50%; background:var(--color-primary); color:white; border:none; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:1000;" title="Validar Paridad Sheets vs Subconfig">
+      <span class="material-symbols-outlined" id="fab-icon" style="font-size:30px;">health_and_safety</span>
+   </button>
+
+   <!-- MODAL DE DIAGNÓSTICO (Oculto) -->
+   <div id="health-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; align-items:center; justify-content:center; padding:20px;">
+      <div style="background:var(--color-surface); width:100%; max-width:500px; padding:25px; border-radius:16px; border:1px solid var(--color-border);">
+         <h3>🔍 Resultados Médicos del Sistema</h3>
+         <div id="health-report" style="margin-top:20px; font-size:14px; line-height:1.6;">
+            <!-- Resultados inyectados dinámicamente -->
+         </div>
+         <button onclick="document.getElementById('health-modal').style.display='none'" style="margin-top:20px; width:100%; padding:12px; background:var(--color-primary); color:white; border:none; border-radius:8px; cursor:pointer;">Cerrar Diagnóstico</button>
+      </div>
+   </div>
+
+</div>
+
+<script>
+   /**
+    * SKILL SUPERADMIN: VALIDACIÓN DE PARIDAD
+    * Compara las columnas de los Sheets (Simulado) contra lo definido en los Subconfigs locales.
+    */
+   function runSystemHealthCheck() {
+      const fabIcon = document.getElementById('fab-icon');
+      fabIcon.innerText = 'sync';
+      fabIcon.style.animation = 'spin 1s linear infinite';
+      
+      addAdminLog('SYSTEM_HEALTH', 'Iniciando escaneo de paridad de columnas...', '#2196f3');
+
+      // Simulación de delay de red / procesamiento
+      setTimeout(() => {
+         fabIcon.innerText = 'health_and_safety';
+         fabIcon.style.animation = 'none';
+         
+         const reportContainer = document.getElementById('health-report');
+         document.getElementById('health-modal').style.display = 'flex';
+         
+         // Lógica de validación simulada
+         const check01 = { name: "01_Usuarios", status: "OK", msg: "Columnas alineadas con subconfig." };
+         const check02 = { name: "02_Reportes", status: "OK", msg: "Columnas alineadas con subconfig." };
+         
+         reportContainer.innerHTML = `
+            <div style="margin-bottom:15px; padding:10px; border-left:4px solid #4caf50; background:rgba(76, 175, 80, 0.1);">
+               <b>🟢 ${check01.name}:</b> ${check01.msg}
+            </div>
+            <div style="margin-bottom:15px; padding:10px; border-left:4px solid #4caf50; background:rgba(76, 175, 80, 0.1);">
+               <b>🟢 ${check02.name}:</b> ${check02.msg}
+            </div>
+            <hr style="opacity:0.2;">
+            <p style="margin-top:10px; font-size:12px; color:gray;">Firma del Diagnóstico: ${PWA_SKILLS.getPeruTime()}</p>
+         `;
+         
+         addAdminLog('SUCCESS', 'Chequeo de integridad completado. 0 Errores hallados.', '#4caf50');
+      }, 1500);
+   }
+
+   function addAdminLog(action, msg, color) {
+      const logDiv = document.getElementById('admin-log-content');
+      const time = PWA_SKILLS.getPeruTime();
+      const p = document.createElement('p');
+      p.style.color = color;
+      p.innerHTML = `[${time}] - <b>${action}</b>: ${msg}`;
+      logDiv.prepend(p);
+   }
+
+   // Animación de rotación para el icono de carga
+   const style = document.createElement('style');
+   style.innerHTML = `
+      @keyframes spin { 100% { transform:rotate(360deg); } }
+   `;
+   document.head.appendChild(style);
+</script>

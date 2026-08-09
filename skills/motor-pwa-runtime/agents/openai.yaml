@@ -1,0 +1,4 @@
+interface:
+  display_name: "Motor PWA: funciones compartidas"
+  short_description: "Mantiene funciones reutilizables de MOTOR PWA"
+  default_prompt: "Usa $motor-pwa-runtime para modificar una función compartida de MOTOR PWA."

@@ -1,0 +1,154 @@
+<div id="module-02-reportes-container" class="module-view">
+   
+   <!-- HEADER DINÁMICO DEL MODULO -->
+   <div class="module-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+      <h2>📋 Reportes Operativos</h2>
+      <button onclick="toggleView('Form_Add')" style="background:var(--color-primary); color:white; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer;">+ Nuevo</button>
+   </div>
+
+   <!-- VISTA 1: DATAGRID & RESUMEN -->
+   <div id="View_Summary">
+      
+      <!-- Toolbox: Filtros, Exportación y Bulk Delete -->
+      <div class="toolbox" style="display:flex; gap:10px; margin-bottom: 15px; padding:10px; background:var(--color-surface); border-radius:8px; border:1px solid var(--color-border);">
+          <input type="text" id="flt-global" placeholder="Buscar reporte..." style="padding:6px; flex:1;">
+          <button onclick="exportToExcel()" class="btn-tool" style="cursor:pointer;" title="Exportar XLSX nativo">📊 Exportar</button>
+          <button onclick="triggerBulkDelete()" class="btn-tool" style="cursor:pointer; color:red;" title="Manda Cola Offline Elimination">🗑️ Borrar Masivo</button>
+      </div>
+
+      <!-- Tabla Reactiva simulada -->
+      <div style="overflow-x:auto;">
+         <table style="width:100%; border-collapse: collapse; background:var(--color-surface); text-align:left;">
+            <thead>
+               <tr style="border-bottom:2px solid var(--color-border);">
+                  <th style="padding:10px;"><input type="checkbox" id="chk-all"></th>
+                  <th style="padding:10px;">Fecha</th>
+                  <th style="padding:10px;">Categoría</th>
+                  <th style="padding:10px;">Severidad</th>
+                  <th style="padding:10px;">Acción</th>
+               </tr>
+            </thead>
+            <tbody id="db-grid-content">
+               <tr>
+                   <td colspan="5" style="text-align:center; padding:30px; color:gray;">Descargando Registros de Google Drive (Sync Asíncrona)...</td>
+               </tr>
+            </tbody>
+         </table>
+      </div>
+   </div>
+
+   <!-- VISTA 2: FORMULARIO EDICION / ALTA (Inyectado via SUBCONFIG) -->
+   <div id="View_Form_Add" style="display:none; background:var(--color-surface); padding:20px; border-radius:8px; border:1px solid var(--color-border);">
+      <h3 style="margin-bottom:15px;" id="frm-subtitle">Generar Nuevo Reporte</h3>
+      
+      <form id="form-02-reporte" oninput="PWA_SKILLS.saveDraft('form-02-reporte', '02_Reportes')" onsubmit="event.preventDefault(); persistToOffline();" style="display:flex; flex-direction:column; gap:15px;">
+         
+         <!-- DNI -->
+         <div>
+            <label>Inspector DNI*</label><br>
+            <input type="text" name="Inspector_DNI" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+         </div>
+
+         <!-- ENUM (Categoría) - Con Scripting interno a Subconfig AllowOther -->
+         <div>
+            <label>Categoría de Reporte*</label><br>
+            <select name="Categoria_Reporte" id="sel-categoria" onchange="checkAllowOtherDropdown(this, 'Categoria_Reporte'); PWA_SKILLS.saveDraft('form-02-reporte', '02_Reportes')" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+               <option value="" disabled selected>-- Elija --</option>
+               <option value="Preventivo">Preventivo</option>
+               <option value="Auditoría Interna">Auditoría Interna</option>
+               <option value="Acto Subestándar">Acto Subestándar</option>
+               <option value="Condición Crítica">Condición Crítica</option>
+               <option value="__OTHER__">Otro... (Ingreso Libre)</option>
+            </select>
+            <!-- Cajita Magica que aparece si subconfig dice allowOtherValues=true y eligen __OTHER__ -->
+            <input type="text" id="txt-other-Categoria_Reporte" name="Categoria_Reporte_Other" placeholder="Por favor especifique la categoría" style="display:none; margin-top:8px; width:100%; padding:8px; border:1px dashed var(--color-primary); background:var(--color-bg);">
+         </div>
+
+         <!-- SEVERIDAD -->
+         <div>
+            <label>Nivel de Severidad*</label><br>
+            <select name="Nivel_Severidad" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+               <option value="Bajo (Verde)">Bajo (Verde)</option>
+               <option value="Medio (Amarillo)" selected>Medio (Amarillo)</option>
+               <option value="Alto (Rojo)">Alto (Rojo)</option>
+               <option value="Crítico (Negro)" style="font-weight:bold;">Crítico (Negro)</option>
+            </select>
+         </div>
+
+         <!-- EVIDENCIA FOTO (Canvas Minitrigger simulado) -->
+         <div>
+            <label>Foto de Evidencia (Máx 1 foto - Se comprimirá a Nivel Medio)</label><br>
+            <input type="file" accept="image/*" capture="environment" id="img-evidencia" name="Evidencia_Fotografica">
+         </div>
+
+         <!-- FIRMA CANVAS (Bloque Táctil) -->
+         <div style="border: 2px dashed #999; padding:10px; border-radius:8px; background:#fff;">
+            <label style="color:#000;">🖍️ <b>Firma del Operario (Requerido)</b></label>
+            <p style="font-size:11px; color:#555;">(Lienzo Vectorial bloqueador de Scroll)</p>
+            <canvas id="pad-firma" width="400" height="200" style="width:100%; height:150px; background:#f0f0f0; border-radius:4px; touch-action: none; cursor:crosshair;"></canvas>
+            <button type="button" onclick="PWA_SKILLS.clearSignature('pad-firma')" style="margin-top:5px; padding:4px;">Limpiar Trazo</button>
+         </div>
+
+         <!-- ACCIONES -->
+         <div style="display:flex; gap:10px; margin-top:20px;">
+             <button type="button" onclick="toggleView('Summary')" style="padding:10px; border:1px solid var(--color-border); cursor:pointer;">❌ Cancelar</button>
+             <button type="submit" style="padding:10px; background:var(--color-primary); color:white; border:none; cursor:pointer; font-weight:bold; flex:1;">☁️ ENCOLAR SEGURO OFFLINE (IndexedDB)</button>
+         </div>
+      </form>
+   </div>
+
+</div>
+
+<script>
+   // Micro-Router Visual del Frontend
+   function toggleView(target) {
+      document.getElementById('View_Summary').style.display = (target === 'Summary') ? 'block' : 'none';
+      document.getElementById('View_Form_Add').style.display = (target === 'Form_Add') ? 'block' : 'none';
+      
+      if(target === 'Form_Add') {
+         // Skill B: Cargar Borrador
+         PWA_SKILLS.loadDraft('form-02-reporte', '02_Reportes');
+         // Skill F: Iniciar Firma
+         PWA_SKILLS.initSignaturePad('pad-firma');
+      }
+   }
+
+   // Interceptor Reactivo ENUM(AllowOtherValues = true)
+   function checkAllowOtherDropdown(selectObj, refName) {
+      const otherInputBox = document.getElementById("txt-other-" + refName);
+      if(selectObj.value === "__OTHER__") {
+         otherInputBox.style.display = "block";
+         otherInputBox.required = true;
+      } else {
+         otherInputBox.style.display = "none";
+         otherInputBox.required = false;
+         otherInputBox.value = "";
+      }
+   }
+
+   // Motor Táctico (Envío Final a Pila Indexada Offline de Code.gs)
+   async function persistToOffline() {
+      const form = document.getElementById('form-02-reporte');
+      const formData = new FormData(form);
+      const payload = {};
+      formData.forEach((value, key) => payload[key] = value);
+
+      // Skill C: Compresión de Imagen
+      const fileInput = document.getElementById('img-evidencia');
+      if(fileInput.files.length > 0) {
+         payload.Evidencia_Fotografica = await PWA_SKILLS.compressImage(fileInput.files[0], 'Medio');
+      }
+
+      // Skill F: Captura de Firma
+      const canvas = document.getElementById('pad-firma');
+      payload.Firma_Operario = canvas.toDataURL("image/png");
+
+      // Inyecta en IndexDB (Offline_Engine.js.html lo captará y lo guardará en resiliencia)
+      pushToQueue("02_Reportes", "INSERT", payload).then(uuid => {
+         alert("✅ Reporte [" + uuid + "] encolado y comprimido exitosamente.");
+         localStorage.removeItem('draft_02_Reportes'); // Limpiar borrador al éxito
+         form.reset();
+         toggleView('Summary');
+      });
+   }
+</script>

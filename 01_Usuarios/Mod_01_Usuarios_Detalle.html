@@ -1,0 +1,148 @@
+<!-- =========================================================================
+     VISTA: DETALLE (EXPEDIENTE DE COLABORADOR)
+     MODULO: 01_Usuarios
+     ========================================================================= -->
+<div id="module-01_usuarios-detalle" class="module-view" style="display:none;">
+    
+    <header class="flex justify-between items-center w-full mb-8">
+      <div class="flex items-center gap-4">
+        <button onclick="changeInternalView('01_Usuarios', 'Summary')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white transition-colors text-secondary border border-outline-variant">
+           <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+           <h1 id="usr-det-name" class="text-2xl font-black text-on-surface tracking-tight">Cargando Perfil...</h1>
+           <div class="flex items-center gap-2 mt-1">
+              <span id="usr-det-id" class="text-xs text-primary font-bold tracking-widest uppercase">DNI: --</span>
+              <span id="usr-det-badge" class="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-100 text-emerald-800">Activo</span>
+           </div>
+        </div>
+      </div>
+      
+      <div class="flex flex-col gap-1.5 items-end">
+         <button onclick="changeInternalView('01_Usuarios', 'Edicion', 'CURRENT')" class="h-7 px-3 rounded-lg bg-primary text-on-primary text-[9px] font-bold shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+            <span class="material-symbols-outlined text-[14px]">edit</span>
+            Editar
+         </button>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+       
+       <!-- Card de Identidad -->
+       <div class="lg:col-span-1 space-y-6">
+          <div class="bg-white rounded-2xl border border-outline-variant p-2 shadow-sm overflow-hidden">
+             <div id="usr-det-photo-container" class="aspect-square bg-surface-container-low rounded-xl overflow-hidden mb-4">
+                <img id="usr-det-photo" src="" class="w-full h-full object-cover hidden">
+             </div>
+             <div class="p-4 pt-0">
+                <p class="text-[10px] text-secondary font-black uppercase tracking-widest mb-1">Rol de Sistema</p>
+                <div id="usr-det-rol" class="text-sm font-bold text-primary">ADMINISTRADOR</div>
+             </div>
+          </div>
+
+          <div class="bg-surface-container-low rounded-2xl p-6 border border-outline-variant border-dashed">
+             <h3 class="text-xs font-black text-on-surface uppercase mb-4 flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm">security</span>
+                Audit Log
+             </h3>
+             <ul class="space-y-3">
+                <li class="flex flex-col gap-1">
+                   <span class="text-[9px] text-secondary font-bold uppercase">Última Sincro</span>
+                   <span class="text-xs text-on-surface font-medium">Hace 15 min</span>
+                </li>
+             </ul>
+          </div>
+       </div>
+
+       <!-- Información Detallada -->
+       <div class="lg:col-span-3 space-y-6">
+          <div class="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm">
+             <h2 class="text-sm font-black text-secondary uppercase tracking-widest mb-8 border-b border-outline-variant pb-2">Información Institucional</h2>
+             
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
+                <div>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Usuario (DNI)</label>
+                   <p id="usr-det-dni-v" class="text-base font-bold text-on-surface">--</p>
+                </div>
+                <div>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Correo de Contacto</label>
+                   <p id="usr-det-email" class="text-base font-bold text-primary">--</p>
+                </div>
+             </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm">
+             <h2 class="text-sm font-black text-on-surface-variant uppercase tracking-widest mb-6">Firma Digital Registrada</h2>
+             <div id="usr-det-sig-container" class="min-h-[12rem] bg-surface-container-low rounded-2xl border border-dashed border-outline-variant flex items-center justify-center overflow-hidden">
+                <!-- Inyectado por PWA_SKILLS.renderDriveMedia -->
+             </div>
+          </div>
+       </div>
+
+    </div>
+
+</div>
+
+<script>
+async function loadDetail_01_Usuarios(dni) {
+  console.log(`Cargando Detalle Usuario: ${dni}`);
+  document.getElementById('usr-det-name').innerText = 'Cargando...';
+
+  try {
+    const cacheKey = 'refdata_01_Usuarios';
+    let allUsers = null;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) { try { allUsers = JSON.parse(cached); } catch(e) {} }
+
+    if (!allUsers) {
+      await new Promise(resolve => {
+        google.script.run
+          .withSuccessHandler(res => {
+            const parsed = typeof res === 'string' ? JSON.parse(res) : res;
+            if (parsed.status === 'OK') { allUsers = parsed.payload; localStorage.setItem(cacheKey, JSON.stringify(allUsers)); }
+            resolve();
+          })
+          .withFailureHandler(() => resolve())
+          .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '01_Usuarios' }));
+      });
+    }
+
+    // La tabla puede enviar el UUID interno y las integraciones antiguas el DNI.
+    // Aceptamos ambos para cargar siempre el perfil que se seleccionó.
+    let user = Array.isArray(allUsers)
+      ? allUsers.find(u => String(u.UUID) === String(dni) || String(u.DNI) === String(dni))
+      : null;
+    // El perfil en sesión siempre puede abrirse, incluso si aún no fue incluido
+    // en la caché local del directorio de usuarios.
+    if (!user && typeof AppState !== 'undefined' && AppState.User && String(AppState.User.DNI) === String(dni)) {
+      user = {
+        DNI: AppState.User.DNI,
+        Nombre_Completo: AppState.User.Nombre,
+        Email: AppState.User.Email,
+        Rol: AppState.User.Rol,
+        Status: AppState.User.Status
+      };
+    }
+    if (!user) { document.getElementById('usr-det-name').innerText = 'Usuario no encontrado'; return; }
+
+    document.getElementById('usr-det-name').innerText = user.Nombre_Completo || '--';
+    document.getElementById('usr-det-id').innerText = `DNI: ${user.DNI}`;
+    document.getElementById('usr-det-dni-v').innerText = user.DNI || '--';
+    document.getElementById('usr-det-email').innerText = user.Email || '--';
+    document.getElementById('usr-det-rol').innerText = user.Rol || '--';
+
+    const badge = document.getElementById('usr-det-badge');
+    if (badge) {
+      badge.innerText = user.Status || 'Activo';
+      badge.className = `px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${user.Status === 'Cesado' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}`;
+    }
+
+    PWA_SKILLS.renderDriveMedia(user.Foto_Perfil || '', 'Foto_Perfil', 'usr-det-photo-container');
+    PWA_SKILLS.renderDriveMedia(user.Firma_Cargo || '', 'Firma_Cargo', 'usr-det-sig-container');
+
+  } catch (err) {
+    console.error('Error cargando detalle de usuario:', err);
+    document.getElementById('usr-det-name').innerText = 'Error al cargar';
+  }
+}
+</script>

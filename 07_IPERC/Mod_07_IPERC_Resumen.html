@@ -1,0 +1,281 @@
+<!-- =========================================================================
+     VISTA: RESUMEN — MÓDULO 07_IPERC
+     ========================================================================= -->
+<div id="module-07_iperc-resumen" class="module-view">
+
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="showView('Menu')" aria-label="Volver al menú principal"
+        class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_back</span>
+      </button>
+      <div>
+        <h2 class="font-h2 text-h2 text-on-surface leading-tight">Matriz IPERC</h2>
+        <p class="text-[11px] text-on-surface-variant">Peligros, evaluación de riesgos y controles</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <span id="ui-result-count" class="text-[10px] font-bold text-on-surface-variant mr-auto sm:mr-1 hidden"></span>
+      <div class="relative" id="ipc-export-wrap">
+        <button onclick="document.getElementById('ipc-export-menu').classList.toggle('hidden')"
+          class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-primary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>Exportar
+          <span class="material-symbols-outlined text-[13px] opacity-60" aria-hidden="true">expand_more</span>
+        </button>
+        <div id="ipc-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
+          <button onclick="PWA_SKILLS.exportFilteredToExcel(); document.getElementById('ipc-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
+            <span class="material-symbols-outlined text-[17px] text-green-600" aria-hidden="true">grid_on</span>Excel (.xlsx)
+          </button>
+          <button onclick="PWA_SKILLS.exportVisibleToCSV('IPERC'); document.getElementById('ipc-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-blue-600" aria-hidden="true">text_snippet</span>CSV (.csv)
+          </button>
+        </div>
+      </div>
+      <button onclick="changeInternalView('07_IPERC', 'Edicion')"
+        class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>Nueva matriz
+      </button>
+    </div>
+  </div>
+
+  <!-- Indicadores: lo que no puede operar primero -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <button type="button" onclick="ipcFiltrarRiesgo('Intolerable')"
+      class="bg-gray-900 border border-gray-700 rounded-2xl p-3 shadow-sm text-left hover:opacity-90 transition-all">
+      <p class="text-[9px] font-black text-gray-300 uppercase tracking-widest mb-1">Intolerables</p>
+      <p class="text-2xl font-black text-white" id="ipc-kpi-intolerable">—</p>
+    </button>
+    <button type="button" onclick="ipcFiltrarRiesgo('Importante')"
+      class="bg-red-50 border border-red-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-red-700 uppercase tracking-widest mb-1">Importantes</p>
+      <p class="text-2xl font-black text-red-700" id="ipc-kpi-importante">—</p>
+    </button>
+    <button type="button" onclick="ipcFiltrarRevision()"
+      class="bg-amber-50 border border-amber-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-1">Por revisar</p>
+      <p class="text-2xl font-black text-amber-700" id="ipc-kpi-revision">—</p>
+    </button>
+    <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant p-3 shadow-sm">
+      <p class="text-[9px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Peligros evaluados</p>
+      <p class="text-2xl font-black text-on-surface" id="ipc-kpi-peligros">—</p>
+    </div>
+  </div>
+
+  <div id="ipc-alerta" class="hidden mb-4"></div>
+
+  <div id="ui-search-bar-slot"></div>
+
+  <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="iperc-table">
+        <thead>
+          <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
+            <th class="px-3 py-2.5">Proceso / Área</th>
+            <th class="px-3 py-2.5">Tipo</th>
+            <th class="px-3 py-2.5">Riesgo máximo</th>
+            <th class="px-3 py-2.5">Peligros</th>
+            <th class="px-3 py-2.5">Estado</th>
+            <th class="px-3 py-2.5">Próxima revisión</th>
+            <th class="px-3 py-2.5 text-center" data-nosort>Gestión</th>
+          </tr>
+        </thead>
+        <tbody id="iperc-table-body" class="divide-y divide-outline-variant/40"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/** Distintivo del nivel de riesgo. Mismo criterio en todas las vistas. */
+function ipcRiesgoBadge(nivel) {
+  const m = {
+    'Trivial':     { cls:'bg-emerald-100 text-emerald-800 border-emerald-200', ico:'check_circle' },
+    'Tolerable':   { cls:'bg-lime-100 text-lime-800 border-lime-200',          ico:'thumb_up' },
+    'Moderado':    { cls:'bg-amber-100 text-amber-800 border-amber-200',       ico:'error' },
+    'Importante':  { cls:'bg-red-100 text-red-800 border-red-200',             ico:'warning' },
+    'Intolerable': { cls:'bg-gray-900 text-white border-gray-700',             ico:'dangerous' }
+  };
+  const c = m[nivel] || { cls:'bg-surface-variant text-secondary border-outline-variant', ico:'help' };
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border whitespace-nowrap ' + c.cls + '">' +
+         '<span class="material-symbols-outlined text-[11px]" aria-hidden="true">' + c.ico + '</span>' + (nivel || '—') + '</span>';
+}
+
+function ipcEstadoBadge(e) {
+  const m = {
+    'Borrador':               'bg-surface-variant text-secondary',
+    'En revisión':            'bg-blue-100 text-blue-800',
+    'Aprobado':               'bg-emerald-100 text-emerald-800',
+    'Requiere actualización': 'bg-amber-100 text-amber-800'
+  };
+  return '<span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ' +
+         (m[e] || 'bg-surface-variant text-secondary') + '">' + (e || '—') + '</span>';
+}
+
+/** Días hasta la próxima revisión (negativo = ya vencida) */
+function ipcDiasRevision(r) {
+  if (!r.Fecha_Revision) return null;
+  const f = new Date(r.Fecha_Revision + 'T00:00:00');
+  if (isNaN(f)) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  return Math.round((f - hoy) / 86400000);
+}
+
+function ipcRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #iperc-table-body');
+  if (!tbody) return;
+
+  const intolerables = data.filter(r => r.Riesgo_Maximo === 'Intolerable');
+  const importantes  = data.filter(r => r.Riesgo_Maximo === 'Importante');
+  const porRevisar   = data.filter(r => { const d = ipcDiasRevision(r); return d !== null && d <= 30; });
+  const peligros     = data.reduce((a, r) => a + (parseInt(r.Total_Peligros) || 0), 0);
+
+  const set = (id, v) => { const e = document.querySelector('#main-container #' + id); if (e) e.textContent = v; };
+  set('ipc-kpi-intolerable', intolerables.length);
+  set('ipc-kpi-importante',  importantes.length);
+  set('ipc-kpi-revision',    porRevisar.length);
+  set('ipc-kpi-peligros',    peligros || '—');
+
+  // Aviso: un riesgo intolerable significa trabajo detenido, no una estadística
+  const alerta = document.querySelector('#main-container #ipc-alerta');
+  if (alerta) {
+    if (intolerables.length) {
+      alerta.className = 'mb-4';
+      alerta.innerHTML =
+        '<div class="flex items-start gap-2.5 p-3 rounded-xl border border-gray-700 bg-gray-900">' +
+        '<span class="material-symbols-outlined text-[19px] text-white shrink-0" aria-hidden="true">dangerous</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<p class="text-[12px] font-bold text-white">' + intolerables.length + ' matriz(ces) con riesgo intolerable</p>' +
+        '<p class="text-[10px] text-gray-300 mt-0.5">Trabajo prohibido hasta implementar controles efectivos.</p></div>' +
+        '<button type="button" onclick="ipcFiltrarRiesgo(\'Intolerable\')" class="text-[10px] font-black underline text-white shrink-0">Ver</button></div>';
+    } else {
+      alerta.className = 'hidden mb-4';
+      alerta.innerHTML = '';
+    }
+  }
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('iperc-table-body', {
+      icon: 'grid_view',
+      title: 'Sin matrices IPERC',
+      message: 'La matriz de riesgos es la base del sistema: de aquí salen los controles del resto de módulos.',
+      actionLabel: 'Crear primera matriz', actionIcon: 'add',
+      onAction: "changeInternalView('07_IPERC','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  // Orden por criticidad del riesgo residual
+  const peso = { 'Intolerable':0, 'Importante':1, 'Moderado':2, 'Tolerable':3, 'Trivial':4 };
+  const orden = data.slice().sort((a, b) =>
+    (peso[a.Riesgo_Maximo] != null ? peso[a.Riesgo_Maximo] : 9) -
+    (peso[b.Riesgo_Maximo] != null ? peso[b.Riesgo_Maximo] : 9));
+
+  PWA_SKILLS.finishLoading('iperc-table-body');
+  tbody.innerHTML = orden.map(r => {
+    const dias = ipcDiasRevision(r);
+    const rev = dias === null ? '<span class="text-[10px] text-secondary">—</span>'
+      : dias < 0
+        ? '<span class="inline-flex items-center gap-1 text-[10px] font-black text-red-700"><span class="material-symbols-outlined text-[12px]" aria-hidden="true">event_busy</span>Vencida</span>'
+        : dias <= 30
+          ? '<span class="inline-flex items-center gap-1 text-[10px] font-black text-amber-700"><span class="material-symbols-outlined text-[12px]" aria-hidden="true">schedule</span>' + dias + ' d</span>'
+          : '<span class="text-[10px] text-on-surface-variant">' + r.Fecha_Revision + '</span>';
+    return `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
+        onclick="changeInternalView('07_IPERC','Detalle','${r.UUID}')">
+      <td class="px-3 py-2">
+        <div class="font-bold text-[11px] text-on-surface">${r.Proceso || '—'}</div>
+        <div class="text-[10px] text-secondary">${r.Area || ''}${r.Puesto_Tarea ? ' · ' + r.Puesto_Tarea : ''}</div>
+      </td>
+      <td class="px-3 py-2"><span class="text-[11px] font-semibold text-on-surface whitespace-nowrap">${r.Tipo_IPERC || '—'}</span></td>
+      <td class="px-3 py-2">${ipcRiesgoBadge(r.Riesgo_Maximo)}</td>
+      <td class="px-3 py-2">
+        <span class="inline-flex items-center gap-1 text-[11px] font-bold text-on-surface">
+          <span class="material-symbols-outlined text-[13px] text-secondary" aria-hidden="true">list</span>${r.Total_Peligros || 0}
+        </span>
+      </td>
+      <td class="px-3 py-2">${ipcEstadoBadge(r.Estado)}</td>
+      <td class="px-3 py-2">${rev}</td>
+      <td class="px-3 py-2 text-center" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-center gap-1">
+          <button onclick="changeInternalView('07_IPERC','Detalle','${r.UUID}')" aria-label="Ver la matriz de ${r.Proceso || 'este proceso'}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">visibility</span>
+          </button>
+          <button onclick="changeInternalView('07_IPERC','Edicion','${r.UUID}')" aria-label="Editar la matriz de ${r.Proceso || 'este proceso'}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-secondary hover:bg-surface-variant transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">edit</span>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  PWA_SKILLS.initSortableTable('iperc-table-body');
+  PWA_SKILLS.enhanceTable('iperc-table-body');
+  PWA_SKILLS.updateResultCount('iperc-table-body', 'ui-result-count');
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+function ipcFiltrarRiesgo(nivel) {
+  ipcRenderTabla((window._ipcData || []).filter(r => r.Riesgo_Maximo === nivel));
+  PWA_SKILLS.toast('Mostrando matrices con riesgo ' + nivel.toLowerCase() + '.', 'info', 3000);
+}
+
+function ipcFiltrarRevision() {
+  ipcRenderTabla((window._ipcData || []).filter(r => {
+    const d = ipcDiasRevision(r); return d !== null && d <= 30;
+  }));
+  PWA_SKILLS.toast('Mostrando matrices por revisar o vencidas.', 'info', 3000);
+}
+
+function loadResumen_07_IPERC() {
+  PWA_SKILLS.renderSkeleton('iperc-table-body', 6);
+
+  if (!window._ipcExportListener) {
+    window._ipcExportListener = true;
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('ipc-export-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById('ipc-export-menu');
+        if (menu) menu.classList.add('hidden');
+      }
+    });
+  }
+
+  DataService.read('07_IPERC')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      // Alcance por rol: un trabajador no debe recibir registros ajenos.
+      // El filtro del navegador es comodidad; la restricción real la
+      // aplica RLS en la base de datos.
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('07_IPERC\Mod_07_IPERC_Resumen.html', filas) : filas;
+      window._ipcData = visibles;
+      localStorage.setItem('refdata_07_IPERC', JSON.stringify(visibles));
+      ipcRenderTabla(visibles);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_07_IPERC')) || []; } catch (e) {}
+      window._ipcData = cache;
+      if (cache.length) {
+        ipcRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('iperc-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar las matrices y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_07_IPERC()"
+        });
+      }
+    });
+}
+</script>

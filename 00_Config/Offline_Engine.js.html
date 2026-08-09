@@ -1,0 +1,229 @@
+<script>
+/**
+ * =========================================================================
+ * MOTOR PWA - OFFLINE & SYNC ENGINE (IndexedDB)
+ * =========================================================================
+ * ARCHIVO: Offline_Engine.js.html
+ * DESCRIPCION: Intercepta todas las transacciones Frontend. Si fallan por 
+ * falta de conexión o cortes de ruta en terreno, las congela a largo plazo.
+ */
+
+// -------------------------------------------------------------------------
+// ⚠️ CONFIGURACIÓN DEL MOTOR OFFLINE ⚠️
+// -------------------------------------------------------------------------
+const OFFLINE_DB_NAME = "Enterprise_PWA_DB";
+const OFFLINE_DB_VERSION = 1;
+const OFFLINE_STORE_NAME = "Pending_Transactions_Queue";
+
+
+// -------------------------------------------------------------------------
+// 1. INICIALIZADOR INDEXED_DB NATIVO 
+// -------------------------------------------------------------------------
+let localDB;
+function initOfflineDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(OFFLINE_DB_NAME, OFFLINE_DB_VERSION);
+
+        request.onupgradeneeded = (event) => {
+            let db = event.target.result;
+            // Estructura de Cola: autoIncrement true para ejecutar LIFO/FIFO Exacto.
+            if (!db.objectStoreNames.contains(OFFLINE_STORE_NAME)) {
+                db.createObjectStore(OFFLINE_STORE_NAME, { keyPath: "localQueueId", autoIncrement: true });
+            }
+        };
+
+        request.onsuccess = (event) => {
+            localDB = event.target.result;
+            console.log("✅ Offline Engine Montado Exitosamente.");
+            resolve();
+        };
+
+        request.onerror = (event) => {
+            console.error("❌ Fallo crítico al iniciar Almacenamiento Offline en PWA.");
+            reject(event.target.error);
+        };
+    });
+}
+
+// -------------------------------------------------------------------------
+// 2. ENCOLADOR UNIVERSAL (Interceptor de Acciones)
+// -------------------------------------------------------------------------
+/**
+ * Tu IA utilizará exclusivamente esta función para grabar.
+ * Ej: pushToQueue("02_Inspecciones", "INSERT", {campoA: "x", campoB: "y"});
+ */
+async function pushToQueue(moduleName, action, payloadObj, childDataArray = null) {
+    if(!localDB) await initOfflineDB();
+
+    // Asignación mandataria UUID en el Edge (Celular) antes de encolar
+    if(payloadObj && !payloadObj?.UUID) {
+       payloadObj.UUID = pseudoGenerateUUID();
+    }
+
+    const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readwrite");
+    const store = transaction.objectStore(OFFLINE_STORE_NAME);
+
+    const paquete = {
+        module: moduleName,
+        action: action,
+        payload: payloadObj,
+        childPayload: childDataArray || [],
+        timestamp: new Date().toISOString()
+    };
+
+    return new Promise((resolve) => {
+        store.add(paquete);
+        transaction.oncomplete = () => {
+            // Informamos visualmente mediante la variable TopBar indexada en Index.html
+            if(window.updateSyncUI) updateSyncUI("Pendientes Offline (1+)", true);
+            resolve(paquete.payload.UUID);
+        };
+    });
+}
+
+
+// -------------------------------------------------------------------------
+// 3. SINCRONIZADOR A NUBE (THE BATCH PUSH)
+// -------------------------------------------------------------------------
+/**
+ * Agrupa los pendientes por módulo y los sincroniza en batches.
+ * Usa DataService para soportar tanto Sheets como Supabase.
+ */
+async function triggerSyncToCloud() {
+    if(!navigator.onLine) return;
+
+    const allPendings = await readAllPendings();
+    if(allPendings.length === 0) {
+       if(window.updateSyncUI) updateSyncUI("Online", false);
+       return;
+    }
+
+    console.log(`📡 Sync de ${allPendings.length} transacciones pendientes...`);
+
+    // Agrupar por módulo (fix: antes se asumía que todo el batch era del mismo módulo)
+    const byModule = {};
+    allPendings.forEach(item => {
+      const mod = item.module || 'UNKNOWN';
+      if (!byModule[mod]) byModule[mod] = [];
+      byModule[mod].push(item);
+    });
+
+    const BATCH_SIZE = AppState?.Settings?.MaxBatchSize || 50;
+
+    for (const [moduleName, items] of Object.entries(byModule)) {
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+
+        try {
+          const result = await DataService.syncQueue(moduleName, batch);
+
+          if (result.status === 'OK' || result.status === 'PARTIAL') {
+            clearQueueAfterSync(batch);
+            console.log(`✅ Módulo ${moduleName}: ${result.success}/${result.processed} sincronizados.`);
+          } else if (result.status === 'FORCE_LOGOUT') {
+            AppState.clearSession();
+            return;
+          } else {
+            console.error(`❌ Batch rechazado [${moduleName}]:`, result.msg);
+          }
+        } catch (err) {
+          console.error(`❌ Error de red sync [${moduleName}]:`, err);
+        }
+      }
+    }
+
+    const remaining = await readAllPendings();
+    if (remaining.length === 0 && window.updateSyncUI) updateSyncUI("Sincronizado", false);
+}
+
+function readAllPendings() {
+    return new Promise((resolve) => {
+        const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readonly");
+        const sr = transaction.objectStore(OFFLINE_STORE_NAME).getAll();
+        sr.onsuccess = () => resolve(sr.result);
+    });
+}
+
+function clearQueueAfterSync(itemsArray) {
+    const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readwrite");
+    const store = transaction.objectStore(OFFLINE_STORE_NAME);
+    itemsArray.forEach(i => store.delete(i.localQueueId));
+    transaction.oncomplete = () => {
+       console.log("☁️ Data Offline Purificada Hacia La Nube Exitosamente.");
+       if(window.updateSyncUI) updateSyncUI("Sincronizado", false);
+    };
+}
+
+
+// -------------------------------------------------------------------------
+// 4. GENERADOR UUID EDGE (Evita Colapso de RowNumbers)
+// -------------------------------------------------------------------------
+function pseudoGenerateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+// Inicializamos base general a la carga del html
+window.addEventListener("load", () => {
+   initOfflineDB().then(()=> { 
+      // Ocurre validacion Inicial (Silent Fetch)
+      triggerSyncToCloud();
+   });
+});
+
+window.addEventListener('online',  triggerSyncToCloud);
+window.addEventListener('offline', () => { if(window.updateSyncUI) updateSyncUI("Red Caída Offline", true); });
+
+
+// -------------------------------------------------------------------------
+// 5. SINCRONIZACIÓN BIDIRECCIONAL DELTA (SILENT FETCH) - SKILL 7.D
+// -------------------------------------------------------------------------
+/**
+ * Rastrea asincrónicamente registros ignorados o creados por otros operarios.
+ */
+async function silentFetchDelta(moduleName) {
+    if(!navigator.onLine || !moduleName) return;
+
+    console.log(`🔍 [DeltaSync]: Buscando novedades en ${moduleName}...`);
+
+    const lastSync = localStorage.getItem(`lastSync_${moduleName}`) || "2026-01-01T00:00:00Z";
+
+    try {
+      const parsed = await DataService.readDelta(moduleName, lastSync);
+      if (parsed.status === "OK" && parsed.payload && parsed.payload.length > 0) {
+        localStorage.setItem(`lastSync_${moduleName}`, PWA_SKILLS.getPeruTime(true));
+        console.log(`[DeltaSync]: ${parsed.payload.length} registros nuevos en ${moduleName}.`);
+      }
+    } catch (err) {
+      console.error("[DeltaSync] fallo red:", err);
+    }
+}
+
+// Disparador Pasivo con Page Visibility API (pausar cuando la app está en background)
+let deltaSyncInterval = null;
+
+function startDeltaSync() {
+  if (deltaSyncInterval) return;
+  deltaSyncInterval = setInterval(() => {
+    if (window.AppState?.activeModule) silentFetchDelta(window.AppState.activeModule);
+  }, 120000);
+}
+
+function stopDeltaSync() {
+  if (deltaSyncInterval) { clearInterval(deltaSyncInterval); deltaSyncInterval = null; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    startDeltaSync();
+    if (window.AppState?.activeModule) silentFetchDelta(window.AppState.activeModule);
+  } else {
+    stopDeltaSync();
+  }
+});
+
+if (document.visibilityState === 'visible') startDeltaSync();
+
+</script>

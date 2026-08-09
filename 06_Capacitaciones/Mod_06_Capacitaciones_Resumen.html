@@ -1,0 +1,302 @@
+<!-- =========================================================================
+     VISTA: RESUMEN — MÓDULO 06_Capacitaciones
+     La lista se ordena por urgencia de vencimiento, no por fecha de registro:
+     lo que importa es qué caduca primero.
+     ========================================================================= -->
+<div id="module-06_capacitaciones-resumen" class="module-view">
+
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="showView('Menu')" aria-label="Volver al menú principal"
+        class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">arrow_back</span>
+      </button>
+      <div>
+        <h2 class="font-h2 text-h2 text-on-surface leading-tight">Capacitaciones</h2>
+        <p class="text-[11px] text-on-surface-variant">Formación, evaluación y control de vigencia</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <span id="ui-result-count" class="text-[10px] font-bold text-on-surface-variant mr-auto sm:mr-1 hidden"></span>
+      <div class="relative" id="cap-export-wrap">
+        <button onclick="document.getElementById('cap-export-menu').classList.toggle('hidden')"
+          class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-primary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">download</span>Exportar
+          <span class="material-symbols-outlined text-[13px] opacity-60" aria-hidden="true">expand_more</span>
+        </button>
+        <div id="cap-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
+          <button onclick="PWA_SKILLS.exportFilteredToExcel(); document.getElementById('cap-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
+            <span class="material-symbols-outlined text-[17px] text-green-600" aria-hidden="true">grid_on</span>Excel (.xlsx)
+          </button>
+          <button onclick="PWA_SKILLS.exportVisibleToCSV('Capacitaciones'); document.getElementById('cap-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-blue-600" aria-hidden="true">text_snippet</span>CSV (.csv)
+          </button>
+        </div>
+      </div>
+      <button onclick="changeInternalView('06_Capacitaciones', 'Edicion')"
+        class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">add</span>Registrar
+      </button>
+    </div>
+  </div>
+
+  <!-- Indicadores por urgencia de vencimiento -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <button type="button" onclick="capFiltrarVigencia('vencida')"
+      class="bg-red-50 border border-red-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-red-700 uppercase tracking-widest mb-1">Vencidas</p>
+      <p class="text-2xl font-black text-red-700" id="cap-kpi-vencidas">—</p>
+    </button>
+    <button type="button" onclick="capFiltrarVigencia('por-vencer')"
+      class="bg-amber-50 border border-amber-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-1">Vencen en 30 días</p>
+      <p class="text-2xl font-black text-amber-700" id="cap-kpi-porvencer">—</p>
+    </button>
+    <button type="button" onclick="capFiltrarVigencia('vigente')"
+      class="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 shadow-sm text-left hover:shadow-md transition-all">
+      <p class="text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">Vigentes</p>
+      <p class="text-2xl font-black text-emerald-700" id="cap-kpi-vigentes">—</p>
+    </button>
+    <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant p-3 shadow-sm">
+      <p class="text-[9px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Horas-hombre</p>
+      <p class="text-2xl font-black text-on-surface" id="cap-kpi-horas">—</p>
+    </div>
+  </div>
+
+  <!-- Aviso de vencimientos: lo primero que debe ver el responsable -->
+  <div id="cap-alerta" class="hidden mb-4"></div>
+
+  <div id="ui-search-bar-slot"></div>
+
+  <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="capacitaciones-table">
+        <thead>
+          <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
+            <th class="px-3 py-2.5">Capacitación</th>
+            <th class="px-3 py-2.5">Tipo</th>
+            <th class="px-3 py-2.5">Ejecutada</th>
+            <th class="px-3 py-2.5">Vigencia</th>
+            <th class="px-3 py-2.5">Asistentes</th>
+            <th class="px-3 py-2.5">Instructor</th>
+            <th class="px-3 py-2.5 text-center" data-nosort>Gestión</th>
+          </tr>
+        </thead>
+        <tbody id="capacitaciones-table-body" class="divide-y divide-outline-variant/40"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/**
+ * Estado de vigencia a partir de la fecha de vencimiento.
+ * Es la función central del módulo: de aquí salen los indicadores, el
+ * distintivo de cada fila, el orden de la lista y el aviso superior.
+ */
+function capVigencia(reg) {
+  if (!reg.Fecha_Vencimiento || reg.Vigencia_Meses === 'No vence') {
+    return { clave: 'permanente', texto: 'No vence', dias: null };
+  }
+  const vence = new Date(reg.Fecha_Vencimiento + 'T00:00:00');
+  if (isNaN(vence)) return { clave: 'permanente', texto: 'Sin fecha', dias: null };
+
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const dias = Math.round((vence - hoy) / 86400000);
+
+  if (dias < 0)  return { clave: 'vencida',    texto: 'Venció hace ' + Math.abs(dias) + ' d', dias: dias };
+  if (dias <= 30) return { clave: 'por-vencer', texto: 'Vence en ' + dias + ' d',              dias: dias };
+  return { clave: 'vigente', texto: 'Vigente', dias: dias };
+}
+
+function capVigenciaBadge(v) {
+  // Icono + texto: el color nunca es el único indicador
+  const m = {
+    'vencida':    { cls:'bg-red-100 text-red-800 border-red-200',           ico:'event_busy' },
+    'por-vencer': { cls:'bg-amber-100 text-amber-800 border-amber-200',     ico:'schedule' },
+    'vigente':    { cls:'bg-emerald-100 text-emerald-800 border-emerald-200',ico:'verified' },
+    'permanente': { cls:'bg-surface-variant text-secondary border-outline-variant', ico:'all_inclusive' }
+  };
+  const c = m[v.clave];
+  return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border whitespace-nowrap ' + c.cls + '">' +
+         '<span class="material-symbols-outlined text-[11px]" aria-hidden="true">' + c.ico + '</span>' + v.texto + '</span>';
+}
+
+function capTipoBadge(t) {
+  const m = {
+    'Inducción':               'bg-indigo-100 text-indigo-700',
+    'Capacitación específica': 'bg-blue-100 text-blue-700',
+    'Reentrenamiento':         'bg-orange-100 text-orange-700',
+    'Charla de seguridad':     'bg-teal-100 text-teal-700',
+    'Simulacro':               'bg-violet-100 text-violet-700',
+    'Certificación externa':   'bg-emerald-100 text-emerald-700'
+  };
+  return '<span class="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ' +
+         (m[t] || 'bg-surface-variant text-secondary') + '">' + (t || '—') + '</span>';
+}
+
+function capRenderTabla(data) {
+  const tbody = document.querySelector('#main-container #capacitaciones-table-body');
+  if (!tbody) return;
+
+  const conVig = data.map(r => ({ r: r, v: capVigencia(r) }));
+  const vencidas   = conVig.filter(x => x.v.clave === 'vencida');
+  const porVencer  = conVig.filter(x => x.v.clave === 'por-vencer');
+  const vigentes   = conVig.filter(x => x.v.clave === 'vigente' || x.v.clave === 'permanente');
+  const horas = data.reduce((acc, r) =>
+    acc + (parseFloat(r.Duracion_Horas) || 0) * (parseInt(r._totalAsistentes) || 0), 0);
+
+  const set = (id, v) => { const e = document.querySelector('#main-container #' + id); if (e) e.textContent = v; };
+  set('cap-kpi-vencidas',  vencidas.length);
+  set('cap-kpi-porvencer', porVencer.length);
+  set('cap-kpi-vigentes',  vigentes.length);
+  set('cap-kpi-horas',     horas ? Math.round(horas) : '—');
+
+  // Aviso superior: solo aparece si hay algo que hacer
+  const alerta = document.querySelector('#main-container #cap-alerta');
+  if (alerta) {
+    if (vencidas.length || porVencer.length) {
+      const partes = [];
+      if (vencidas.length)  partes.push('<strong>' + vencidas.length + '</strong> vencida(s)');
+      if (porVencer.length) partes.push('<strong>' + porVencer.length + '</strong> por vencer');
+      alerta.className = 'mb-4';
+      alerta.innerHTML =
+        '<div class="flex items-start gap-2.5 p-3 rounded-xl border ' +
+        (vencidas.length ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50') + '">' +
+        '<span class="material-symbols-outlined text-[19px] shrink-0 ' +
+        (vencidas.length ? 'text-red-700' : 'text-amber-700') + '" aria-hidden="true">notification_important</span>' +
+        '<div class="min-w-0 flex-1"><p class="text-[12px] font-bold ' +
+        (vencidas.length ? 'text-red-800' : 'text-amber-800') + '">' + partes.join(' y ') + '</p>' +
+        '<p class="text-[10px] mt-0.5 ' + (vencidas.length ? 'text-red-700' : 'text-amber-700') + '">' +
+        'El personal con capacitación caducada no debería ejecutar la tarea asociada.</p></div>' +
+        '<button type="button" onclick="capFiltrarVigencia(\'' + (vencidas.length ? 'vencida' : 'por-vencer') + '\')" ' +
+        'class="text-[10px] font-black underline shrink-0 ' + (vencidas.length ? 'text-red-800' : 'text-amber-800') + '">Ver</button></div>';
+    } else {
+      alerta.className = 'hidden mb-4';
+      alerta.innerHTML = '';
+    }
+  }
+
+  if (!data.length) {
+    PWA_SKILLS.showEmptyState('capacitaciones-table-body', {
+      icon: 'school',
+      title: 'Sin capacitaciones registradas',
+      message: 'Registra la primera sesión para empezar a controlar vigencias y asistencia.',
+      actionLabel: 'Registrar capacitación', actionIcon: 'add',
+      onAction: "changeInternalView('06_Capacitaciones','Edicion')"
+    });
+    const c = document.querySelector('#main-container #ui-result-count');
+    if (c) { c.textContent = '0 registros'; c.classList.remove('hidden'); }
+    return;
+  }
+
+  // Orden por urgencia: lo vencido primero, luego lo que está por vencer
+  const peso = { 'vencida': 0, 'por-vencer': 1, 'vigente': 2, 'permanente': 3 };
+  conVig.sort((a, b) => {
+    const d = peso[a.v.clave] - peso[b.v.clave];
+    if (d !== 0) return d;
+    return (a.v.dias == null ? 9e9 : a.v.dias) - (b.v.dias == null ? 9e9 : b.v.dias);
+  });
+
+  PWA_SKILLS.finishLoading('capacitaciones-table-body');
+  tbody.innerHTML = conVig.map(({ r, v }) => `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
+        onclick="changeInternalView('06_Capacitaciones','Detalle','${r.UUID}')">
+      <td class="px-3 py-2">
+        <div class="font-bold text-[11px] text-on-surface truncate max-w-[180px]">${r.Nombre_Capacitacion || '—'}</div>
+        <div class="text-[10px] text-secondary">${r.Tema || ''}</div>
+      </td>
+      <td class="px-3 py-2">${capTipoBadge(r.Tipo)}</td>
+      <td class="px-3 py-2">
+        <div class="text-[11px] font-semibold text-on-surface">${r.Fecha_Ejecucion || '—'}</div>
+        <div class="text-[10px] text-secondary">${r.Duracion_Horas ? r.Duracion_Horas + ' h' : ''}</div>
+      </td>
+      <td class="px-3 py-2">${capVigenciaBadge(v)}</td>
+      <td class="px-3 py-2">
+        <span class="inline-flex items-center gap-1 text-[11px] font-bold text-on-surface">
+          <span class="material-symbols-outlined text-[13px] text-secondary" aria-hidden="true">group</span>
+          ${r._totalAsistentes != null ? r._totalAsistentes : '—'}
+        </span>
+      </td>
+      <td class="px-3 py-2 text-[11px] text-on-surface-variant truncate max-w-[130px]">${r.Instructor || '—'}</td>
+      <td class="px-3 py-2 text-center" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-center gap-1">
+          <button onclick="changeInternalView('06_Capacitaciones','Detalle','${r.UUID}')" aria-label="Ver detalle de ${r.Nombre_Capacitacion || 'la capacitación'}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">visibility</span>
+          </button>
+          <button onclick="changeInternalView('06_Capacitaciones','Edicion','${r.UUID}')" aria-label="Editar ${r.Nombre_Capacitacion || 'la capacitación'}"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-secondary hover:bg-surface-variant transition-colors">
+            <span class="material-symbols-outlined text-[15px]" aria-hidden="true">edit</span>
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  PWA_SKILLS.initSortableTable('capacitaciones-table-body');
+  PWA_SKILLS.enhanceTable('capacitaciones-table-body');
+  PWA_SKILLS.updateResultCount('capacitaciones-table-body', 'ui-result-count');
+  const c = document.querySelector('#main-container #ui-result-count');
+  if (c) c.classList.remove('hidden');
+}
+
+/** Filtro rápido por estado de vigencia desde los indicadores */
+function capFiltrarVigencia(clave) {
+  const todos = window._capData || [];
+  const filtrados = todos.filter(r => {
+    const v = capVigencia(r).clave;
+    return clave === 'vigente' ? (v === 'vigente' || v === 'permanente') : v === clave;
+  });
+  capRenderTabla(filtrados);
+  const nombres = { 'vencida':'vencidas', 'por-vencer':'por vencer', 'vigente':'vigentes' };
+  PWA_SKILLS.toast('Mostrando capacitaciones ' + (nombres[clave] || clave) + '.', 'info', 3000);
+}
+
+function loadResumen_06_Capacitaciones() {
+  PWA_SKILLS.renderSkeleton('capacitaciones-table-body', 6);
+
+  if (!window._capExportListener) {
+    window._capExportListener = true;
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('cap-export-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById('cap-export-menu');
+        if (menu) menu.classList.add('hidden');
+      }
+    });
+  }
+
+  DataService.read('06_Capacitaciones')
+    .then(res => {
+      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+      // Alcance por rol: un trabajador no debe recibir registros ajenos.
+      // El filtro del navegador es comodidad; la restricción real la
+      // aplica RLS en la base de datos.
+      const visibles = (typeof PERMISOS !== 'undefined')
+        ? PERMISOS.filtrarDatos('06_Capacitaciones\Mod_06_Capacitaciones_Resumen.html', filas) : filas;
+      window._capData = visibles;
+      localStorage.setItem('refdata_06_Capacitaciones', JSON.stringify(visibles));
+      capRenderTabla(visibles);
+    })
+    .catch(() => {
+      let cache = [];
+      try { cache = JSON.parse(localStorage.getItem('refdata_06_Capacitaciones')) || []; } catch (e) {}
+      window._capData = cache;
+      if (cache.length) {
+        capRenderTabla(cache);
+        PWA_SKILLS.toast('Sin conexión: mostrando los últimos datos sincronizados.', 'warning', 4000);
+      } else {
+        PWA_SKILLS.showEmptyState('capacitaciones-table-body', {
+          icon: 'cloud_off',
+          title: 'Sin conexión',
+          message: 'No se pudieron cargar las capacitaciones y no hay copia local disponible.',
+          actionLabel: 'Reintentar', actionIcon: 'refresh',
+          onAction: "loadResumen_06_Capacitaciones()"
+        });
+      }
+    });
+}
+</script>

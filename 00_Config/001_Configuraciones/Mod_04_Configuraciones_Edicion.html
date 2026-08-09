@@ -1,0 +1,534 @@
+<!-- =========================================================================
+     VISTA: EDICIÓN
+     MODULO: 04_Configuraciones
+     ========================================================================= -->
+<div id="module-04_configuraciones-edicion" class="module-view" style="display:none;">
+
+  <!-- Header -->
+  <section class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b border-outline-variant pb-4">
+    <div class="flex items-center gap-4">
+      <button onclick="changeInternalView('04_Configuraciones', 'Resumen')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container transition-colors text-secondary">
+        <span class="material-symbols-outlined">arrow_back</span>
+      </button>
+      <div>
+        <h1 class="text-xl font-bold text-on-surface">Editar Configuración</h1>
+        <p class="text-[11px] text-secondary">Los cambios se aplican globalmente de inmediato</p>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="resetAppSettings()" class="h-9 px-4 rounded-lg border border-outline text-xs font-semibold text-error hover:bg-red-50 transition-colors flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-sm">restart_alt</span>
+        Restablecer
+      </button>
+      <button onclick="submitAppSettings()" class="h-9 px-6 rounded-lg bg-primary text-on-primary text-xs font-bold shadow-md hover:opacity-90 transition-all flex items-center gap-2">
+        <span class="material-symbols-outlined text-[18px]">save</span>
+        Guardar Cambios
+      </button>
+    </div>
+  </section>
+
+  <div class="max-w-3xl mx-auto space-y-6">
+
+    <!-- Pestañas -->
+    <div class="flex gap-1 bg-surface-container-low rounded-xl p-1 border border-outline-variant" id="cfg-tabs">
+      <button onclick="switchCfgTab('general')" class="cfg-tab active flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="general">General</button>
+      <button onclick="switchCfgTab('apariencia')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="apariencia">Apariencia</button>
+      <button onclick="switchCfgTab('sync')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="sync">Sincronización</button>
+      <button onclick="switchCfgTab('seguridad')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="seguridad">Seguridad</button>
+      <button onclick="switchCfgTab('modulos')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="modulos">Módulos</button>
+      <button onclick="switchCfgTab('pdf')" class="cfg-tab flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all" data-tab="pdf">PDF</button>
+    </div>
+
+    <!-- Tab: General -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm" id="cfg-panel-general">
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Nombre de la Aplicación</label>
+          <input type="text" id="cfg-app-nombre" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Empresa / Organización</label>
+          <input type="text" id="cfg-app-empresa" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Versión</label>
+          <input type="text" id="cfg-app-version" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">URL del Logo (opcional)</label>
+          <input type="url" id="cfg-app-logo" placeholder="https://..." class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Apariencia -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-apariencia">
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Color Primario</label>
+          <div class="flex items-center gap-3">
+            <input type="color" id="cfg-color-picker" class="w-11 h-11 rounded-xl border border-outline-variant cursor-pointer bg-surface-container-low p-0.5">
+            <input type="text" id="cfg-color-hex" maxlength="7" placeholder="#1A73E8" class="flex-1 h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-mono focus:border-primary outline-none">
+          </div>
+          <div class="mt-3 flex gap-2 flex-wrap">
+            <button onclick="setCfgColor('#1A73E8')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#1A73E8" title="Google Blue"></button>
+            <button onclick="setCfgColor('#000666')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#000666" title="Navy Deep"></button>
+            <button onclick="setCfgColor('#1B5E20')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#1B5E20" title="Forest Green"></button>
+            <button onclick="setCfgColor('#B71C1C')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#B71C1C" title="Deep Red"></button>
+            <button onclick="setCfgColor('#E65100')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#E65100" title="Deep Orange"></button>
+            <button onclick="setCfgColor('#4A148C')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#4A148C" title="Deep Purple"></button>
+          </div>
+        </div>
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Calidad de Compresión de Imágenes</label>
+          <select id="cfg-compresion" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="Alta">Alta (mayor detalle, más espacio)</option>
+            <option value="Medio">Medio (equilibrado)</option>
+            <option value="Baja">Baja (menor tamaño, menos detalle)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Sincronización -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-sync">
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Intervalo de Sincronización Automática</label>
+          <select id="cfg-sync-intervalo" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="1">Cada 1 minuto</option>
+            <option value="5">Cada 5 minutos</option>
+            <option value="10">Cada 10 minutos</option>
+            <option value="30">Cada 30 minutos</option>
+            <option value="0">Manual (solo al pulsar)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-secondary mb-2">Tamaño Máximo de Lote (registros)</label>
+          <select id="cfg-batch-size" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="10">10 registros</option>
+            <option value="25">25 registros</option>
+            <option value="50">50 registros (recomendado)</option>
+            <option value="100">100 registros</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Seguridad -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-seguridad">
+      <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
+        <div class="col-span-2 md:col-span-1">
+          <label class="block text-xs font-bold text-secondary mb-2">Duración de Sesión</label>
+          <select id="cfg-session-timeout" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+            <option value="60">1 hora</option>
+            <option value="240">4 horas</option>
+            <option value="480">8 horas (recomendado)</option>
+            <option value="1440">24 horas</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-6 p-4 bg-amber-50 rounded-xl border border-amber-200">
+        <p class="text-[11px] text-amber-800 font-medium">Las contraseñas se almacenan como hash SHA-256. Nunca se guarda la contraseña en texto plano.</p>
+      </div>
+    </div>
+
+    <!-- Tab: Módulos -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-modulos">
+      <p class="text-xs text-secondary mb-5">Activa o desactiva módulos para controlar qué secciones aparecen en el menú principal.</p>
+      <div class="space-y-3">
+        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">assignment</span>
+            <div>
+              <p class="text-sm font-bold text-on-surface">Inspecciones</p>
+              <p class="text-[10px] text-secondary">Módulo 03 — Registro de hallazgos</p>
+            </div>
+          </div>
+          <select id="cfg-mod-inspecciones" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
+            <option value="Activo">Activo</option>
+            <option value="Inactivo">Inactivo</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">analytics</span>
+            <div>
+              <p class="text-sm font-bold text-on-surface">Reportes</p>
+              <p class="text-[10px] text-secondary">Módulo 02 — Monitoreo operativo</p>
+            </div>
+          </div>
+          <select id="cfg-mod-reportes" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
+            <option value="Activo">Activo</option>
+            <option value="Inactivo">Inactivo</option>
+          </select>
+        </div>
+        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-primary">group</span>
+            <div>
+              <p class="text-sm font-bold text-on-surface">Usuarios</p>
+              <p class="text-[10px] text-secondary">Módulo 01 — Gestión de personal</p>
+            </div>
+          </div>
+          <select id="cfg-mod-usuarios" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
+            <option value="Activo">Activo</option>
+            <option value="Inactivo">Inactivo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Plantilla PDF — gestor de plantillas de Google Docs -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-pdf">
+
+      <div class="flex flex-wrap items-end justify-between gap-3 mb-4">
+        <div class="flex-1 min-w-[180px]">
+          <label class="block text-xs font-bold text-secondary mb-2" for="pdf-modulo">Documento a diseñar</label>
+          <select id="pdf-modulo" onchange="pdfCargarModulo(this.value)"
+            class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-bold focus:border-primary outline-none">
+          </select>
+        </div>
+        <span id="pdf-estado" class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-surface-variant text-on-surface-variant"></span>
+      </div>
+
+      <!-- Sin plantilla: crear una desde cero -->
+      <div id="pdf-sin-plantilla" class="hidden">
+        <div class="rounded-xl border border-dashed border-outline-variant bg-surface-container-low p-4 text-center">
+          <span class="material-symbols-outlined text-[30px] text-primary mb-1 block" aria-hidden="true">description</span>
+          <p class="text-[12px] font-bold text-on-surface mb-1">Este módulo aún no tiene plantilla</p>
+          <p class="text-[11px] text-secondary mb-3 leading-relaxed">
+            Se creará un Google Doc con la cabecera y todos los campos ya puestos.
+            Lo abres, le das el formato de tu empresa y listo.
+          </p>
+          <button type="button" onclick="pdfCrearPlantilla()"
+            class="h-11 px-5 rounded-xl bg-primary text-on-primary text-[12px] font-bold hover:opacity-90 transition-all inline-flex items-center gap-2">
+            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">note_add</span>Crear plantilla base
+          </button>
+        </div>
+        <div class="mt-3">
+          <p class="text-[10px] font-black uppercase tracking-wider text-secondary mb-1.5">o vincula un documento que ya tengas</p>
+          <div class="flex gap-2">
+            <input id="pdf-doc-id" placeholder="Pega aquí el enlace o el ID del Google Doc"
+              class="flex-1 min-w-0 h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-[12px] focus:border-primary outline-none">
+            <button type="button" onclick="pdfVincularManual()"
+              class="h-11 px-4 rounded-xl border border-outline-variant text-[12px] font-bold text-primary hover:bg-primary/5 transition-colors whitespace-nowrap">Vincular</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Con plantilla: abrir, probar, cambiar -->
+      <div id="pdf-con-plantilla" class="hidden">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-start gap-2.5 mb-3">
+          <span class="material-symbols-outlined text-[19px] text-emerald-700 shrink-0" aria-hidden="true">check_circle</span>
+          <div class="min-w-0">
+            <p class="text-[12px] font-bold text-emerald-800">Plantilla vinculada</p>
+            <p class="text-[10px] text-emerald-700 break-all" id="pdf-doc-ref"></p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button type="button" onclick="pdfAbrirDoc()"
+            class="h-11 rounded-xl bg-primary text-on-primary text-[12px] font-bold hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">edit_document</span>Editar en Docs
+          </button>
+          <button type="button" onclick="pdfDesvincular()"
+            class="h-11 rounded-xl border border-outline-variant text-[12px] font-bold text-error hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">link_off</span>Desvincular
+          </button>
+        </div>
+      </div>
+
+      <!-- Chuleta de marcadores -->
+      <div class="mt-2">
+        <p class="text-[10px] font-black uppercase tracking-wider text-secondary mb-1">Campos disponibles</p>
+        <p class="text-[11px] text-secondary mb-2 leading-relaxed">
+          Escribe estos marcadores en el documento donde quieras que salga cada dato.
+          Toca uno para copiarlo.
+        </p>
+        <div id="pdf-marcadores" class="space-y-3"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.cfg-tab { color: #505f76; }
+.cfg-tab.active { background: white; color: #000666; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* ── Gestor de plantillas PDF ── */
+.pdf-marcador {
+  display:inline-flex; align-items:center; gap:5px; margin:0 5px 5px 0; padding:6px 9px;
+  border-radius:9px; border:1px solid var(--ds-border); background:var(--ds-surface);
+  font-size:11px; font-weight:600; color:var(--ds-fg); cursor:pointer; min-height:34px;
+  transition:border-color 150ms, background 150ms;
+}
+.pdf-marcador:hover { border-color:var(--color-primary); background:rgba(0,6,102,.05); }
+.pdf-marcador code { font-family:'Courier New',monospace; font-size:10px; color:var(--color-primary); }
+.pdf-marcador.copiado { border-color:#10b981; background:rgba(16,185,129,.12); }
+.pdf-grupo-tit { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+                 color:var(--ds-fg-muted); margin-bottom:5px; }
+</style>
+
+<script>
+function switchCfgTab(tabName) {
+  document.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.cfg-panel').forEach(p => p.classList.add('hidden'));
+  const btn = document.querySelector(`.cfg-tab[data-tab="${tabName}"]`);
+  const panel = document.getElementById(`cfg-panel-${tabName}`);
+  if (btn) btn.classList.add('active');
+  if (panel) panel.classList.remove('hidden');
+  if (tabName === 'pdf') pdfInit();
+}
+
+/* =========================================================================
+   GESTOR DE PLANTILLAS PDF (Google Docs)
+   =========================================================================
+   El administrador diseña el documento en Google Docs, que ya sabe usar.
+   Esta pantalla solo hace tres cosas: crear la plantilla base, vincularla y
+   darle la lista de marcadores para que sepa qué escribir.
+   ========================================================================= */
+
+function pdfInit() {
+  const sel = document.getElementById('pdf-modulo');
+  if (!sel || typeof PDF_TEMPLATE === 'undefined') return;
+
+  if (!sel.options.length) {
+    // Módulos detectados leyendo los subconfigs cargados (zero-touch)
+    const vistos = {};
+    Object.keys(window)
+      .filter(k => /^SUBCONFIG_\d/.test(k) && window[k] && window[k].Variables)
+      .map(k => (window[k].Config_Modular || {}).NombreInterno || k.replace('SUBCONFIG_', ''))
+      .filter(m => !/CONFIGURACIONES|ADMIN/i.test(m))
+      .forEach(m => {
+        if (vistos[m]) return; vistos[m] = 1;
+        const o = document.createElement('option');
+        o.value = m;
+        o.textContent = m.replace(/^\d+_/, '').replace(/_/g, ' ');
+        sel.appendChild(o);
+      });
+  }
+  if (sel.options.length) pdfCargarModulo(sel.value || sel.options[0].value);
+}
+
+function pdfCargarModulo(modulo) {
+  if (!modulo) return;
+  const sel = document.getElementById('pdf-modulo');
+  if (sel && sel.value !== modulo) sel.value = modulo;
+  window._pdfModulo = modulo;
+
+  pdfPintarMarcadores(modulo);
+  pdfPintarEstado('Comprobando…', 'bg-surface-variant text-on-surface-variant');
+
+  // El vínculo vigente es el de la base de datos, no el de este dispositivo
+  PDF_TEMPLATE.sincronizar(modulo).then(r => {
+    if (window._pdfModulo !== modulo) return;
+    pdfRefrescarVista(r.docId, r.origen === 'bd');
+  });
+}
+
+function pdfPintarEstado(txt, cls) {
+  const e = document.getElementById('pdf-estado');
+  if (e) { e.textContent = txt; e.className = 'text-[10px] font-bold px-2.5 py-1 rounded-full ' + cls; }
+}
+
+function pdfRefrescarVista(docId, desdeBD) {
+  const sin = document.getElementById('pdf-sin-plantilla');
+  const con = document.getElementById('pdf-con-plantilla');
+  if (!sin || !con) return;
+  if (docId) {
+    sin.classList.add('hidden'); con.classList.remove('hidden');
+    const ref = document.getElementById('pdf-doc-ref');
+    if (ref) ref.textContent = docId;
+    pdfPintarEstado(desdeBD ? 'Vinculada en la BD' : 'Solo en este dispositivo',
+      desdeBD ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800');
+  } else {
+    sin.classList.remove('hidden'); con.classList.add('hidden');
+    pdfPintarEstado('Sin plantilla', 'bg-surface-variant text-on-surface-variant');
+  }
+}
+
+/** Chuleta: los marcadores que el admin puede pegar en el documento */
+function pdfPintarMarcadores(modulo) {
+  const cont = document.getElementById('pdf-marcadores');
+  if (!cont) return;
+  const m = PDF_TEMPLATE.marcadores(modulo);
+
+  const grupo = (titulo, lista, nota) => {
+    if (!lista.length) return '';
+    const botones = lista.map(x => {
+      const visible = x.marcador.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return '<button type="button" class="pdf-marcador" data-marcador="' + visible +
+             '" onclick="pdfCopiar(this)">' + x.etiqueta + ' <code>' + visible + '</code></button>';
+    }).join('');
+    return '<div><p class="pdf-grupo-tit">' + titulo +
+      (nota ? ' · <span style="text-transform:none;font-weight:600">' + nota + '</span>' : '') +
+      '</p><div>' + botones + '</div></div>';
+  };
+
+  cont.innerHTML =
+    grupo('Datos del registro', m.registro) +
+    grupo('Imágenes y firmas', m.media, 'se insertan como imagen') +
+    grupo('Tabla de detalle', m.detalle, 'úsalos en la última fila de una tabla') +
+    grupo('Especiales', m.especiales);
+}
+
+function pdfCopiar(btn) {
+  const texto = btn.getAttribute('data-marcador');
+  const marcar = () => {
+    btn.classList.add('copiado');
+    setTimeout(() => btn.classList.remove('copiado'), 1200);
+    PWA_SKILLS.toast('Copiado: ' + texto, 'success', 1800);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).then(marcar).catch(() => pdfCopiarRespaldo(texto, marcar));
+  } else {
+    pdfCopiarRespaldo(texto, marcar);
+  }
+}
+
+/** Respaldo para navegadores sin API de portapapeles (o sin HTTPS) */
+function pdfCopiarRespaldo(texto, ok) {
+  const ta = document.createElement('textarea');
+  ta.value = texto;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); ok(); }
+  catch (e) { PWA_SKILLS.toast('Copia manualmente: ' + texto, 'info', 4000); }
+  document.body.removeChild(ta);
+}
+
+function pdfCrearPlantilla() {
+  const mod = window._pdfModulo;
+  PWA_SKILLS.toast('Creando el documento en Google Docs…', 'info', 3000);
+
+  PDF_TEMPLATE.crearPlantillaBase(mod).then(r => {
+    if (!r || r.status !== 'OK' || !r.docId) {
+      PWA_SKILLS.toast('No se pudo crear la plantilla: ' + ((r && r.msg) || 'error del servidor'), 'error', 5000);
+      return;
+    }
+    return PDF_TEMPLATE.vincular(mod, r.docId).then(v => {
+      pdfRefrescarVista(r.docId, v.remoto);
+      PWA_SKILLS.toast('Plantilla creada. Se abrirá en Google Docs para que le des formato.', 'success', 4000);
+      if (r.docUrl) window.open(r.docUrl, '_blank');
+    });
+  }).catch(e => {
+    PWA_SKILLS.toast('Esta acción necesita conexión con el servidor. ' + (e.message || ''), 'error', 5000);
+  });
+}
+
+function pdfVincularManual() {
+  const campo = document.getElementById('pdf-doc-id');
+  const bruto = (campo.value || '').trim();
+  if (!bruto) { PWA_SKILLS.toast('Pega el enlace o el ID del documento.', 'warning'); campo.focus(); return; }
+
+  // Admite tanto el ID suelto como la URL completa de Google Docs
+  const m = bruto.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
+  const docId = m ? m[1] : bruto;
+  if (!/^[a-zA-Z0-9_-]{20,}$/.test(docId)) {
+    PWA_SKILLS.toast('Eso no parece un enlace ni un ID de Google Docs válido.', 'error', 4500);
+    return;
+  }
+
+  PDF_TEMPLATE.vincular(window._pdfModulo, docId).then(v => {
+    pdfRefrescarVista(docId, v.remoto);
+    PWA_SKILLS.toast(v.remoto
+      ? 'Plantilla vinculada para toda la organización.'
+      : 'Vinculada solo en este dispositivo. ' + v.msg,
+      v.remoto ? 'success' : 'warning', v.remoto ? 3500 : 5000);
+  });
+}
+
+function pdfAbrirDoc() {
+  const url = PDF_TEMPLATE.docUrl(window._pdfModulo);
+  if (url) window.open(url, '_blank');
+}
+
+function pdfDesvincular() {
+  if (!confirm('El módulo volverá al formato interno por defecto. El documento de Google Docs NO se borra. ¿Continuar?')) return;
+  PDF_TEMPLATE.vincular(window._pdfModulo, '').then(() => {
+    pdfRefrescarVista('', false);
+    PWA_SKILLS.toast('Plantilla desvinculada. Se usará el formato interno.', 'info', 3200);
+  });
+}
+
+function setCfgColor(hex) {
+  const picker = document.getElementById('cfg-color-picker');
+  const hexInput = document.getElementById('cfg-color-hex');
+  if (picker) picker.value = hex;
+  if (hexInput) hexInput.value = hex;
+  document.documentElement.style.setProperty('--color-primary', hex);
+}
+
+function loadEdicion_04_Configuraciones() {
+  const s = getAppSettings();
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('cfg-app-nombre', s.App_Nombre);
+  set('cfg-app-empresa', s.App_Empresa);
+  set('cfg-app-version', s.App_Version);
+  set('cfg-app-logo', s.App_Logo_URL);
+  set('cfg-color-picker', s.Color_Primario);
+  set('cfg-color-hex', s.Color_Primario);
+  set('cfg-compresion', s.Calidad_Compresion);
+  set('cfg-sync-intervalo', s.Sync_Intervalo);
+  set('cfg-batch-size', s.Max_Batch_Size);
+  set('cfg-session-timeout', s.Session_Timeout);
+  set('cfg-mod-inspecciones', s.Modulo_Inspecciones);
+  set('cfg-mod-reportes', s.Modulo_Reportes);
+  set('cfg-mod-usuarios', s.Modulo_Usuarios);
+
+  // Sincronizar color picker <-> hex input
+  const picker = document.getElementById('cfg-color-picker');
+  const hexIn = document.getElementById('cfg-color-hex');
+  if (picker && hexIn) {
+    picker.addEventListener('input', () => {
+      hexIn.value = picker.value;
+      document.documentElement.style.setProperty('--color-primary', picker.value);
+    });
+    hexIn.addEventListener('input', () => {
+      if (/^#[0-9A-Fa-f]{6}$/.test(hexIn.value)) {
+        picker.value = hexIn.value;
+        document.documentElement.style.setProperty('--color-primary', hexIn.value);
+      }
+    });
+  }
+
+  switchCfgTab('general');
+}
+
+function submitAppSettings() {
+  const get = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const hex = get('cfg-color-hex');
+  const settings = {
+    App_Nombre:          get('cfg-app-nombre'),
+    App_Empresa:         get('cfg-app-empresa'),
+    App_Version:         get('cfg-app-version'),
+    App_Logo_URL:        get('cfg-app-logo'),
+    Color_Primario:      /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : get('cfg-color-picker'),
+    Calidad_Compresion:  get('cfg-compresion'),
+    Sync_Intervalo:      get('cfg-sync-intervalo'),
+    Max_Batch_Size:      get('cfg-batch-size'),
+    Session_Timeout:     get('cfg-session-timeout'),
+    Modulo_Inspecciones: get('cfg-mod-inspecciones'),
+    Modulo_Reportes:     get('cfg-mod-reportes'),
+    Modulo_Usuarios:     get('cfg-mod-usuarios')
+  };
+  saveAppSettings(settings);
+
+  // El vínculo de la plantilla PDF se guarda al vincularla, no aquí: en la
+  // pestaña PDF no queda nada pendiente que este botón pudiera perder.
+  PWA_SKILLS.toast('Configuración guardada y aplicada.', 'success', 3200);
+  changeInternalView('04_Configuraciones', 'Resumen');
+  if (typeof loadResumen_04_Configuraciones === 'function') loadResumen_04_Configuraciones();
+}
+
+function resetAppSettings() {
+  if (!confirm('¿Restablecer todos los valores al predeterminado? Esta acción no se puede deshacer.')) return;
+  localStorage.removeItem('pwa_app_settings');
+  applyAppSettings();
+  loadEdicion_04_Configuraciones();
+  alert('Configuración restablecida a los valores predeterminados.');
+}
+</script>

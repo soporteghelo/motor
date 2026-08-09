@@ -1,0 +1,121 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 10_Charlas
+ * =========================================================================
+ * Charlas de 5 minutos (charlas diarias de seguridad).
+ *
+ * POR QUÉ ESTE MÓDULO ES DISTINTO DE CAPACITACIONES
+ * Una capacitación es un evento formal con vigencia; una charla de 5 minutos
+ * es un hábito diario. Aquí no importa la vigencia sino la COBERTURA: si el
+ * turno de noche de Mantenimiento empezó sin charla, eso es lo que hay que
+ * ver de un vistazo, hoy, no a fin de mes.
+ *
+ * DISEÑADO PARA ANOTAR EN 60 SEGUNDOS
+ * Registrar la charla no puede tomar más que darla. Por eso hay temas
+ * sugeridos de un toque, la fecha y hora vienen puestas, y los asistentes se
+ * agregan en bloque.
+ * =========================================================================
+ */
+
+var SUBCONFIG_10_CHARLAS = {
+
+  Config_Modular: {
+    NombreInterno:          "10_Charlas",
+    Titulo:                 "Charlas de 5 Minutos",
+    DRIVE_FOLDER_NAME:      "10_Charlas_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "ASISTENTES",
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    Relational_Fields: [
+      { name: "DNI",       label: "DNI",    type: "text", colSpan: "md:col-span-3" },
+      { name: "Nombre",    label: "Nombre", type: "text", fullWidth: true, colSpan: "md:col-span-6" },
+      { name: "Area_Asis", label: "Área",   type: "text", colSpan: "md:col-span-2" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":            { type: "Hidden_UUID", required: true, isFilter: false },
+
+    "Tema":            { type: "Text", required: true, isFilter: true, label: "Tema de la charla" },
+    "Categoria":       { type: "Enum", required: false, isFilter: true, label: "Categoría",
+                         acceptedValues: [
+                           "Riesgos del día", "Orden y limpieza", "Uso de EPP",
+                           "Manejo manual de cargas", "Herramientas manuales",
+                           "Riesgo eléctrico", "Trabajo en altura", "Vehículos y tránsito",
+                           "Salud ocupacional", "Emergencias", "Lecciones aprendidas"
+                         ], allowOtherValues: true },
+
+    "Fecha":           { type: "Date", required: true,  isFilter: true,  label: "Fecha" },
+    "Hora":            { type: "Text", required: false, isFilter: false, label: "Hora" },
+    "Turno":           { type: "Enum", required: true,  isFilter: true,  label: "Turno",
+                         acceptedValues: ["Día", "Tarde", "Noche"], allowOtherValues: false },
+    "Area":            { type: "Enum", required: true,  isFilter: true,  label: "Área",
+                         acceptedValues: [
+                           "Operaciones", "Mantenimiento", "Almacén", "Logística",
+                           "Producción", "Administración", "Obra / Campo", "Laboratorio"
+                         ], allowOtherValues: true },
+    "Lugar":           { type: "Text", required: false, isFilter: false, label: "Lugar" },
+
+    "Expositor_DNI":   { type: "REF",  required: false, isFilter: false, label: "Expositor",
+                         relationalDataOrigin: "01_Usuarios" },
+    "Expositor":       { type: "Text", required: false, isFilter: true,  label: "Nombre del expositor" },
+    "Duracion_Min":    { type: "Text", required: false, isFilter: false, label: "Duración (min)" },
+
+    "Puntos_Tratados": { type: "Text", required: false, isFilter: false, label: "Puntos tratados" },
+    "Compromisos":     { type: "Text", required: false, isFilter: false, label: "Compromisos asumidos" },
+
+    "Total_Asistentes":{ type: "Text", required: false, isFilter: false, label: "Asistentes" },
+    "Estado":          { type: "Enum", required: true,  isFilter: true,  label: "Estado",
+                         acceptedValues: ["Ejecutada", "Programada", "No realizada"], allowOtherValues: false },
+
+    // ── Evidencia (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Firma_Expositor":      { type: "Signature", required: false, isFilter: false, label: "Firma del expositor" },
+    "Firma_Expositor_ID":   { type: "Hidden", required: false },
+    "Firma_Expositor_Path": { type: "Hidden", required: false },
+
+    "Foto_Charla":      { type: "Image_Collection", required: false, isFilter: false, label: "Registro fotográfico" },
+    "Foto_Charla_ID":   { type: "Hidden", required: false },
+    "Foto_Charla_Path": { type: "Hidden", required: false },
+
+    "Registrado_Por":  { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
+    "Fecha_Registro":  { type: "Hidden", required: false }
+  },
+
+  /**
+   * Temas sugeridos: se ofrecen de un toque para que anotar la charla no
+   * tome más tiempo que darla. Editar esta lista adapta el banco de temas
+   * de cada empresa sin tocar ninguna vista.
+   */
+  TemasSugeridos: [
+    "Inspección de herramientas antes de usarlas",
+    "Uso correcto del arnés de seguridad",
+    "Orden y limpieza en el puesto de trabajo",
+    "Levantamiento manual de cargas",
+    "Reporte de actos y condiciones subestándar",
+    "Manejo defensivo y tránsito interno",
+    "Riesgo eléctrico: distancias seguras",
+    "Hidratación y golpe de calor",
+    "Ergonomía en tareas repetitivas",
+    "Qué hacer ante una emergencia",
+    "Lección aprendida del último incidente",
+    "Revisión del EPP asignado"
+  ],
+
+  /**
+   * Áreas que deben tener charla cada día. La cobertura se mide contra esta
+   * lista: lo que no aparezca hoy es una cuadrilla que empezó sin charla.
+   */
+  AreasConCobertura: ["Operaciones", "Mantenimiento", "Producción", "Obra / Campo", "Almacén"]
+};
+</script>

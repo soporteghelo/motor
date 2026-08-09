@@ -1,0 +1,246 @@
+<!-- =========================================================================
+     VISTA: RESUMEN — MÓDULO 04_Actos_Condiciones
+     ========================================================================= -->
+<div id="module-04_actos_condiciones-resumen" class="module-view">
+
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="showView('Menu')" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+      </button>
+      <div>
+        <h2 class="font-h2 text-h2 text-on-surface leading-tight">Actos y Condiciones</h2>
+        <p class="text-[11px] text-on-surface-variant">Reporte y moderación de actos/condiciones sub-estándar</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <span id="act-result-count" class="text-[10px] font-bold text-on-surface-variant mr-auto sm:mr-1 hidden"></span>
+      <div class="relative" id="act-export-wrap">
+        <button onclick="document.getElementById('act-export-menu').classList.toggle('hidden')"
+          class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-primary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+          <span class="material-symbols-outlined text-[16px]">download</span>Exportar
+          <span class="material-symbols-outlined text-[13px] opacity-60">expand_more</span>
+        </button>
+        <div id="act-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
+          <button onclick="if(typeof PWA_SKILLS.exportFilteredToExcel==='function')PWA_SKILLS.exportFilteredToExcel(); document.getElementById('act-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
+            <span class="material-symbols-outlined text-[17px] text-green-600">grid_on</span>Excel (.xlsx)
+          </button>
+          <button onclick="if(typeof PWA_SKILLS.exportVisibleToCSV==='function')PWA_SKILLS.exportVisibleToCSV('Actos_Condiciones'); document.getElementById('act-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-blue-600">text_snippet</span>CSV (.csv)
+          </button>
+        </div>
+      </div>
+      <button onclick="changeInternalView('04_Actos_Condiciones', 'Edicion')"
+        class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]">add</span>Nuevo
+      </button>
+    </div>
+  </div>
+
+  <!-- KPI Strip -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="bg-surface-container-lowest rounded-2xl border border-outline-variant p-3 shadow-sm">
+      <p class="text-[9px] font-black text-on-surface-variant uppercase tracking-widest mb-1">Total Reportes</p>
+      <p class="text-2xl font-black text-on-surface" id="act-kpi-total">—</p>
+    </div>
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 shadow-sm cursor-pointer hover:shadow-md transition-all" onclick="actFilterByEstado('Pendiente')">
+      <p class="text-[9px] font-black text-amber-700 uppercase tracking-widest mb-1">Pendientes</p>
+      <p class="text-2xl font-black text-amber-700" id="act-kpi-pendientes">—</p>
+    </div>
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 shadow-sm cursor-pointer hover:shadow-md transition-all" onclick="actFilterByEstado('En Revisión')">
+      <p class="text-[9px] font-black text-blue-700 uppercase tracking-widest mb-1">En Revisión</p>
+      <p class="text-2xl font-black text-blue-700" id="act-kpi-revision">—</p>
+    </div>
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl p-3 shadow-sm cursor-pointer hover:opacity-90 transition-all" onclick="actFilterByRiesgo('Crítico (Negro)')">
+      <p class="text-[9px] font-black text-gray-300 uppercase tracking-widest mb-1">Críticos</p>
+      <p class="text-2xl font-black text-white" id="act-kpi-criticos">—</p>
+    </div>
+  </div>
+
+  <!-- Search & Filter Bar -->
+  <div id="ui-search-bar-slot"></div>
+
+  <!-- DataGrid -->
+  <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="actos-table">
+        <thead>
+          <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
+            <th class="px-3 py-2.5">ID / Fecha</th>
+            <th class="px-3 py-2.5">Reportante / Área</th>
+            <th class="px-3 py-2.5">Tipo</th>
+            <th class="px-3 py-2.5">Categoría</th>
+            <th class="px-3 py-2.5">Riesgo</th>
+            <th class="px-3 py-2.5">Estado</th>
+            <th class="px-3 py-2.5">Fuente</th>
+            <th class="px-3 py-2.5 text-center" data-nosort>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="actos-table-body" class="divide-y divide-outline-variant/40">
+          <!-- Poblado por loadResumen_04_Actos_Condiciones -->
+        </tbody>
+      </table>
+    </div>
+    <div id="actos-empty" style="display:none;" class="p-16 text-center">
+      <span class="material-symbols-outlined text-5xl text-outline-variant mb-3 block">report_off</span>
+      <p class="text-secondary font-medium text-sm">No se encontraron reportes.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Datos demo (25 registros) ──────────────────────────────────────────────
+window._actDemoData = [
+  { UUID:'ACT-001', Fecha_Reporte:'2026-05-02', Fecha_Incidente:'2026-05-01', Reportado_Por:'76543210', Nombre_Reportante:'Carlos Mendoza Ríos',    Area:'Mina',          Tipo_Reporte:'Acto Subestándar',       Categoria:'EPP',               Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Trabajador operando taladro de columna sin protección auditiva y guantes en zona de perforación.',                    Estado:'Cerrado',     Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-03', Accion_Correctiva:'Se entregó EPP y realizó charla de 5 minutos.',                    Observaciones_Mod:'Reincidente. Se levantó acta de amonestación.',   Fuente:'App Móvil',    Fecha_Registro:'2026-05-02 08:15:00' },
+  { UUID:'ACT-002', Fecha_Reporte:'2026-05-03', Fecha_Incidente:'2026-05-03', Reportado_Por:'87654321', Nombre_Reportante:'Ana Huanca Flores',       Area:'Planta',        Tipo_Reporte:'Condición Subestándar',  Categoria:'Equipos',           Nivel_Riesgo:'Crítico (Negro)',   Descripcion:'Faja transportadora sin guarda protectora lateral en tramo norte. Riesgo de atrapamiento severo.',                   Estado:'Cerrado',     Moderado_Por:'76543210', Fecha_Moderacion:'2026-05-05', Accion_Correctiva:'Instalación de guarda metálica ejecutada.',                        Observaciones_Mod:'Faja paralizada hasta instalación de guarda.',    Fuente:'Google Forms', Fecha_Registro:'2026-05-03 09:30:00' },
+  { UUID:'ACT-003', Fecha_Reporte:'2026-05-05', Fecha_Incidente:'2026-05-04', Reportado_Por:'23456789', Nombre_Reportante:'José Ramos Vargas',       Area:'Talleres',      Tipo_Reporte:'Acto Subestándar',       Categoria:'Procedimientos',    Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Operador de amoladora angular sin protección visual ni guantes. Procedimiento no seguido.',                            Estado:'Cerrado',     Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-06', Accion_Correctiva:'Capacitación en uso de herramientas y verificación de EPP.',          Observaciones_Mod:'Primera incidencia para este trabajador.',        Fuente:'App Móvil',    Fecha_Registro:'2026-05-05 11:00:00' },
+  { UUID:'ACT-004', Fecha_Reporte:'2026-05-06', Fecha_Incidente:'2026-05-06', Reportado_Por:'45678901', Nombre_Reportante:'Lucía Paredes Salas',     Area:'Logística',     Tipo_Reporte:'Condición Subestándar',  Categoria:'Orden y Limpieza',  Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Pasadizo de almacén bloqueado con materiales apilados irregularmente. Obstaculiza ruta de evacuación.',              Estado:'Cerrado',     Moderado_Por:'76543210', Fecha_Moderacion:'2026-05-07', Accion_Correctiva:'Limpieza y reorganización del área en turno tarde.',               Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-05-06 14:20:00' },
+  { UUID:'ACT-005', Fecha_Reporte:'2026-05-08', Fecha_Incidente:'2026-05-07', Reportado_Por:'56789012', Nombre_Reportante:'Roberto Chávez Nava',     Area:'Mina',          Tipo_Reporte:'Condición Subestándar',  Categoria:'Ambiental',         Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Derrame de aceite hidráulico en nivel 3 sin contención. Acumulación cerca de puntos de ignición.',                   Estado:'Cerrado',     Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-09', Accion_Correctiva:'Limpieza con absorbente industrial. Revisión de sello del cilindro.', Observaciones_Mod:'Mantenimiento de sellos programado.',            Fuente:'App Móvil',    Fecha_Registro:'2026-05-08 07:45:00' },
+  { UUID:'ACT-006', Fecha_Reporte:'2026-05-10', Fecha_Incidente:'2026-05-09', Reportado_Por:'67890123', Nombre_Reportante:'Miguel Torres López',     Area:'Planta',        Tipo_Reporte:'Acto Subestándar',       Categoria:'EPP',               Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Supervisor visto en área de proceso sin chaleco reflectivo durante inspección sorpresa.',                             Estado:'Aprobado',    Moderado_Por:'76543210', Fecha_Moderacion:'2026-05-11', Accion_Correctiva:'Memorándum emitido. Charla de refuerzo a personal de planta.',        Observaciones_Mod:'Incidente de cultura de seguridad.',             Fuente:'Google Forms', Fecha_Registro:'2026-05-10 10:30:00' },
+  { UUID:'ACT-007', Fecha_Reporte:'2026-05-11', Fecha_Incidente:'2026-05-11', Reportado_Por:'78901234', Nombre_Reportante:'Patricia Soto Díaz',      Area:'Talleres',      Tipo_Reporte:'Condición Subestándar',  Categoria:'Herramientas',      Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Herramientas de corte con mangos deteriorados y sin protección en estante del taller eléctrico.',                    Estado:'Aprobado',    Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-12', Accion_Correctiva:'Reemplazo de 6 herramientas deterioradas. Inventario actualizado.',    Observaciones_Mod:'',                                                Fuente:'App Móvil',    Fecha_Registro:'2026-05-11 13:15:00' },
+  { UUID:'ACT-008', Fecha_Reporte:'2026-05-13', Fecha_Incidente:'2026-05-12', Reportado_Por:'12345678', Nombre_Reportante:'Pedro Quispe López',      Area:'Mina',          Tipo_Reporte:'Condición Subestándar',  Categoria:'Equipos',           Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Compresor de aire sin válvula de seguridad visible. Panel de control con indicadores dañados.',                       Estado:'Aprobado',    Moderado_Por:'76543210', Fecha_Moderacion:'2026-05-14', Accion_Correctiva:'Mantenimiento preventivo. Válvula reemplazada. Panel reparado.',      Observaciones_Mod:'Equipo fuera de servicio 4 horas para mantenimiento.', Fuente:'Google Forms', Fecha_Registro:'2026-05-13 08:00:00' },
+  { UUID:'ACT-009', Fecha_Reporte:'2026-05-14', Fecha_Incidente:'2026-05-14', Reportado_Por:'89012345', Nombre_Reportante:'Luis Castro Vera',        Area:'Administración',Tipo_Reporte:'Condición Subestándar',  Categoria:'Ergonomía',         Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Sillas de sala de reuniones sin soporte lumbar adecuado. 8 unidades en mal estado.',                                 Estado:'Aprobado',    Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-15', Accion_Correctiva:'Solicitud de reemplazo aprobada. Entrega programada por logística.',   Observaciones_Mod:'',                                                Fuente:'Manual',       Fecha_Registro:'2026-05-14 16:00:00' },
+  { UUID:'ACT-010', Fecha_Reporte:'2026-05-16', Fecha_Incidente:'2026-05-15', Reportado_Por:'90123456', Nombre_Reportante:'Carmen Flores Ruiz',      Area:'Planta',        Tipo_Reporte:'Acto Subestándar',       Categoria:'Procedimientos',    Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Personal de limpieza ingresó a área de proceso sin autorización ni EPP durante producción activa.',                   Estado:'En Revisión', Moderado_Por:'76543210', Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'En evaluación por RRHH.',                        Fuente:'Google Forms', Fecha_Registro:'2026-05-16 09:45:00' },
+  { UUID:'ACT-011', Fecha_Reporte:'2026-05-17', Fecha_Incidente:'2026-05-17', Reportado_Por:'01234567', Nombre_Reportante:'Fernando Vega Mora',      Area:'Logística',     Tipo_Reporte:'Condición Subestándar',  Categoria:'Equipos',           Nivel_Riesgo:'Crítico (Negro)',   Descripcion:'Montacargas Toyota con frenos de respuesta lenta. Evidenciado en maniobra de carga de 3 toneladas.',                 Estado:'En Revisión', Moderado_Por:'87654321', Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'Equipo inmovilizado pendiente de revisión técnica.', Fuente:'App Móvil',   Fecha_Registro:'2026-05-17 07:30:00' },
+  { UUID:'ACT-012', Fecha_Reporte:'2026-05-19', Fecha_Incidente:'2026-05-18', Reportado_Por:'11223344', Nombre_Reportante:'Sandra Mamani Cruz',      Area:'Mina',          Tipo_Reporte:'Condición Subestándar',  Categoria:'Ambiental',         Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Polvo en suspensión excesivo en galería G-12. Sistema de aspersión con toberas obstruidas.',                         Estado:'En Revisión', Moderado_Por:'76543210', Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'Limpieza de toberas programada para próximo turno.', Fuente:'Google Forms',Fecha_Registro:'2026-05-19 11:20:00' },
+  { UUID:'ACT-013', Fecha_Reporte:'2026-05-20', Fecha_Incidente:'2026-05-20', Reportado_Por:'22334455', Nombre_Reportante:'Ángel Salas Pinto',       Area:'Talleres',      Tipo_Reporte:'Acto Subestándar',       Categoria:'EPP',               Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Soldador trabajando sin careta homologada. Usa careta improvisada con lentes oscuros.',                               Estado:'En Revisión', Moderado_Por:'87654321', Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'Actividad detenida temporalmente.',              Fuente:'App Móvil',    Fecha_Registro:'2026-05-20 14:00:00' },
+  { UUID:'ACT-014', Fecha_Reporte:'2026-05-21', Fecha_Incidente:'2026-05-21', Reportado_Por:'33445566', Nombre_Reportante:'Rosa Chipana Llano',      Area:'Planta',        Tipo_Reporte:'Condición Subestándar',  Categoria:'Orden y Limpieza',  Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Cables eléctricos de extensión en el piso sin fijación en pasillo de planta de procesos.',                           Estado:'En Revisión', Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-05-21 15:30:00' },
+  { UUID:'ACT-015', Fecha_Reporte:'2026-05-22', Fecha_Incidente:'2026-05-21', Reportado_Por:'44556677', Nombre_Reportante:'Hugo Bendezú Soto',       Area:'Administración',Tipo_Reporte:'Acto Subestándar',       Categoria:'Procedimientos',    Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Reporte que no corresponde a acto subestándar de seguridad. Evento administrativo mal clasificado.',                  Estado:'Rechazado',   Moderado_Por:'76543210', Fecha_Moderacion:'2026-05-23', Accion_Correctiva:'',                                                                 Observaciones_Mod:'No procede. El evento no es un acto subestándar de SSO.', Fuente:'Google Forms', Fecha_Registro:'2026-05-22 08:00:00' },
+  { UUID:'ACT-016', Fecha_Reporte:'2026-05-25', Fecha_Incidente:'2026-05-24', Reportado_Por:'55667788', Nombre_Reportante:'Elena Ríos Cano',         Area:'Mina',          Tipo_Reporte:'Condición Subestándar',  Categoria:'Herramientas',      Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Descripción duplicada del reporte ACT-007. Mismo evento y mismo equipo reportado dos veces.',                        Estado:'Rechazado',   Moderado_Por:'87654321', Fecha_Moderacion:'2026-05-26', Accion_Correctiva:'',                                                                 Observaciones_Mod:'Duplicado del ACT-007. Reporte descartado.',     Fuente:'Google Forms', Fecha_Registro:'2026-05-25 10:00:00' },
+  { UUID:'ACT-017', Fecha_Reporte:'2026-05-26', Fecha_Incidente:'2026-05-25', Reportado_Por:'66778899', Nombre_Reportante:'Yolanda Huamaní Torres',  Area:'Planta',        Tipo_Reporte:'Condición Subestándar',  Categoria:'Equipos',           Nivel_Riesgo:'Crítico (Negro)',   Descripcion:'Caldera principal con manómetro dañado y sin funcionar. Operando sin lectura de presión visible.',                   Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-05-26 06:00:00' },
+  { UUID:'ACT-018', Fecha_Reporte:'2026-05-27', Fecha_Incidente:'2026-05-26', Reportado_Por:'77889900', Nombre_Reportante:'Raúl Condori Apaza',      Area:'Mina',          Tipo_Reporte:'Acto Subestándar',       Categoria:'Procedimientos',    Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Dos trabajadores ingresaron a galería G-03 sin firmar registro de ingreso ni verificar ventilación.',                Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'App Móvil',    Fecha_Registro:'2026-05-27 07:15:00' },
+  { UUID:'ACT-019', Fecha_Reporte:'2026-05-28', Fecha_Incidente:'2026-05-28', Reportado_Por:'88990011', Nombre_Reportante:'Miriam Lazo Gutierrez',   Area:'Logística',     Tipo_Reporte:'Condición Subestándar',  Categoria:'Orden y Limpieza',  Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Contenedores de residuos peligrosos sin etiquetado vigente y sin tapa en área de despacho.',                        Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-05-28 09:00:00' },
+  { UUID:'ACT-020', Fecha_Reporte:'2026-05-29', Fecha_Incidente:'2026-05-29', Reportado_Por:'99001122', Nombre_Reportante:'Andrés Pilco Bernal',     Area:'Talleres',      Tipo_Reporte:'Acto Subestándar',       Categoria:'Ergonomía',         Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Personal de mantenimiento levantando cargas >25kg sin soporte mecánico ni técnica ergonómica.',                     Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'App Móvil',    Fecha_Registro:'2026-05-29 11:45:00' },
+  { UUID:'ACT-021', Fecha_Reporte:'2026-06-01', Fecha_Incidente:'2026-05-31', Reportado_Por:'10213243', Nombre_Reportante:'Gabriela Núñez Espinoza', Area:'Planta',        Tipo_Reporte:'Condición Subestándar',  Categoria:'EPP',               Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Dispensador de guantes de nitrilo vacío en punto de control de planta de reactivos desde hace 2 días.',             Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-06-01 08:30:00' },
+  { UUID:'ACT-022', Fecha_Reporte:'2026-06-02', Fecha_Incidente:'2026-06-02', Reportado_Por:'20314253', Nombre_Reportante:'Marcos Vilca Quispe',     Area:'Mina',          Tipo_Reporte:'Condición Subestándar',  Categoria:'Equipos',           Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Escalera de acceso al nivel 5 con peldaño central suelto. Riesgo de caída durante traslado de equipos.',            Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'App Móvil',    Fecha_Registro:'2026-06-02 06:45:00' },
+  { UUID:'ACT-023', Fecha_Reporte:'2026-06-03', Fecha_Incidente:'2026-06-03', Reportado_Por:'30415263', Nombre_Reportante:'Celia Mamani Flores',     Area:'Administración',Tipo_Reporte:'Condición Subestándar',  Categoria:'Ambiental',         Nivel_Riesgo:'Bajo (Verde)',     Descripcion:'Planta de tratamiento de agua con olor inusual. Posible contaminación. Pendiente análisis de muestra.',            Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-06-03 12:00:00' },
+  { UUID:'ACT-024', Fecha_Reporte:'2026-06-04', Fecha_Incidente:'2026-06-04', Reportado_Por:'40516273', Nombre_Reportante:'Enrique Coyla Mamani',    Area:'Talleres',      Tipo_Reporte:'Acto Subestándar',       Categoria:'Procedimientos',    Nivel_Riesgo:'Medio (Amarillo)', Descripcion:'Mecánico realizó cambio de aceite sin señalización de trabajo en curso ni cubeta de contención.',                   Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'App Móvil',    Fecha_Registro:'2026-06-04 14:30:00' },
+  { UUID:'ACT-025', Fecha_Reporte:'2026-06-05', Fecha_Incidente:'2026-06-05', Reportado_Por:'50617283', Nombre_Reportante:'Natalia Cruz Ponce',      Area:'Logística',     Tipo_Reporte:'Condición Subestándar',  Categoria:'Herramientas',      Nivel_Riesgo:'Alto (Rojo)',       Descripcion:'Pistola de torque neumática con manguera de aire fisurada. Riesgo de latigazo por falla súbita bajo presión.',       Estado:'Pendiente',   Moderado_Por:'',         Fecha_Moderacion:'',           Accion_Correctiva:'',                                                                 Observaciones_Mod:'',                                                Fuente:'Google Forms', Fecha_Registro:'2026-06-05 07:00:00' }
+];
+
+// ── Badge helpers ──────────────────────────────────────────────────────────
+function actRiskBadge(nivel) {
+  const m = { 'Bajo (Verde)':'bg-emerald-100 text-emerald-800 border-emerald-200', 'Medio (Amarillo)':'bg-amber-100 text-amber-800 border-amber-200', 'Alto (Rojo)':'bg-red-100 text-red-800 border-red-200', 'Crítico (Negro)':'bg-gray-900 text-white border-gray-700' };
+  return `<span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black border whitespace-nowrap ${m[nivel]||'bg-surface-variant text-secondary border-outline-variant'}">${nivel||'—'}</span>`;
+}
+function actStatusBadge(estado) {
+  const m = { 'Pendiente':'bg-amber-100 text-amber-800', 'En Revisión':'bg-blue-100 text-blue-800', 'Aprobado':'bg-emerald-100 text-emerald-800', 'Rechazado':'bg-red-100 text-red-800', 'Cerrado':'bg-slate-100 text-slate-600' };
+  return `<span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-black ${m[estado]||'bg-surface-variant text-secondary'}">${estado||'—'}</span>`;
+}
+function actTipoBadge(tipo) {
+  if (tipo==='Acto Subestándar')     return `<span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-orange-100 text-orange-800 whitespace-nowrap">Acto</span>`;
+  if (tipo==='Condición Subestándar') return `<span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-800 whitespace-nowrap">Condición</span>`;
+  return `<span class="inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-variant text-secondary">${tipo||'—'}</span>`;
+}
+function actFuenteBadge(fuente) {
+  const m = { 'Google Forms':'bg-indigo-100 text-indigo-700', 'App Móvil':'bg-teal-100 text-teal-700', 'Manual':'bg-surface-variant text-secondary' };
+  const ico = { 'Google Forms':'wysiwyg', 'App Móvil':'smartphone', 'Manual':'edit_note' };
+  return `<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold ${m[fuente]||'bg-surface-variant text-secondary'}"><span class="material-symbols-outlined text-[10px]">${ico[fuente]||'edit'}</span>${fuente||'—'}</span>`;
+}
+
+// ── Render table ───────────────────────────────────────────────────────────
+function renderActosTable(data) {
+  const tbody = document.getElementById('actos-table-body');
+  const empty = document.getElementById('actos-empty');
+  if (!tbody) return;
+
+  const total      = data.length;
+  const pendientes = data.filter(r => r.Estado === 'Pendiente').length;
+  const revision   = data.filter(r => r.Estado === 'En Revisión').length;
+  const criticos   = data.filter(r => r.Nivel_Riesgo === 'Crítico (Negro)').length;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('act-kpi-total', total);
+  set('act-kpi-pendientes', pendientes);
+  set('act-kpi-revision', revision);
+  set('act-kpi-criticos', criticos);
+
+  if (empty) empty.style.display = (total === 0) ? 'block' : 'none';
+  if (total === 0) { tbody.innerHTML = ''; return; }
+
+  tbody.innerHTML = data.map(r => `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
+        data-filter-value="${[r.UUID,r.Nombre_Reportante,r.Area,r.Tipo_Reporte,r.Categoria,r.Nivel_Riesgo,r.Estado,r.Fuente,r.Descripcion].join(' ').toLowerCase()}"
+        onclick="changeInternalView('04_Actos_Condiciones','Detalle','${r.UUID}')">
+      <td class="px-3 py-2">
+        <div class="font-bold text-[11px] text-primary">${r.UUID}</div>
+        <div class="text-[10px] text-secondary">${r.Fecha_Incidente||r.Fecha_Reporte}</div>
+      </td>
+      <td class="px-3 py-2">
+        <div class="text-[11px] font-semibold text-on-surface max-w-[130px] truncate">${r.Nombre_Reportante||'—'}</div>
+        <div class="text-[10px] text-secondary">${r.Area||'—'}</div>
+      </td>
+      <td class="px-3 py-2">${actTipoBadge(r.Tipo_Reporte)}</td>
+      <td class="px-3 py-2 text-[10px] text-on-surface-variant">${r.Categoria||'—'}</td>
+      <td class="px-3 py-2">${actRiskBadge(r.Nivel_Riesgo)}</td>
+      <td class="px-3 py-2">${actStatusBadge(r.Estado)}</td>
+      <td class="px-3 py-2">${actFuenteBadge(r.Fuente)}</td>
+      <td class="px-3 py-2 text-center" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-center gap-1">
+          <button onclick="changeInternalView('04_Actos_Condiciones','Detalle','${r.UUID}')" title="Ver detalle"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors">
+            <span class="material-symbols-outlined text-[15px]">visibility</span>
+          </button>
+          <button onclick="changeInternalView('04_Actos_Condiciones','Edicion','${r.UUID}')" title="Editar / Moderar"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-secondary hover:bg-surface-variant transition-colors">
+            <span class="material-symbols-outlined text-[15px]">edit</span>
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  if (typeof PWA_SKILLS !== 'undefined') {
+    if (typeof PWA_SKILLS.initSortableTable === 'function') PWA_SKILLS.initSortableTable('actos-table-body');
+    if (typeof PWA_SKILLS.updateResultCount  === 'function') PWA_SKILLS.updateResultCount('actos-table-body', 'act-result-count');
+  }
+  const countEl = document.getElementById('act-result-count');
+  if (countEl) countEl.classList.remove('hidden');
+}
+
+// ── Filtros rápidos por KPI ────────────────────────────────────────────────
+function actFilterByEstado(estado) {
+  renderActosTable((window._actData||window._actDemoData).filter(r => r.Estado === estado));
+}
+function actFilterByRiesgo(nivel) {
+  renderActosTable((window._actData||window._actDemoData).filter(r => r.Nivel_Riesgo === nivel));
+}
+
+// ── Carga principal ────────────────────────────────────────────────────────
+function loadResumen_04_Actos_Condiciones() {
+  window._actData = window._actData || window._actDemoData;
+  renderActosTable(window._actData);
+
+  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+
+  if (!window._actExportListener) {
+    window._actExportListener = true;
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('act-export-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById('act-export-menu');
+        if (menu) menu.classList.add('hidden');
+      }
+    });
+  }
+
+  // Intentar cargar desde servidor (solo en producción)
+  if (typeof google !== 'undefined' && google.script) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        const parsed = typeof res === 'string' ? JSON.parse(res) : res;
+        if (parsed.status === 'OK' && Array.isArray(parsed.payload) && parsed.payload.length > 0) {
+          // Alcance por rol antes de pintar (la restricción real la aplica RLS)
+          window._actData = (typeof PERMISOS !== 'undefined')
+            ? PERMISOS.filtrarDatos('04_Actos_Condiciones', parsed.payload) : parsed.payload;
+          renderActosTable(window._actData);
+          localStorage.setItem('refdata_04_Actos_Condiciones', JSON.stringify(window._actData));
+        }
+      })
+      .withFailureHandler(function() { /* usa datos demo */ })
+      .serverRouter(JSON.stringify({ action: 'READ_DB', moduleName: '04_Actos_Condiciones' }));
+  }
+}
+</script>

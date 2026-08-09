@@ -1,0 +1,103 @@
+<script>
+/**
+ * =========================================================================
+ * 🛠️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "01_Usuarios" 🛠️
+ * =========================================================================
+ * SKILL PEDAGÓGICA (GUÍA PARA GESTIÓN DE ACCESOS):
+ * 
+ * Este módulo es el corazón de la seguridad. Aquí se definen quiénes pueden
+ * entrar a la app y qué nivel de mando tienen.
+ *
+ * CAMPOS CLAVE PARA EL SISTEMA:
+ * - "DNI": Es el usuario de acceso. Único e irrepetible.
+ * - "PASS": Almacenado como HASH (Nunca texto plano).
+ * - "STATUS": Si marcas "CESADO", la PWA expulsará al usuario automáticamente
+ *   basándose en la Skill de Hibernación.
+ * - "ROL": Define la visibilidad de otros módulos (Admin, Supervisor, Trabajador).
+ *
+ * CONFIGURACIÓN DE ENUMERADOS:
+ * Aquí configuramos los roles y estados corporativos. Si deseas añadir una 
+ * nueva gerencia o estatus, agrégalo a `acceptedValues`.
+ * =========================================================================
+ */
+
+var SUBCONFIG_01_USUARIOS = {
+  
+  Config_Modular: {
+    NombreInterno: "01_Usuarios",
+    DRIVE_FOLDER_NAME: "01_Usuarios_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "", 
+    EMAIL_TEMPLATE_ID: "", 
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "", 
+    RELATIONAL_KEY: "DNI",
+    Relational_Fields: [],    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: false, canRead: true , canUpdate: false, canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: false, canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID": { type: "Hidden_UUID", required: true, isFilter: false },
+    
+    "DNI": { 
+        type: "Text", 
+        required: true, 
+        isFilter: true,
+        description: "Identificador de acceso al sistema (Persistencia como Texto)"
+    },
+
+    "Nombre_Completo": { 
+        type: "Text", 
+        required: true, 
+        isFilter: true 
+    },
+
+    "Email": { 
+        type: "Text", 
+        required: true, 
+        isFilter: false 
+    },
+
+    "Password_Hash": { 
+        type: "Password", // El frontend usará PWA_SKILLS.hashSHA256 antes de enviar
+        required: true, 
+        isFilter: false 
+    },
+
+    "Rol": {
+        type: "Enum",
+        required: true,
+        isFilter: true,
+        acceptedValues: ["Admin", "Supervisor", "Trabajador"],
+        allowOtherValues: false
+    },
+
+    "Status": {
+        type: "Enum",
+        required: true,
+        isFilter: true,
+        acceptedValues: ["Activo", "Cesado"], // "Cesado" activa el Kill-Switch de la Guía Maestra
+        allowOtherValues: false
+    },
+
+    "Foto_Perfil": {
+        type: "Image",
+        required: false,
+        isFilter: false
+    },
+    "Foto_Perfil_ID": { type: "Hidden", required: false },
+    "Foto_Perfil_Path": { type: "Hidden", required: false },
+
+    "Firma_Cargo": {
+        type: "Signature",
+        required: false,
+        isFilter: false
+    },
+    "Firma_Cargo_ID": { type: "Hidden", required: false },
+    "Firma_Cargo_Path": { type: "Hidden", required: false }
+  }
+};
+</script>

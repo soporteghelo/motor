@@ -1,0 +1,119 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 06_Capacitaciones
+ * =========================================================================
+ * Registro de capacitaciones, charlas e inducciones con control de vigencia.
+ *
+ * POR QUÉ ESTE MÓDULO
+ * Una capacitación sin fecha de vencimiento es papel mojado: lo que importa
+ * operativamente no es haber capacitado, sino saber HOY quién tiene la
+ * certificación caducada antes de que entre a trabajar. Por eso el módulo
+ * gira alrededor de `Vigencia_Meses` → `Fecha_Vencimiento`, y la lista se
+ * ordena por urgencia, no por fecha de registro.
+ *
+ * La tabla hija guarda la lista de asistentes con su nota: es la evidencia
+ * que pide una fiscalización, y la que permite responder "¿este trabajador
+ * está habilitado para esta tarea?".
+ * =========================================================================
+ */
+
+var SUBCONFIG_06_CAPACITACIONES = {
+
+  Config_Modular: {
+    NombreInterno:          "06_Capacitaciones",
+    Titulo:                 "Capacitaciones",
+    DRIVE_FOLDER_NAME:      "06_Capacitaciones_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "ASISTENTES",
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    // Filas dinámicas: la lista de asistencia con evaluación
+    Relational_Fields: [
+      { name: "DNI",       label: "DNI",       type: "text", colSpan: "md:col-span-2" },
+      { name: "Nombre",    label: "Nombre",    type: "text", colSpan: "md:col-span-4" },
+      { name: "Area_Asis", label: "Área",      type: "text", colSpan: "md:col-span-2" },
+      { name: "Nota",      label: "Nota",      type: "text", colSpan: "md:col-span-2" },
+      { name: "Resultado", label: "Resultado", type: "text", colSpan: "md:col-span-2" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: false, canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":               { type: "Hidden_UUID", required: true, isFilter: false },
+
+    // ── Qué se dictó ──
+    "Nombre_Capacitacion":{ type: "Text", required: true, isFilter: true, label: "Nombre de la capacitación" },
+    "Tipo":               { type: "Enum", required: true, isFilter: true, label: "Tipo",
+                            acceptedValues: [
+                              "Inducción",
+                              "Capacitación específica",
+                              "Reentrenamiento",
+                              "Charla de seguridad",
+                              "Simulacro",
+                              "Certificación externa"
+                            ], allowOtherValues: false },
+    "Tema":               { type: "Enum", required: true, isFilter: true, label: "Tema",
+                            acceptedValues: [
+                              "Inducción general",
+                              "Trabajo en altura",
+                              "Espacios confinados",
+                              "Trabajos en caliente",
+                              "Izaje y maniobras",
+                              "Bloqueo y etiquetado (LOTO)",
+                              "Materiales peligrosos",
+                              "Riesgo eléctrico",
+                              "Primeros auxilios",
+                              "Lucha contra incendios",
+                              "Manejo defensivo",
+                              "Uso de EPP",
+                              "Ergonomía",
+                              "Respuesta a emergencias"
+                            ], allowOtherValues: true },
+    "Modalidad":          { type: "Enum", required: false, isFilter: true, label: "Modalidad",
+                            acceptedValues: ["Presencial", "Virtual", "Mixta", "En el puesto"],
+                            allowOtherValues: false },
+
+    // ── Cuándo y quién ──
+    "Fecha_Ejecucion":    { type: "Date", required: true,  isFilter: true,  label: "Fecha de ejecución" },
+    "Duracion_Horas":     { type: "Text", required: false, isFilter: false, label: "Duración (horas)" },
+    "Instructor":         { type: "Text", required: false, isFilter: true,  label: "Instructor" },
+    "Entidad":            { type: "Text", required: false, isFilter: false, label: "Entidad capacitadora" },
+    "Lugar":              { type: "Text", required: false, isFilter: false, label: "Lugar" },
+
+    // ── Vigencia: el corazón del módulo ──
+    "Vigencia_Meses":     { type: "Enum", required: true,  isFilter: false, label: "Vigencia",
+                            acceptedValues: ["No vence", "6", "12", "24", "36"], allowOtherValues: false },
+    "Fecha_Vencimiento":  { type: "Date", required: false, isFilter: true,  label: "Vence el" },
+
+    // ── Evaluación ──
+    "Evaluacion":         { type: "Enum", required: false, isFilter: false, label: "¿Hubo evaluación?",
+                            acceptedValues: ["Sí", "No"], allowOtherValues: false },
+    "Nota_Minima":        { type: "Text", required: false, isFilter: false, label: "Nota mínima aprobatoria" },
+
+    "Estado":             { type: "Enum", required: true,  isFilter: true,  label: "Estado",
+                            acceptedValues: ["Programada", "Ejecutada", "Cancelada"], allowOtherValues: false },
+    "Observaciones":      { type: "Text", required: false, isFilter: false, label: "Observaciones" },
+
+    // ── Evidencia (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Registro_Firmas":      { type: "Image_Collection", required: false, isFilter: false, label: "Registro de asistencia firmado" },
+    "Registro_Firmas_ID":   { type: "Hidden", required: false },
+    "Registro_Firmas_Path": { type: "Hidden", required: false },
+
+    "Material":           { type: "File", required: false, isFilter: false, label: "Material de la sesión" },
+    "Material_ID":        { type: "Hidden", required: false },
+    "Material_Path":      { type: "Hidden", required: false },
+
+    "Registrado_Por":     { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
+    "Fecha_Registro":     { type: "Hidden", required: false }
+  }
+};
+</script>

@@ -1,0 +1,137 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 09_EPP
+ * =========================================================================
+ * Entrega y control de Equipos de Protección Personal.
+ *
+ * POR QUÉ ESTE MÓDULO
+ * Entregar EPP es fácil; demostrar que se entregó y que sigue siendo apto es
+ * lo difícil. Este módulo responde dos preguntas que en papel se pierden:
+ *   1. ¿Quién firmó el cargo?  (sin firma no hay evidencia de entrega)
+ *   2. ¿Qué equipo ya cumplió su vida útil y sigue en uso?
+ *
+ * Un arnés vencido en servicio es un accidente esperando ocurrir, y nadie lo
+ * detecta revisando cuadernos. Aquí la fecha de reposición se calcula sola a
+ * partir de la vida útil de cada ítem.
+ * =========================================================================
+ */
+
+var SUBCONFIG_09_EPP = {
+
+  Config_Modular: {
+    NombreInterno:          "09_EPP",
+    Titulo:                 "Entrega de EPP",
+    DRIVE_FOLDER_NAME:      "09_EPP_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "ITEMS",
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    // Cada fila es un equipo entregado. La fecha de reposición es 'display':
+    // se calcula desde la vida útil, no se escribe a mano.
+    Relational_Fields: [
+      { name: "Equipo",     label: "Equipo", type: "select", fullWidth: true, colSpan: "md:col-span-3",
+        options: [
+          "Casco de seguridad", "Lentes de seguridad", "Careta facial",
+          "Protector auditivo", "Respirador / mascarilla", "Guantes",
+          "Botines de seguridad", "Arnés de cuerpo completo", "Línea de vida",
+          "Chaleco reflectivo", "Ropa de trabajo", "Traje impermeable",
+          "Guantes dieléctricos", "Botas dieléctricas"
+        ] },
+      { name: "Marca",      label: "Marca / modelo", type: "text", fullWidth: true, colSpan: "md:col-span-2" },
+      { name: "Talla",      label: "Talla",    type: "text",   colSpan: "md:col-span-1" },
+      { name: "Cantidad",   label: "Cant.",    type: "number", colSpan: "md:col-span-1" },
+      { name: "Vida_Util",  label: "Vida útil", type: "select", colSpan: "md:col-span-2",
+        options: [
+          { value: "3",  label: "3 meses" },  { value: "6",  label: "6 meses" },
+          { value: "12", label: "12 meses" }, { value: "24", label: "24 meses" },
+          { value: "36", label: "36 meses" }, { value: "0",  label: "Hasta desgaste" }
+        ] },
+      { name: "Fecha_Reposicion", label: "Reponer el", type: "display", colSpan: "md:col-span-2" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: false, canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":              { type: "Hidden_UUID", required: true, isFilter: false },
+
+    // ── A quién se entrega ──
+    "Trabajador_DNI":    { type: "REF",  required: false, isFilter: false, label: "Trabajador",
+                           relationalDataOrigin: "01_Usuarios" },
+    "Nombre_Trabajador": { type: "Text", required: true,  isFilter: true,  label: "Nombre del trabajador" },
+    "Area":              { type: "Enum", required: true,  isFilter: true,  label: "Área",
+                           acceptedValues: [
+                             "Operaciones", "Mantenimiento", "Almacén", "Logística",
+                             "Producción", "Administración", "Obra / Campo", "Laboratorio"
+                           ], allowOtherValues: true },
+    "Puesto":            { type: "Text", required: false, isFilter: false, label: "Puesto" },
+
+    // ── Qué tipo de entrega ──
+    "Tipo_Entrega":      { type: "Enum", required: true, isFilter: true, label: "Motivo de la entrega",
+                           acceptedValues: [
+                             "Dotación inicial",
+                             "Reposición por vida útil",
+                             "Reposición por desgaste",
+                             "Reposición por daño",
+                             "Reposición por pérdida",
+                             "Cambio de puesto"
+                           ], allowOtherValues: false },
+    "Fecha_Entrega":     { type: "Date", required: true,  isFilter: true,  label: "Fecha de entrega" },
+    "Entregado_Por":     { type: "REF",  required: false, isFilter: false, label: "Entregado por",
+                           relationalDataOrigin: "01_Usuarios",
+                           slice: { column: "Rol", value: "Supervisor" } },
+
+    "Estado":            { type: "Enum", required: true, isFilter: true, label: "Estado",
+                           acceptedValues: ["Entregado", "Pendiente de firma", "Devuelto", "Anulado"],
+                           allowOtherValues: false },
+    "Observaciones":     { type: "Text", required: false, isFilter: false, label: "Observaciones" },
+
+    // Calculados desde los ítems: permiten filtrar sin recorrer la tabla hija
+    "Total_Items":       { type: "Text", required: false, isFilter: false, label: "Ítems entregados" },
+    "Proxima_Reposicion":{ type: "Date", required: false, isFilter: true,  label: "Próxima reposición" },
+
+    // ── Evidencia (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Firma_Trabajador":      { type: "Signature", required: false, isFilter: false, label: "Firma de conformidad" },
+    "Firma_Trabajador_ID":   { type: "Hidden", required: false },
+    "Firma_Trabajador_Path": { type: "Hidden", required: false },
+
+    "Foto_Cargo":        { type: "Image_Collection", required: false, isFilter: false, label: "Cargo escaneado" },
+    "Foto_Cargo_ID":     { type: "Hidden", required: false },
+    "Foto_Cargo_Path":   { type: "Hidden", required: false },
+
+    "Registrado_Por":    { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
+    "Fecha_Registro":    { type: "Hidden", required: false }
+  },
+
+  /**
+   * Vida útil sugerida por tipo de equipo, en meses.
+   * Al elegir el equipo, la fila propone su vida útil habitual; el usuario
+   * puede cambiarla. Editar esta tabla adapta el módulo a las fichas técnicas
+   * de cada empresa sin tocar ninguna vista.
+   */
+  VidaUtilSugerida: {
+    "Casco de seguridad":       "36",
+    "Lentes de seguridad":      "12",
+    "Careta facial":            "24",
+    "Protector auditivo":       "6",
+    "Respirador / mascarilla":  "3",
+    "Guantes":                  "3",
+    "Botines de seguridad":     "12",
+    "Arnés de cuerpo completo": "24",
+    "Línea de vida":            "24",
+    "Chaleco reflectivo":       "12",
+    "Ropa de trabajo":          "12",
+    "Traje impermeable":        "12",
+    "Guantes dieléctricos":     "6",
+    "Botas dieléctricas":       "12"
+  }
+};
+</script>

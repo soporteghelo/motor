@@ -1,0 +1,94 @@
+<!-- =========================================================================
+     VISTA: RESUMEN (DATAGRID)
+     MODULO: 03_Inspecciones
+     ========================================================================= -->
+<div id="module-03_inspecciones-resumen" class="module-view">
+
+  <!-- Page Header & Actions -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <button onclick="showView('Menu')" class="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-secondary border border-outline-variant shrink-0">
+        <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+      </button>
+      <div>
+        <h2 class="font-h2 text-h2 text-on-surface leading-tight">Inspecciones Técnicas</h2>
+        <p class="text-[11px] text-on-surface-variant">Gestión y control de hallazgos en campo</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+      <!-- Result count chip -->
+      <span id="ui-result-count" class="text-[10px] font-bold text-on-surface-variant mr-auto sm:mr-1 hidden"></span>
+      <!-- Export dropdown -->
+      <div class="relative" id="insp-export-wrap">
+        <button onclick="document.getElementById('insp-export-menu').classList.toggle('hidden')"
+          class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-primary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+          <span class="material-symbols-outlined text-[16px]">download</span>Exportar
+          <span class="material-symbols-outlined text-[13px] opacity-60">expand_more</span>
+        </button>
+        <div id="insp-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
+          <button onclick="PWA_SKILLS.exportFilteredToExcel(); document.getElementById('insp-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
+            <span class="material-symbols-outlined text-[17px] text-green-600">grid_on</span>Excel (.xlsx)
+          </button>
+          <button onclick="PWA_SKILLS.exportVisibleToCSV('Inspecciones'); document.getElementById('insp-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-blue-600">text_snippet</span>CSV (.csv)
+          </button>
+        </div>
+      </div>
+      <button onclick="changeInternalView('03_Inspecciones', 'Edicion')"
+        class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]">add</span>Nuevo
+      </button>
+    </div>
+  </div>
+
+  <!-- Search & Filter Bar (auto-injected by App_Routing) -->
+  <div id="ui-search-bar-slot"></div>
+
+  <!-- DataGrid -->
+  <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse" id="inspecciones-table">
+        <thead>
+          <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
+            <th class="px-3 py-2.5">ID / Fecha</th>
+            <th class="px-3 py-2.5">Área</th>
+            <th class="px-3 py-2.5">Hallazgo</th>
+            <th class="px-3 py-2.5">Estado</th>
+            <th class="px-3 py-2.5">Responsable</th>
+            <th class="px-3 py-2.5">Plazo</th>
+            <th class="px-3 py-2.5 text-center" data-nosort>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="inspecciones-table-body" class="divide-y divide-outline-variant/40">
+          <!-- Filas Inspecciones Mock -->
+        </tbody>
+      </table>
+    </div>
+    <div id="inspecciones-empty" style="display:none;" class="p-16 text-center">
+      <span class="material-symbols-outlined text-5xl text-outline-variant mb-3 block">inventory_2</span>
+      <p class="text-secondary font-medium text-sm">No se encontraron inspecciones.</p>
+    </div>
+  </div>
+
+</div>
+<script>
+function loadResumen_03_Inspecciones() {
+  PWA_SKILLS.initSortableTable('inspecciones-table-body');
+  PWA_SKILLS.updateResultCount('inspecciones-table-body', 'ui-result-count');
+  const countEl = document.getElementById('ui-result-count');
+  if (countEl) countEl.classList.remove('hidden');
+  if (typeof refreshDrawerStats === 'function') setTimeout(refreshDrawerStats, 80);
+  if (!window._inspExportListener) {
+    window._inspExportListener = true;
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('insp-export-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const menu = document.getElementById('insp-export-menu');
+        if (menu) menu.classList.add('hidden');
+      }
+    });
+  }
+}
+</script>

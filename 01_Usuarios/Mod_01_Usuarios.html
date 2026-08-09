@@ -1,0 +1,124 @@
+<div id="module-01-usuarios-container" class="module-view">
+   
+   <div class="module-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+      <h2>👥 Gestión de Usuarios</h2>
+      <button onclick="toggleUserView('Form_Add')" style="background:var(--color-primary); color:white; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer;">+ Nuevo Usuario</button>
+   </div>
+
+   <!-- REGILLA DE USUARIOS -->
+   <div id="User_View_Summary">
+      <div class="toolbox" style="display:flex; gap:10px; margin-bottom: 15px; padding:10px; background:var(--color-surface); border-radius:8px; border:1px solid var(--color-border);">
+          <input type="text" id="usr-flt-global" placeholder="Buscar por DNI o Nombre..." style="padding:6px; flex:1;">
+      </div>
+
+      <div style="overflow-x:auto;">
+         <table style="width:100%; border-collapse: collapse; background:var(--color-surface); text-align:left;">
+            <thead>
+               <tr style="border-bottom:2px solid var(--color-border);">
+                  <th style="padding:10px;">Foto</th>
+                  <th style="padding:10px;">DNI</th>
+                  <th style="padding:10px;">Nombre</th>
+                  <th style="padding:10px;">Rol</th>
+                  <th style="padding:10px;">Status</th>
+                  <th style="padding:10px;">Acción</th>
+               </tr>
+            </thead>
+            <tbody id="usr-grid-content">
+               <tr>
+                   <td colspan="6" style="text-align:center; padding:30px; color:gray;">Cargando Directorio Activo...</td>
+               </tr>
+            </tbody>
+         </table>
+      </div>
+   </div>
+
+   <!-- FORMULARIO DE ALTA/EDICIÓN -->
+   <div id="User_View_Form" style="display:none; background:var(--color-surface); padding:20px; border-radius:8px; border:1px solid var(--color-border); max-width:600px; margin:0 auto;">
+      <h3 style="margin-bottom:15px;" id="usr-frm-title">Nuevo Perfil de Acceso</h3>
+      
+      <form id="form-01-usuario" onsubmit="event.preventDefault(); persistUserToOffline();" style="display:flex; flex-direction:column; gap:15px;">
+         
+         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+            <div>
+               <label>DNI (Usuario)*</label>
+               <input type="text" name="DNI" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+            </div>
+            <div>
+                <label>Nombre Completo*</label>
+                <input type="text" name="Nombre_Completo" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+            </div>
+         </div>
+
+         <div>
+            <label>Correo Electrónico*</label>
+            <input type="email" name="Email" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+         </div>
+
+         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+            <div>
+               <label>Contraseña Acceso*</label>
+               <input type="password" id="usr-pass-input" placeholder="Nueva contraseña" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+            </div>
+            <div>
+               <label>Status Corporativo*</label>
+               <select name="Status" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+                  <option value="Activo">Activo</option>
+                  <option value="Cesado">Cesado (Bloqueo Total)</option>
+               </select>
+            </div>
+         </div>
+
+         <div>
+            <label>Rol de Aplicación*</label>
+            <select name="Rol" required style="width:100%; padding:8px; border:1px solid var(--color-border); border-radius:4px; background:var(--color-bg); color:var(--color-text);">
+               <option value="Trabajador">Trabajador (Solo carga datos)</option>
+               <option value="Supervisor">Supervisor (Ve datos de su área)</option>
+               <option value="Admin">Administrador (Control Total)</option>
+            </select>
+         </div>
+
+         <!-- CAPTURA FOTO PERFIL -->
+         <div>
+            <label>Fotografía de Perfil (Compresión Automática)</label>
+            <input type="file" accept="image/*" id="usr-foto-input" name="Foto_Perfil">
+         </div>
+
+         <div style="display:flex; gap:10px; margin-top:20px;">
+             <button type="button" onclick="toggleUserView('Summary')" style="padding:10px; border:1px solid var(--color-border); cursor:pointer; flex:0.3;">Cancelar</button>
+             <button type="submit" style="padding:10px; background:var(--color-primary); color:white; border:none; cursor:pointer; font-weight:bold; flex:1;">Guardar y Activar Usuario</button>
+         </div>
+      </form>
+   </div>
+
+</div>
+
+<script>
+   function toggleUserView(target) {
+      document.getElementById('User_View_Summary').style.display = (target === 'Summary') ? 'block' : 'none';
+      document.getElementById('User_View_Form').style.display = (target === 'Form_Add') ? 'block' : 'none';
+   }
+
+   async function persistUserToOffline() {
+      const form = document.getElementById('form-01-usuario');
+      const formData = new FormData(form);
+      const payload = {};
+      formData.forEach((value, key) => payload[key] = value);
+
+      // Skill de Seguridad: Hashing SHA-256
+      const passRaw = document.getElementById('usr-pass-input').value;
+      payload.Password_Hash = await PWA_SKILLS.hashSHA256(passRaw);
+      delete payload.Password; // Por seguridad, nunca enviamos el campo original
+
+      // Skill de Optimización: Compresión de Foto
+      const fileInput = document.getElementById('usr-foto-input');
+      if(fileInput.files.length > 0) {
+         payload.Foto_Perfil = await PWA_SKILLS.compressImage(fileInput.files[0], 'Medio');
+      }
+
+      pushToQueue("01_Usuarios", "INSERT", payload).then(uuid => {
+         alert("✅ Acceso de usuario encolado. Se activará al sincronizar con Drive.");
+         form.reset();
+         toggleUserView('Summary');
+      });
+   }
+</script>

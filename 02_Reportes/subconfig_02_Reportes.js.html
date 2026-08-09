@@ -1,0 +1,119 @@
+<script>
+/**
+ * =========================================================================
+ * 🛠️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "02_Reportes" 🛠️
+ * =========================================================================
+ * SKILL PEDAGÓGICA (TUTORIAL PARA EL DESARROLLADOR LOCAL):
+ * 
+ * ¡Hola! Aquí es donde tú, como encargado del sistema, defines cómo se 
+ * dibuja y comporta cada variable (columna de tu Google Sheets) en la Pantalla.
+ * No necesitas tocar nada del diseño HTML oscuro del módulo, el motor dibujará 
+ * los formularios y rejillas reactivamente basándose en este JSON.
+ *
+ * ¿CÓMO AÑADIR/EDITAR UNA VARIABLE TIPO SELECTOR (LISTA DESPLEGABLE)?
+ * 1. Busca la propiedad en el objeto inferior, por ejemplo "Categoria_Reporte".
+ * 2. En `type`, ponle "Enum" (Para que elija 1 valor) o "EnumList" (Múltiples checks).
+ * 3. ⚠️ EL PASO CLAVE: En `acceptedValues: []`, escribe tus opciones entre comillas.
+ *    Ejemplo -> acceptedValues: ["Rutinario", "Incidente", "Emergencia"]
+ * 4. ¿Permitir que el minero anote otra cosa o error foráneo? 
+ *    Si `allowOtherValues: true`, el formulario mostrará mágicamente una cajita 
+ *    extra de texto libre si el trabajador escoge "Otro..." en tu lista.
+ * 
+ * ¿CÓMO PONER FIRMAS O FOTOS?
+ * 1. Crea una columna en Sheets, e.g. "Firma_Inspector".
+ * 2. Aquí abajo ponle `type: "Signature"`. La PWA bloqueará la pantalla y 
+ *    sacará el lienzo táctil Canvas de la nada para que firme con el dedo.
+ * 3. Si quieres un reporte fotográfico, `type: "Image"`. El motor de recolección 
+ *    PWA (Offline_Engine) la comprimirá agresivamente nivel 'Medio' antes de 
+ *    usar la data del celular para mandarlo al Drive.
+ *
+ * ¿CÓMO ACTIVAR EVENTOS/CORREOS ESTILO APPSHEET AL GUARDAR?
+ * Utiliza `triggers: ["SendMail_To_Supervisor"]`. El Backend (Code.gs) disparará 
+ * un evento oculto al terminar la inserción satisfactoria hacia Sheets.
+ * =========================================================================
+ */
+
+var SUBCONFIG_02_REPORTES = {
+  
+  // Parametría General del Módulo (Filtros y Permisos Base)
+  Config_Modular: {
+    NombreInterno: "02_Reportes",
+    DRIVE_FOLDER_NAME: "02_Reportes_Files",
+    GOOGLE_DOC_TEMPLATE_ID: "", 
+    EMAIL_TEMPLATE_ID: "", 
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "CHILD", 
+    RELATIONAL_KEY: "UUID",
+    
+    // Skill: Filas Dinámicas para observaciones extra
+    Relational_Fields: [
+      { name: "Observacion", label: "Nota de Detalle", type: "text", colSpan: "md:col-span-12" }
+    ],
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+    SyncAutoTriggers: ["SendMail_On_Critical_Report"]
+  },
+
+  // ADN Semántico de las Columnas (Matriz de Variables Activas)
+  Variables: {
+    
+    // UUID es gestionado y poblado invisiblemente por el Crawler Offline Engine.
+    "UUID": { 
+        type: "Hidden_UUID", 
+        required: true, 
+        isFilter: false 
+    },
+    
+    "Fecha_Emision": { 
+        type: "Date", 
+        required: true, 
+        isFilter: true // Aparecerá en el Menú Inteligente "Filtros" de la App
+    },
+
+    "Inspector_DNI": { 
+        type: "REF", 
+        required: true, 
+        isFilter: true,
+        relationalDataOrigin: "01_Usuarios",
+        slice: { column: "Status", value: "Activo" } // Ejemplo de Slice: Solo usuarios activos
+    },
+
+    "Categoria_Reporte": { 
+        // ⚠️ EJEMPLO DE ENUM CON PERMISO DE OTROS VALORES "AllowOther"
+        type: "Enum", 
+        required: true, 
+        isFilter: true,
+        acceptedValues: ["Preventivo", "Auditoría Interna", "Acto Subestándar", "Condición Crítica"],
+        allowOtherValues: true // Habilita campo extra en formulario si eligen algo fuera de tabla.
+    },
+
+    "Nivel_Severidad": {
+        type: "Enum",
+        required: true,
+        isFilter: true,
+        acceptedValues: ["Bajo (Verde)", "Medio (Amarillo)", "Alto (Rojo)", "Crítico (Negro)"],
+        allowOtherValues: false // Aquí no les damos permiso a inventar colores.
+    },
+
+    "Evidencia_Fotografica": {
+        type: "Image", 
+        required: false, 
+        isFilter: false
+    },
+    "Evidencia_Fotografica_ID": { type: "Hidden", required: false },
+    "Evidencia_Fotografica_Path": { type: "Hidden", required: false },
+
+    "Firma_Operario": { 
+        type: "Signature", 
+        required: true, 
+        isFilter: false 
+    },
+    "Firma_Operario_ID": { type: "Hidden", required: false },
+    "Firma_Operario_Path": { type: "Hidden", required: false }
+  }
+};
+</script>

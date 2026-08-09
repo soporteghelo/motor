@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base target="_top">
+  <title>PWA Empresarial</title>
+  <!-- 
+    ======================================================================
+    ARCHIVO: Index.html (SHELL PRINCIPAL SPA)
+    ======================================================================
+    Este es el único archivo HTML que carga el navegador. Emula una App Nativa móvil.
+    Incluye fuentes maestras, librerías CSS (Google Material Symbols, Fonts).
+  -->
+
+  <!-- Fuentes Externas y Configuración PWA base -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  
+  <!-- Tailwind CSS Engine & Plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp,container-queries"></script>
+  <script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                "colors": {
+                    "tertiary-fixed": "#ffdbd0",
+                    "secondary": "#505f76",
+                    "on-surface-variant": "#454652",
+                    "surface-bright": "#fbf8ff",
+                    "error": "#ba1a1a",
+                    "primary-fixed": "#e0e0ff",
+                    "on-tertiary": "#ffffff",
+                    "secondary-fixed": "#d3e4fe",
+                    "on-tertiary-container": "#e17c5a",
+                    "surface-container": "#efecf5",
+                    "surface-tint": "#4c56af",
+                    "outline": "#767683",
+                    "inverse-primary": "#bdc2ff",
+                    "tertiary-container": "#5c1800",
+                    "on-secondary-container": "#54647a",
+                    "on-error-container": "#93000a",
+                    "background": "#fbf8ff",
+                    "on-primary-fixed-variant": "#343d96",
+                    "secondary-container": "#d0e1fb",
+                    "on-primary-fixed": "#000767",
+                    "on-surface": "#1b1b21",
+                    "on-background": "#1b1b21",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-container": "#1a237e",
+                    "error-container": "#ffdad6",
+                    "surface-container-high": "#eae7ef",
+                    "surface-variant": "#e4e1ea",
+                    "surface-dim": "#dbd9e1",
+                    "on-secondary-fixed": "#0b1c30",
+                    "tertiary-fixed-dim": "#ffb59d",
+                    "on-secondary": "#ffffff",
+                    "surface": "#fbf8ff",
+                    "on-error": "#ffffff",
+                    "tertiary": "#380b00",
+                    "surface-container-highest": "#e4e1ea",
+                    "on-primary": "#ffffff",
+                    "primary": "#000666",
+                    "secondary-fixed-dim": "#b7c8e1",
+                    "on-tertiary-fixed": "#390c00",
+                    "on-tertiary-fixed-variant": "#7b2e12",
+                    "primary-fixed-dim": "#bdc2ff",
+                    "on-primary-container": "#8690ee",
+                    "inverse-on-surface": "#f2eff8",
+                    "inverse-surface": "#303036",
+                    "surface-container-low": "#f5f2fb",
+                    "outline-variant": "#c6c5d4",
+                    "on-secondary-fixed-variant": "#38485d"
+                },
+                "fontFamily": {
+                    "sans": ["Inter", "sans-serif"],
+                    "h3": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "h2": ["Inter"],
+                    "h1": ["Inter"],
+                    "button": ["Inter"]
+                },
+                "fontSize": {
+                    "h3": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "body-md": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["11px", {"lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                    "h2": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "h1": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "button": ["13px", {"lineHeight": "18px", "fontWeight": "600"}]
+                }
+            }
+        }
+    }
+  </script>
+
+  <!-- LIBRERIA EXCEL NATIVA (.XLSX) - MANDATORIO GUÍA MAESTRA -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  
+  <style>
+    /* Variables Maestras Globales e Inicialización del Root CSS */
+    :root {
+      /* [MODIFICABLE]: Inyecta tus códigos Hex de Color Stitch aquí */
+      --color-primary: #1A73E8;
+      --color-bg: #f8f9fa;
+      --color-surface: #ffffff;
+      --color-text: #202124;
+      --color-border: #dadce0;
+      
+      --topbar-height: 60px;
+      --footer-height: 68px;
+
+      --header-bg: var(--color-surface);
+      --footer-bg: var(--color-surface);
+      --fab-bg: var(--color-primary);
+    }
+    
+    /* Variable para Switch Mode Dark (Automático) */
+    [data-theme="dark"] {
+      --color-primary: #bdc2ff;
+      --color-bg: #101014;
+      --color-surface: #1b1b21;
+      --color-text: #e4e1e9;
+      --color-border: #45464f;
+    }
+
+    /* ─── Tokens semánticos del sistema "Data-Dense Dashboard" ───
+       Un solo lugar define las superficies; light y dark se diseñan en pareja
+       (regla dark-mode-pairing). Los módulos NO deben usar hex crudos. */
+    :root {
+      --ds-surface:        #ffffff;   /* tarjeta / fila */
+      --ds-surface-sunken: #f5f2fb;   /* cabecera de tabla, zonas hundidas */
+      --ds-fg:             #1b1b21;   /* texto principal  — 15.8:1 sobre surface */
+      --ds-fg-muted:       #454652;   /* texto secundario —  9.1:1 sobre surface */
+      --ds-border:         #c6c5d4;
+      --ds-border-soft:    rgba(198,197,212,0.45);
+      --ds-skeleton:       #e8e6ef;
+      --ds-skeleton-shine: #f5f3fa;
+      --ds-scrim:          rgba(27,27,33,0.55);
+    }
+    [data-theme="dark"] {
+      --ds-surface:        #1b1b21;
+      --ds-surface-sunken: #24242b;
+      --ds-fg:             #e4e1e9;   /* 13.4:1 sobre surface */
+      --ds-fg-muted:       #c7c5d0;   /*  9.6:1 sobre surface */
+      --ds-border:         #45464f;
+      --ds-border-soft:    rgba(199,197,208,0.20);
+      --ds-skeleton:       #2a2a32;
+      --ds-skeleton-shine: #35353f;
+      --ds-scrim:          rgba(0,0,0,0.68);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    
+    body {
+      background-color: var(--color-bg);
+      color: var(--color-text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden; /* Evita arrastre del html general */
+    }
+
+    /* Top AppBar (Navegación Suprema) */
+    .top-bar {
+      height: var(--topbar-height);
+      background-color: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      z-index: 100;
+    }
+
+    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 600;}
+    
+    .top-bar .controls { display: flex; align-items: center; gap: 16px; }
+    
+    /* El Sync Engine Widget (Corazón de sincronía) */
+    .sync-indicator {
+      display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+    }
+    .sync-dot {
+       width: 10px; height: 10px; border-radius: 50%; background: #34A853; /* Verde x Defecto */
+       transition: all 0.3s ease;
+    }
+    .sync-dot.offline {
+       background: #EA4335; /* Rojo de Cola Llenándose */
+       animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234,67,53, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(234,67,53, 0); } 100% { box-shadow: 0 0 0 0 rgba(234,67,53, 0); } }
+    
+    .animate-spin {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Area Principal Dinámica de los Módulos (Views) */
+    #main-container {
+      flex: 1;
+      overflow-y: auto; /* Scroll dinámico dentro del módulo */
+      padding: 16px;
+      position: relative;
+    }
+
+    .icon-btn { cursor: pointer; color: var(--color-text); user-select: none; }
+
+    /* Botón Flotante (FAB) Estilo Material Design 3 */
+    .fab-btn {
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background-color: var(--color-primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+      z-index: 99;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .fab-btn:hover { transform: scale(1.1) rotate(5deg); }
+    
+    /* Panel de Filtros Flotante */
+    .floating-panel {
+       position: fixed;
+       bottom: 140px;
+       right: 20px;
+       width: 280px;
+       background: var(--color-surface);
+       border: 1px solid var(--color-border);
+       border-radius: 20px;
+       box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+       padding: 20px;
+       z-index: 100;
+       display: none;
+       flex-direction: column;
+       gap: 12px;
+       animation: slideInUp 0.3s ease;
+    }
+    @keyframes slideInUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Footer Dinámico (Skill UI) */
+    .main-footer {
+      height: var(--footer-height);
+      flex: 0 0 var(--footer-height);
+      background-color: var(--footer-bg);
+      border-top: 1px solid var(--color-border);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(112px, 136px));
+      justify-content: center;
+      column-gap: 8px;
+      align-items: center;
+      position: static;
+      padding: 4px 8px max(4px, env(safe-area-inset-bottom));
+      color: var(--color-text);
+      z-index: 100;
+    }
+    .footer-nav-button {
+      min-height: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--ds-fg-muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.1;
+      cursor: pointer;
+      transition: background-color 160ms ease, color 160ms ease;
+    }
+    .footer-nav-button:hover,
+    .footer-nav-button:focus-visible {
+      background: var(--ds-surface-sunken);
+      color: var(--color-primary);
+      outline: none;
+    }
+    .footer-nav-button.is-active {
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+      color: var(--color-primary);
+    }
+    .footer-nav-button .material-symbols-outlined {
+      font-size: 21px;
+      line-height: 1;
+    }
+    .footer-nav-button > span:last-child { white-space: nowrap; }
+
+    /* En celular, las tres opciones aprovechan todo el ancho disponible. */
+    @media (max-width: 480px) {
+      .main-footer {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        column-gap: 4px;
+        padding-inline: 4px;
+      }
+      .footer-nav-button { font-size: 11px; }
+    }
+
+    /* ─── Scrollbar delgado ─── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,6,102,0.18); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,6,102,0.32); }
+
+    /* ─── Toast / Notificaciones ─── */
+    #toast-container {
+      position: fixed; bottom: 20px; right: 16px; z-index: 9999;
+      display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none;
+    }
+    .pwa-toast {
+      pointer-events: auto;
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 14px 11px 12px;
+      border-radius: 14px; min-width: 230px; max-width: 320px;
+      font-size: 12px; font-weight: 600;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      border: 1px solid transparent;
+      animation: toast-slide-in 0.28s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+    .pwa-toast.toast-out { animation: toast-slide-out 0.22s ease forwards; }
+    .pwa-toast.success { background:#0f2a1e; border-color:#34d399; color:#d1fae5; }
+    .pwa-toast.error   { background:#2a0f0f; border-color:#f87171; color:#fee2e2; }
+    .pwa-toast.warning { background:#2a1a0f; border-color:#fbbf24; color:#fef3c7; }
+    .pwa-toast.info    { background:#0f1a2a; border-color:#60a5fa; color:#dbeafe; }
+    @keyframes toast-slide-in  { from { opacity:0; transform:translateX(48px) scale(0.93); } to { opacity:1; transform:translateX(0) scale(1); } }
+    @keyframes toast-slide-out { to   { opacity:0; transform:translateX(48px) scale(0.93); } }
+
+    /* ─── Vistas: fade-in suave al activarse ───
+       Solo opacidad: un `transform` (aunque sea translateY(0)) convertiría a
+       .module-view en bloque contenedor y las barras `position:fixed` de su
+       interior se anclarían al elemento en vez de a la ventana. */
+    .module-view { animation: view-fade-in 0.18s ease forwards; }
+    @keyframes view-fade-in { from { opacity:0; } to { opacity:1; } }
+
+    /* ─── Tabla: hover más premium ─── */
+    #main-container table tbody tr {
+      transition: background 0.1s ease, box-shadow 0.1s ease;
+    }
+    #main-container table tbody tr:hover {
+      position: relative; z-index: 1;
+    }
+
+    /* ─── Botones: active press ─── */
+    button:active { transform: scale(0.97); }
+
+    /* Navigation Drawer */
+    #nav-drawer {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      height: 100dvh;
+      width: 280px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      border-right: 1px solid #e4e1ea;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+      overflow: hidden;
+      transform: translateX(-100%);
+      transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+    #nav-drawer.drawer-open {
+      transform: translateX(0);
+    }
+    /* La lista de módulos puede superar la altura del móvil. El drawer no debe
+       desbordarse: solo esta región navega verticalmente, con cabecera y estado fijos. */
+    #nav-drawer > nav {
+      flex: 1 1 0;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      scrollbar-gutter: stable;
+    }
+    #nav-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(27,27,33,0.45);
+      z-index: 190;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #nav-overlay.overlay-visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .drawer-nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #505f76;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-decoration: none;
+      border-right: 3px solid transparent;
+    }
+    .drawer-nav-link:hover {
+      background: #f5f2fb;
+      color: #000666;
+    }
+    .drawer-nav-link.active {
+      background: #f0f0ff;
+      color: #000666;
+      border-right-color: #000666;
+    }
+    .drawer-nav-more {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      min-height: 36px;
+      margin-top: 6px;
+      border: 1px solid #d9dcf2;
+      border-radius: 9px;
+      color: #000666;
+      background: #f7f7ff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .drawer-nav-more:hover { background: #eeeeff; }
+    .drawer-work-summary { margin-top: 18px; padding: 14px 8px 4px; border-top: 1px solid var(--ds-border); }
+    .drawer-work-summary-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; }
+    .drawer-work-summary-title { font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--ds-fg-muted); }
+    .drawer-work-summary-scope { font-size:9px; line-height:1.25; color:var(--ds-fg-muted); text-align:right; }
+    .drawer-work-row { display:grid; grid-template-columns:96px minmax(0,1fr) auto; align-items:center; gap:7px; padding:5px 2px; }
+    .drawer-work-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; background:transparent; color:var(--ds-fg); padding:2px 4px; border-radius:5px; text-align:left; font-size:11px; font-weight:700; cursor:pointer; }
+    .drawer-work-name:hover { color:var(--color-primary); background:var(--ds-surface-sunken); }
+    .drawer-work-bar { position:relative; width:100%; height:7px; overflow:hidden; border:0; border-radius:999px; background:#dbeafe; cursor:pointer; }
+    .drawer-work-bar-pending { display:block; height:100%; border-radius:inherit; background:#3b82f6; }
+    .drawer-work-bar-overdue { position:absolute; top:0; right:0; height:100%; border-radius:999px; background:#ef4444; }
+    .drawer-work-actions { display:flex; align-items:center; gap:4px; font-variant-numeric:tabular-nums; }
+    .drawer-work-count, .drawer-work-overdue { border:0; cursor:pointer; font-size:9px; font-weight:800; line-height:1; }
+    .drawer-work-count { padding:3px 2px; color:#2563eb; background:transparent; }
+    .drawer-work-count:hover { text-decoration:underline; }
+    .drawer-work-overdue { min-width:20px; padding:3px 5px; border-radius:999px; color:#b91c1c; background:#fee2e2; }
+    .drawer-work-overdue:hover { background:#fecaca; }
+    .drawer-work-empty { padding:12px 7px; font-size:11px; line-height:1.45; color:var(--ds-fg-muted); }
+    /* En celular la navegación principal vive en el panel central y el drawer
+       se reserva para perfil, configuración y administración. */
+    @media (max-width: 767px) {
+      #drawer-nav-modules { display: none !important; }
+    }
+
+    /* Restructured for 2-column mobile grid */
+    .bento-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+    @media (min-width: 1024px) {
+        .bento-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SISTEMA DE DISEÑO — "Data-Dense Dashboard"  (ui-ux-pro-max)
+       Referencia completa: design-system/motor-pwa/MASTER.md
+       Se aplica a TODOS los módulos sin tocar sus archivos (Zero-Touch).
+       ══════════════════════════════════════════════════════════════════ */
+
+    /* ─── Tokens de densidad ─── */
+    :root {
+      --ds-gap: 8px;
+      --ds-card-pad: 12px;
+      --ds-row-h: 36px;
+      --ds-dur-fast: 150ms;
+      --ds-dur: 220ms;
+      --ds-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ─── 1. ACCESIBILIDAD (prioridad CRÍTICA) ─── */
+
+    /* focus-states: anillo visible en todo elemento interactivo */
+    a:focus-visible, button:focus-visible, input:focus-visible,
+    select:focus-visible, textarea:focus-visible,
+    [tabindex]:focus-visible, [role="button"]:focus-visible {
+      outline: 3px solid var(--color-primary);
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+
+    /* skip-links: saltar al contenido (usuarios de teclado y lector de pantalla) */
+    .skip-link {
+      position: absolute; left: 8px; top: -60px; z-index: 300;
+      background: var(--color-primary); color: #fff;
+      padding: 10px 18px; border-radius: 0 0 10px 10px;
+      font-size: 13px; font-weight: 700; text-decoration: none;
+      transition: top var(--ds-dur) var(--ds-ease);
+    }
+    .skip-link:focus { top: 0; }
+
+    /* Contenido solo para lectores de pantalla */
+    .sr-only-ds {
+      position: absolute !important; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* ─── 2. TOUCH TARGETS ≥ 44px (prioridad CRÍTICA) ─── */
+    /* En pantallas táctiles el área de toque crece SIN cambiar el tamaño visual */
+    @media (pointer: coarse) {
+      button, .icon-btn, [role="button"], a.footer-link {
+        min-height: 44px;
+        min-width: 44px;
+      }
+      /* Botones de acción dentro de tablas: 40px + separación de 8px (touch-spacing) */
+      td button, th button {
+        min-height: 40px; min-width: 40px;
+      }
+      td .flex.gap-1 { gap: 8px; }
+    }
+
+    /* ─── 3. MOVIMIENTO REDUCIDO (reduced-motion) ─── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* ─── 4. TIPOGRAFÍA LEGIBLE EN MÓVIL ─── */
+    /* readable-font-size: 16px en campos evita el auto-zoom de iOS al enfocar */
+    @media (max-width: 640px) {
+      input:not([type="checkbox"]):not([type="radio"]),
+      select, textarea { font-size: 16px !important; }
+
+      /* Los filtros y la búsqueda son controles compactos: heredan el
+         mínimo de formulario anterior, pero aquí reduce demasiado la
+         densidad y desborda los campos en dos columnas. */
+      #main-container [data-filter-bar] .filter-compact-control {
+        font-size: 12px !important;
+        line-height: 1.2 !important;
+      }
+    }
+    /* number-tabular: cifras de ancho fijo en columnas de datos */
+    table td, table th, .tabular { font-variant-numeric: tabular-nums; }
+
+    /* ─── 5. TABLA → TARJETAS EN MÓVIL (regla horizontal-scroll, severidad alta) ───
+       Se activa con PWA_SKILLS.enhanceTable(); la cabecera sigue disponible
+       para lectores de pantalla y cada celda muestra su etiqueta. */
+    @media (max-width: 639px) {
+      .overflow-x-auto:has(> table.pwa-table-cards) { overflow-x: visible; }
+
+      table.pwa-table-cards,
+      table.pwa-table-cards tbody { display: block; width: 100%; }
+
+      table.pwa-table-cards thead {
+        position: absolute; width: 1px; height: 1px;
+        overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
+      }
+
+      table.pwa-table-cards tbody tr {
+        display: block; position: relative;
+        padding: 7px 10px;
+        margin: 0 0 6px 0;
+        border: 1px solid var(--ds-border);
+        border-radius: 14px;
+        background: var(--ds-surface);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      }
+      table.pwa-table-cards tbody tr:last-child { margin-bottom: 0; }
+
+      table.pwa-table-cards tbody td {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; width: 100%;
+        padding: 0 !important;
+        border: 0 !important;
+        min-height: 17px;
+        text-align: left !important;
+      }
+      table.pwa-table-cards tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        font-size: 10px; font-weight: 800; line-height: 1.2;
+        text-transform: uppercase; letter-spacing: 0.05em;
+        color: var(--ds-fg-muted); opacity: 0.85;
+      }
+      /* Valor alineado a la derecha frente a su etiqueta (patrón lista de detalles) */
+      table.pwa-table-cards tbody td:not(:first-child) > * {
+        margin-left: auto;
+        text-align: right;
+      }
+      /* Primera celda = título de la tarjeta (sin etiqueta, más peso).
+         Deja hueco a la derecha para las acciones ancladas en la esquina. */
+      table.pwa-table-cards tbody td:first-child {
+        display: block;
+        /* Reserva para dos botones de 40px (mínimo táctil) + separación */
+        padding: 0 92px 3px 0 !important;
+        margin-bottom: 3px;
+        border-bottom: 1px solid var(--ds-border-soft) !important;
+      }
+      table.pwa-table-cards tbody td:first-child::before { display: none; }
+
+      /* Acciones ancladas a la esquina superior: elimina una fila completa
+         (~45px por tarjeta) y las deja donde el pulgar ya las busca. */
+      table.pwa-table-cards tbody td.pwa-cell-actions {
+        position: absolute; top: 5px; right: 8px;
+        width: auto; justify-content: flex-end;
+        padding: 0 !important; margin: 0;
+        border: 0 !important; min-height: 0;
+      }
+      table.pwa-table-cards tbody td.pwa-cell-actions::before { display: none; }
+      /* Las acciones siempre visibles en táctil (hover-vs-tap) */
+      table.pwa-table-cards tbody td.pwa-cell-actions .opacity-0 { opacity: 1 !important; }
+
+      /* Avatares y miniaturas: dentro de una tarjeta compacta no necesitan 36px */
+      table.pwa-table-cards tbody td .w-9.h-9,
+      table.pwa-table-cards tbody td .w-10.h-10 {
+        width: 22px !important; height: 22px !important;
+        font-size: 10px !important; border-radius: 7px !important;
+      }
+
+      /* Los estados vacío / sin-resultados ocupan el ancho completo, sin marco de tarjeta
+         (el esqueleto sí conserva forma de tarjeta para anticipar el resultado) */
+      table.pwa-table-cards tbody tr[data-ds-ui="empty"],
+      table.pwa-table-cards tbody tr[data-ds-ui="no-results"] {
+        border: 0; background: transparent; box-shadow: none; padding: 0; margin: 0;
+      }
+      table.pwa-table-cards tbody tr[data-ds-ui="empty"] td,
+      table.pwa-table-cards tbody tr[data-ds-ui="no-results"] td {
+        display: block; padding: 0 !important; margin: 0;
+        border: 0 !important;
+      }
+      table.pwa-table-cards tbody tr[data-ds-ui] td::before { display: none; }
+
+      /* Piso de legibilidad: 12px es el mínimo del sistema; se comprime el
+         interlineado, nunca el cuerpo de letra. */
+      table.pwa-table-cards tbody td p,
+      table.pwa-table-cards tbody td div,
+      table.pwa-table-cards tbody td span:not(.material-symbols-outlined) {
+        font-size: 12px !important;
+        line-height: 1.25;
+      }
+      table.pwa-table-cards tbody td:first-child p:first-child {
+        font-size: 13px !important; font-weight: 700; line-height: 1.2;
+      }
+      /* Distintivos más ajustados sin perder área táctil */
+      table.pwa-table-cards tbody td span.rounded-full { padding-top: 0; padding-bottom: 0; line-height: 1.6; }
+      /* Los botones de acción en la esquina no necesitan el alto de fila */
+      table.pwa-table-cards tbody td.pwa-cell-actions button { width: 30px; height: 30px; }
+      /* En modo tarjeta sobra ancho: nada debe recortarse. Cubre tanto el
+         recorte puesto en un hijo como el puesto en la propia celda. */
+      table.pwa-table-cards tbody td .truncate,
+      table.pwa-table-cards tbody td.truncate,
+      table.pwa-table-cards tbody td[class*="max-w-"] { max-width: none !important; }
+
+      /* Inspecciones: el patrón genérico etiqueta cada una de las seis
+         columnas, lo que convierte una fila en una ficha de formulario. Esta
+         composición prioriza: identificación, hallazgo y decisión operativa.
+         Mantiene todos los datos, pero los agrupa en cuatro bloques breves. */
+      #inspecciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        border-radius: 12px;
+      }
+      #inspecciones-table.pwa-table-cards tbody td,
+      #inspecciones-table.pwa-table-cards tbody td::before {
+        border: 0 !important;
+      }
+      #inspecciones-table.pwa-table-cards tbody td::before { display: none; }
+      #inspecciones-table.pwa-table-cards tbody td:not(:first-child) > * {
+        margin-left: 0;
+        text-align: left;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:first-child {
+        order: 1;
+        flex: 1 1 auto;
+        display: block;
+        padding: 0 38px 0 0 !important;
+        margin: 0;
+        border: 0 !important;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 2;
+        flex: 0 0 100%;
+        display: block;
+        margin-top: 6px;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p:first-child {
+        font-size: 13px !important;
+        line-height: 1.35;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p + p {
+        margin-top: 2px;
+        color: var(--ds-fg-muted);
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(2) {
+        order: 3;
+        flex: 0 0 auto;
+        width: auto;
+        min-height: 0;
+        margin-top: 8px;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(5) {
+        order: 3;
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        min-height: 0;
+        margin-top: 8px;
+        justify-content: flex-end;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(4),
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(6) {
+        order: 4;
+        flex: 0 0 auto;
+        width: auto;
+        min-height: 0;
+        margin-top: 8px;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(6) { margin-left: auto; }
+      #inspecciones-table.pwa-table-cards tbody td.pwa-cell-actions {
+        order: 0;
+        flex: 0 0 auto;
+        margin: 0;
+      }
+    }
+
+    /* ─── 5.b RITMO VERTICAL EN MÓVIL (spacing-scale / content-priority) ───
+       Los módulos se maquetaron con espaciados de escritorio (p-6, p-8,
+       space-y-6, gap-8). En una pantalla de 432px eso es aire desperdiciado:
+       se comprime la ESCALA, manteniendo la jerarquía (secciones siguen
+       separándose más que los campos). No se tocan alturas de control ni
+       tamaños de letra — los mínimos táctiles y de lectura se respetan. */
+    @media (max-width: 639px) {
+      #main-container { padding: 10px; }
+
+      /* Relleno de tarjetas y paneles */
+      #main-container .p-8 { padding: 14px !important; }
+      #main-container .p-6 { padding: 13px !important; }
+      #main-container .p-5 { padding: 12px !important; }
+      #main-container .px-8 { padding-left: 14px !important; padding-right: 14px !important; }
+      #main-container .py-8 { padding-top: 14px !important; padding-bottom: 14px !important; }
+
+      /* Separación ENTRE secciones (jerarquía mayor) */
+      #main-container .space-y-8 > * + * { margin-top: 12px !important; }
+      #main-container .space-y-6 > * + * { margin-top: 11px !important; }
+      /* Separación ENTRE campos de una misma sección (jerarquía menor) */
+      #main-container .space-y-5 > * + * { margin-top: 9px !important; }
+      #main-container .space-y-4 > * + * { margin-top: 8px !important; }
+
+      #main-container .gap-8 { gap: 12px !important; }
+      #main-container .gap-6 { gap: 11px !important; }
+
+      #main-container .mb-8 { margin-bottom: 12px !important; }
+      #main-container .mb-6 { margin-bottom: 11px !important; }
+      #main-container .mt-8 { margin-top: 12px !important; }
+      #main-container .mt-6 { margin-top: 11px !important; }
+
+      /* La etiqueta debe pegarse a su campo (agrupación por proximidad) */
+      #main-container label.mb-3 { margin-bottom: 5px !important; }
+      #main-container label.mb-2 { margin-bottom: 4px !important; }
+
+      /* Títulos de sección dentro de tarjetas */
+      #main-container h2.mb-6, #main-container h2.mb-5 { margin-bottom: 9px !important; }
+
+      /* Cabecera de vista: el título no necesita tamaño de escritorio */
+      #main-container h1.text-xl, #main-container h1.text-2xl { font-size: 18px !important; line-height: 1.25; }
+      #main-container .text-h2 { font-size: 19px !important; line-height: 1.25; }
+      #main-container section.pb-4 { padding-bottom: 9px !important; }
+      #main-container section.mb-6 { margin-bottom: 10px !important; }
+
+      /* Avatares grandes de formulario: 128px es tamaño de escritorio */
+      #main-container .w-32.h-32 { width: 84px !important; height: 84px !important; }
+      #main-container .w-32.h-32 .material-symbols-outlined { font-size: 34px !important; }
+
+      /* ── Cabecera de formulario: de dos filas a una ──
+         Las 5 vistas de Edición comparten la misma estructura
+         (section > div[título] + div[acciones]), así que se resuelve una vez. */
+      #main-container [id*="edicion"] > section:first-of-type {
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding-bottom: 8px !important;
+        margin-bottom: 10px !important;
+      }
+
+      /* ── Acciones a barra fija inferior (thumb zone) ──
+         Guardar/Cancelar dejan de ocupar 56px arriba y quedan siempre
+         alcanzables con el pulgar sin volver al inicio del formulario. */
+      #main-container [id*="edicion"] > section:first-of-type > div:last-child {
+        position: fixed; left: 0; right: 0;
+        bottom: var(--footer-height, 40px);
+        z-index: 95;
+        gap: 8px !important;
+        padding: 8px 10px;
+        background: var(--ds-surface);
+        border-top: 1px solid var(--ds-border);
+        box-shadow: 0 -3px 14px rgba(0,0,0,0.10);
+      }
+      #main-container [id*="edicion"] > section:first-of-type > div:last-child > button {
+        flex: 1 1 0; justify-content: center; min-height: 44px;
+        /* El interletrado ancho de escritorio parte las etiquetas en dos líneas */
+        white-space: nowrap;
+        letter-spacing: 0.02em !important;
+        padding-left: 10px !important; padding-right: 10px !important;
+      }
+      /* Reserva al final del formulario para que la barra no tape el último campo */
+      #main-container [id*="edicion"] { padding-bottom: 72px; }
+    }
+
+    /* ─── 6. ESTADOS DE CARGA Y VACÍO (progressive-loading / empty-states) ─── */
+    .ds-skeleton-row td { padding: 10px 12px !important; }
+    .ds-skeleton-bar {
+      height: 10px; border-radius: 999px;
+      background: linear-gradient(90deg,
+        var(--ds-skeleton) 25%, var(--ds-skeleton-shine) 37%, var(--ds-skeleton) 63%);
+      background-size: 400% 100%;
+      animation: ds-shimmer 1.4s ease-in-out infinite;
+    }
+    @keyframes ds-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+
+    .ds-empty {
+      display: flex; flex-direction: column; align-items: center;
+      text-align: center; padding: 40px 24px; gap: 6px;
+    }
+    .ds-empty .ds-empty-icon {
+      font-size: 42px; color: var(--ds-fg-muted); opacity: 0.45; margin-bottom: 4px;
+    }
+    .ds-empty h4 { font-size: 14px; font-weight: 700; color: var(--ds-fg); }
+    .ds-empty p  { font-size: 12px; color: var(--ds-fg-muted); max-width: 42ch; }
+    .ds-empty .ds-empty-action {
+      margin-top: 10px; display: inline-flex; align-items: center; gap: 6px;
+      height: 40px; padding: 0 18px; border-radius: 10px;
+      background: var(--color-primary); color: #fff;
+      font-size: 12px; font-weight: 700; border: 0; cursor: pointer;
+    }
+    .ds-empty .ds-empty-action:hover { opacity: 0.9; }
+
+    /* ─── 7. MODO OSCURO CONSISTENTE ───
+       Tailwind CDN genera utilidades con colores fijos de modo claro.
+       Aquí se remapean bajo [data-theme="dark"] (mayor especificidad, sin !important)
+       para que tarjetas, bordes, texto y distintivos acompañen al tema. */
+    [data-theme="dark"] body { background-color: var(--ds-surface-sunken); }
+
+    /* Superficies */
+    [data-theme="dark"] .bg-white,
+    [data-theme="dark"] .bg-surface-container-lowest,
+    [data-theme="dark"] .bg-surface,
+    [data-theme="dark"] .bg-background          { background-color: var(--ds-surface); }
+    [data-theme="dark"] .bg-surface-container-low,
+    [data-theme="dark"] .bg-surface-container   { background-color: var(--ds-surface-sunken); }
+    [data-theme="dark"] .bg-surface-container-high,
+    [data-theme="dark"] .bg-surface-container-highest,
+    [data-theme="dark"] .bg-surface-variant     { background-color: #2f2f37; }
+
+    /* Texto */
+    [data-theme="dark"] .text-on-surface,
+    [data-theme="dark"] .text-on-background     { color: var(--ds-fg); }
+    [data-theme="dark"] .text-on-surface-variant,
+    [data-theme="dark"] .text-secondary         { color: var(--ds-fg-muted); }
+    [data-theme="dark"] .text-outline           { color: #90909a; }
+    [data-theme="dark"] .text-primary           { color: #bdc2ff; }
+    [data-theme="dark"] .bg-primary             { background-color: #3b45b5; }
+    [data-theme="dark"] .text-on-primary        { color: #ffffff; }
+
+    /* Bordes y divisores (border-visibility en ambos temas) */
+    [data-theme="dark"] .border-outline-variant { border-color: var(--ds-border); }
+    [data-theme="dark"] .border-outline         { border-color: #6f6f7a; }
+    [data-theme="dark"] .divide-outline-variant\/40 > * + * { border-color: var(--ds-border-soft); }
+    [data-theme="dark"] .border-surface-variant { border-color: var(--ds-border); }
+
+    /* Panel lateral y superficies fijas */
+    [data-theme="dark"] #nav-drawer { background: var(--ds-surface); border-right-color: var(--ds-border); }
+    [data-theme="dark"] #nav-overlay { background: var(--ds-scrim); }
+    [data-theme="dark"] .drawer-nav-link { color: var(--ds-fg-muted); }
+    [data-theme="dark"] .drawer-nav-link:hover { background: #2a2a32; color: #bdc2ff; }
+    [data-theme="dark"] .drawer-nav-link.active { background: #262f6b; color: #dfe1ff; border-right-color: #bdc2ff; }
+    [data-theme="dark"] table.pwa-table-cards tbody tr { background: var(--ds-surface); border-color: var(--ds-border); }
+    [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(199,197,208,0.28); }
+
+    /* Distintivos de color: fondos pastel → tintes oscuros, texto → tono claro
+       (color-dark-mode: variantes tonales, nunca inversión de color) */
+    [data-theme="dark"] .bg-emerald-50,  [data-theme="dark"] .bg-emerald-100 { background-color: rgba(16,185,129,0.16); }
+    [data-theme="dark"] .bg-green-50,    [data-theme="dark"] .bg-green-100   { background-color: rgba(34,197,94,0.16); }
+    [data-theme="dark"] .bg-amber-50,    [data-theme="dark"] .bg-amber-100   { background-color: rgba(245,158,11,0.18); }
+    [data-theme="dark"] .bg-red-50,      [data-theme="dark"] .bg-red-100     { background-color: rgba(239,68,68,0.18); }
+    [data-theme="dark"] .bg-blue-50,     [data-theme="dark"] .bg-blue-100    { background-color: rgba(59,130,246,0.18); }
+    [data-theme="dark"] .bg-sky-50,      [data-theme="dark"] .bg-sky-100     { background-color: rgba(14,165,233,0.18); }
+    [data-theme="dark"] .bg-indigo-50,   [data-theme="dark"] .bg-indigo-100  { background-color: rgba(99,102,241,0.18); }
+    [data-theme="dark"] .bg-violet-50,   [data-theme="dark"] .bg-violet-100  { background-color: rgba(139,92,246,0.18); }
+    [data-theme="dark"] .bg-purple-50,   [data-theme="dark"] .bg-purple-100  { background-color: rgba(168,85,247,0.18); }
+    [data-theme="dark"] .bg-orange-50,   [data-theme="dark"] .bg-orange-100  { background-color: rgba(249,115,22,0.18); }
+    [data-theme="dark"] .bg-rose-50,     [data-theme="dark"] .bg-rose-100    { background-color: rgba(244,63,94,0.18); }
+    [data-theme="dark"] .bg-teal-50,     [data-theme="dark"] .bg-teal-100    { background-color: rgba(20,184,166,0.18); }
+    [data-theme="dark"] .bg-slate-50,    [data-theme="dark"] .bg-slate-100   { background-color: rgba(148,163,184,0.16); }
+    [data-theme="dark"] .bg-gray-900,    [data-theme="dark"] .bg-gray-800    { background-color: #0b0b0f; }
+
+    [data-theme="dark"] .text-emerald-600, [data-theme="dark"] .text-emerald-700, [data-theme="dark"] .text-emerald-800 { color: #6ee7b7; }
+    [data-theme="dark"] .text-green-600,   [data-theme="dark"] .text-green-700,   [data-theme="dark"] .text-green-800   { color: #86efac; }
+    [data-theme="dark"] .text-amber-600,   [data-theme="dark"] .text-amber-700,   [data-theme="dark"] .text-amber-800   { color: #fcd34d; }
+    [data-theme="dark"] .text-red-600,     [data-theme="dark"] .text-red-700,     [data-theme="dark"] .text-red-800     { color: #fca5a5; }
+    [data-theme="dark"] .text-blue-600,    [data-theme="dark"] .text-blue-700,    [data-theme="dark"] .text-blue-800    { color: #93c5fd; }
+    [data-theme="dark"] .text-sky-700,     [data-theme="dark"] .text-sky-800      { color: #7dd3fc; }
+    [data-theme="dark"] .text-indigo-600,  [data-theme="dark"] .text-indigo-700   { color: #a5b4fc; }
+    [data-theme="dark"] .text-violet-700,  [data-theme="dark"] .text-violet-800   { color: #c4b5fd; }
+    [data-theme="dark"] .text-purple-700,  [data-theme="dark"] .text-purple-800   { color: #d8b4fe; }
+    [data-theme="dark"] .text-orange-600,  [data-theme="dark"] .text-orange-700,  [data-theme="dark"] .text-orange-800  { color: #fdba74; }
+    [data-theme="dark"] .text-rose-700,    [data-theme="dark"] .text-rose-800     { color: #fda4af; }
+    [data-theme="dark"] .text-teal-700     { color: #5eead4; }
+    [data-theme="dark"] .text-slate-600,   [data-theme="dark"] .text-slate-700    { color: #cbd5e1; }
+    [data-theme="dark"] .text-gray-800,    [data-theme="dark"] .text-gray-900     { color: #e5e7eb; }
+    [data-theme="dark"] .text-white        { color: #ffffff; }
+
+    [data-theme="dark"] .border-emerald-200 { border-color: rgba(16,185,129,0.38); }
+    [data-theme="dark"] .border-amber-200   { border-color: rgba(245,158,11,0.38); }
+    [data-theme="dark"] .border-red-200     { border-color: rgba(239,68,68,0.38); }
+    [data-theme="dark"] .border-blue-200    { border-color: rgba(59,130,246,0.38); }
+    [data-theme="dark"] .border-slate-200   { border-color: rgba(148,163,184,0.30); }
+    [data-theme="dark"] .border-gray-700    { border-color: #3a3a44; }
+  </style>
+
+</head>
+<body>
+
+  <!-- Salto al contenido (accesibilidad: usuarios de teclado / lector de pantalla) -->
+  <a href="#main-container" class="skip-link">Saltar al contenido principal</a>
+
+  <!-- Overlay del Drawer -->
+  <div id="nav-overlay" onclick="toggleNavDrawer()"></div>
+
+  <!-- Navigation Drawer -->
+  <aside id="nav-drawer" role="dialog" aria-modal="true" aria-label="Menú de navegación" aria-hidden="true">
+
+    <!-- ═══ HEADER: Perfil con gradiente de marca ═══ -->
+    <div class="relative shrink-0 overflow-hidden" style="background: linear-gradient(145deg, #000666 0%, #1a237e 55%, #283593 100%);">
+      <!-- Dot-pattern overlay sutil -->
+      <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle, white 1px, transparent 1px); background-size: 18px 18px;"></div>
+      <!-- X Close -->
+      <button onclick="toggleNavDrawer()" class="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/25 transition-colors" title="Cerrar menú">
+        <span class="material-symbols-outlined text-white text-[16px]">close</span>
+      </button>
+      <!-- Avatar + Info -->
+      <div class="relative z-10 px-5 pt-7 pb-5">
+        <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black mb-3 shadow-xl border-2 border-white/25 bg-white/20 text-white" id="drawer-avatar">A</div>
+        <div class="text-white font-black text-[15px] leading-snug" id="drawer-username">Admin Usuario</div>
+        <div class="text-white/55 text-[11px] mt-0.5" id="drawer-email">admin@empresa.com</div>
+        <div class="mt-2.5 inline-flex items-center gap-1 bg-white/15 backdrop-blur-sm text-white/90 text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-widest border border-white/10">
+          <span class="material-symbols-outlined text-[10px]" style="font-variation-settings:'FILL' 1">verified</span>
+          <span id="drawer-role-label">Administrador</span>
+        </div>
+        <button type="button" onclick="openActiveUserProfile()" class="mt-3 flex items-center gap-1.5 text-[10px] font-bold text-white/90 hover:text-white transition-colors">
+          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">account_circle</span>
+          Ver mi perfil
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══ NAVEGACIÓN ═══ -->
+    <!-- nav-label-icon + nav-state-active: cada destino lleva icono Y texto; el activo se
+         marca con aria-current. Elementos <button> = navegables por teclado. -->
+    <nav id="drawer-nav-list" class="px-3 pt-3 pb-2 flex-1 min-h-0 overflow-y-auto touch-pan-y" aria-label="Navegación principal">
+      <div id="drawer-nav-modules">
+      <div class="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-[0.12em] px-2 pb-1.5">Módulos</div>
+      <button type="button" onclick="toggleNavDrawer(); showView('Menu')" class="drawer-nav-link active w-full text-left" id="dnav-menu">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">dashboard</span>
+        <span class="flex-1">Panel Principal</span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('03_Inspecciones')" class="drawer-nav-link w-full text-left" id="dnav-03">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">assignment</span>
+        <span class="flex-1">Inspecciones</span>
+        <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-03"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('05_Incidentes')" class="drawer-nav-link w-full text-left" id="dnav-05">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">personal_injury</span>
+        <span class="flex-1">Incidentes</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-05"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('06_Capacitaciones')" class="drawer-nav-link w-full text-left" id="dnav-06">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">school</span>
+        <span class="flex-1">Capacitaciones</span>
+        <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-06"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('07_IPERC')" class="drawer-nav-link w-full text-left" id="dnav-07">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">grid_view</span>
+        <span class="flex-1">Matriz IPERC</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-07"></span>
+      </button>
+
+      <button type="button" id="drawer-nav-more" class="drawer-nav-more" onclick="setDrawerNavExpanded(this.getAttribute('aria-expanded') !== 'true')" aria-expanded="false" aria-controls="drawer-nav-extra">
+        <span class="material-symbols-outlined text-[17px]" aria-hidden="true">expand_more</span>
+        <span data-drawer-more-label>Ver más módulos</span>
+      </button>
+
+      <div id="drawer-nav-extra" hidden>
+      <button type="button" onclick="toggleNavDrawer(); showView('08_PETAR')" class="drawer-nav-link w-full text-left" id="dnav-08">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">assignment_turned_in</span>
+        <span class="flex-1">Permisos (PETAR)</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-08"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('09_EPP')" class="drawer-nav-link w-full text-left" id="dnav-09">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">shield</span>
+        <span class="flex-1">Entrega de EPP</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-09"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('10_Charlas')" class="drawer-nav-link w-full text-left" id="dnav-10">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">campaign</span>
+        <span class="flex-1">Charlas 5 Minutos</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-10"></span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('02_Reportes')" class="drawer-nav-link w-full text-left" id="dnav-02">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">analytics</span>
+        <span class="flex-1">Reportes</span>
+        <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-02"></span>
+      </button>
+
+      <button type="button" onclick="toggleNavDrawer(); showView('04_Actos_Condiciones')" class="drawer-nav-link w-full text-left" id="dnav-04ac">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">report_problem</span>
+        <span class="flex-1">Actos y Condiciones</span>
+        <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-04ac"></span>
+      </button>
+      </div>
+      </div>
+
+      <div class="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-[0.12em] px-2 pt-3 pb-1.5">Configuración y administración</div>
+      <button type="button" onclick="toggleNavDrawer(); showView('01_Usuarios')" class="drawer-nav-link w-full text-left" id="dnav-01">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">manage_accounts</span>
+        <span class="flex-1">Administración de usuarios</span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('00_Admin')" class="drawer-nav-link w-full text-left" id="dnav-00">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">admin_panel_settings</span>
+        <span class="flex-1">Administración de plataforma</span>
+      </button>
+      <button type="button" onclick="toggleNavDrawer(); showView('04_Configuraciones')" class="drawer-nav-link w-full text-left" id="dnav-04">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">settings</span>
+        <span class="flex-1">Configuración del sistema</span>
+      </button>
+      <!-- destructive-nav-separation: cerrar sesión, separado del resto -->
+      <div class="h-px bg-outline-variant/50 mx-2 my-2"></div>
+      <button type="button" onclick="toggleNavDrawer(); handleLogout()" class="drawer-nav-link w-full text-left hover:!text-red-600 hover:!bg-red-50" id="dnav-logout">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">logout</span>
+        <span class="flex-1">Cerrar Sesión</span>
+      </button>
+
+      <section class="drawer-work-summary" aria-labelledby="drawer-work-summary-title">
+        <div class="drawer-work-summary-head">
+          <h2 class="drawer-work-summary-title" id="drawer-work-summary-title">Resumen de trabajo</h2>
+          <span class="drawer-work-summary-scope" id="drawer-work-summary-scope"></span>
+        </div>
+        <div id="drawer-work-summary-body" aria-live="polite">
+          <p class="drawer-work-empty">Actualizando pendientes…</p>
+        </div>
+      </section>
+    </nav>
+
+    <!-- ═══ FOOTER: Estado del sistema ═══ -->
+    <div class="shrink-0 px-4 py-2.5 border-t border-surface-variant bg-surface-container-lowest flex items-center justify-between gap-2">
+      <div class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0 shadow-[0_0_4px_rgba(52,168,83,0.6)]" id="drawer-status-dot"></span>
+        <span class="text-[10px] font-semibold text-on-surface" id="drawer-status-text">Sistema Online</span>
+      </div>
+      <span class="text-[9px] font-bold text-on-surface-variant opacity-60">Motor v1.5.0</span>
+    </div>
+
+  </aside>
+
+  <!-- BARRA SUPERIOR (Persistente Universal) -->
+  <header class="top-bar">
+    <div class="title-group">
+      <button type="button" class="icon-btn bg-transparent border-0 flex items-center justify-center" id="btn-menu"
+              onclick="toggleNavDrawer()" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="nav-drawer">
+        <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+      </button>
+      <h1 id="app-title" class="text-base font-semibold">MOTOR PWA</h1>
+    </div>
+
+    <div class="controls">
+       <!-- Botón de Sincronización Global (Contextual) -->
+       <button id="ui-global-sync-btn" onclick="PWA_SKILLS.triggerGlobalSync()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-primary" title="Sincronizar Datos" aria-label="Sincronizar datos del módulo" style="display:none;">
+          <span class="material-symbols-outlined text-xl" aria-hidden="true">sync</span>
+       </button>
+
+       <!-- Botón Multitema Light/Dark -->
+       <button type="button" class="icon-btn bg-transparent border-0 flex items-center justify-center" id="btn-theme"
+               title="Cambiar tema" aria-label="Activar modo oscuro" aria-pressed="false">
+         <span class="material-symbols-outlined" id="btn-theme-icon" aria-hidden="true">dark_mode</span>
+       </button>
+
+       <!-- Indicador Offline/Sincrónico Obligatorio -->
+       <div class="sync-indicator" title="Motor Sincronizador" role="status" aria-live="polite">
+         <div class="sync-dot" id="ui-sync-dot" aria-hidden="true"></div>
+         <span id="ui-sync-text">Online</span>
+       </div>
+    </div>
+  </header>
+
+  <!-- CONTENEDOR VISTAS: Donde inyectaremos los HTMLs Modulares .html -->
+  <main id="main-container" tabindex="-1">
+     <div style="text-align:center; padding-top:40px; color:var(--color-text); opacity:0.6;">
+        <h2>Iniciando Motor Zero-Touch...</h2>
+        <p>Cargando Base Local y Resolviendo Sesión</p>
+     </div>
+  </main>
+
+  <!-- PIE DE PÁGINA (Footer Configurable - Skill #18) -->
+  <footer class="main-footer" id="main-footer" style="display:none;">
+      <button type="button" class="footer-nav-button" data-footer-view="03_Inspecciones" onclick="showView('03_Inspecciones')" aria-label="Ir a Inspecciones">
+         <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
+         <span>Inspecciones</span>
+      </button>
+      <button type="button" class="footer-nav-button" data-footer-view="Menu" onclick="showView('Menu')" aria-label="Ir al menu principal">
+         <span class="material-symbols-outlined" aria-hidden="true">home</span>
+         <span>Men&uacute; principal</span>
+      </button>
+      <button type="button" class="footer-nav-button" data-footer-view="02_Reportes" onclick="showView('02_Reportes')" aria-label="Ir a Reportes">
+         <span class="material-symbols-outlined" aria-hidden="true">summarize</span>
+         <span>Reportes</span>
+      </button>
+  </footer>
+
+  <!-- Toast container (notificaciones elegantes) -->
+  <!-- toast-accessibility: aria-live anuncia sin robar el foco -->
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- El FAB flotante ha sido eliminado bajo la Nueva Regla 17 de diseño integrado inline -->
+  <!-- CONTENEDORES OCULTOS (Módulos inyectados) -->
+  <div id="module-registry" style="display:none;">
+    <!-- Inclusión del Módulo 00_Admin y su Subconfig -->
+    <?!= include('00_Admin/subconfig_00_Admin.js'); ?>
+    <?!= include('00_Admin/Mod_Admin_Dashboard'); ?>
+
+    <!-- Módulo 01_Usuarios (Split) -->
+    <?!= include('01_Usuarios/subconfig_01_Usuarios.js'); ?>
+    <?!= include('01_Usuarios/Mod_01_Usuarios_Resumen'); ?>
+    <?!= include('01_Usuarios/Mod_01_Usuarios_Edicion'); ?>
+    <?!= include('01_Usuarios/Mod_01_Usuarios_Detalle'); ?>
+
+    <!-- Módulo 02_Reportes (Split) -->
+    <?!= include('02_Reportes/subconfig_02_Reportes.js'); ?>
+    <?!= include('02_Reportes/Mod_02_Reportes_Resumen'); ?>
+    <?!= include('02_Reportes/Mod_02_Reportes_Edicion'); ?>
+    <?!= include('02_Reportes/Mod_02_Reportes_Detalle'); ?>
+
+    <!-- Módulo 03_Inspecciones (Split) -->
+    <?!= include('03_Inspecciones/subconfig_03_Inspecciones.js'); ?>
+    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Resumen'); ?>
+    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Edicion'); ?>
+    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Detalle'); ?>
+
+    <!-- Módulo 001_Configuraciones (Split) -->
+    <?!= include('001_Configuraciones/subconfig_04_Configuraciones.js'); ?>
+    <?!= include('001_Configuraciones/Mod_04_Configuraciones_Resumen'); ?>
+    <?!= include('001_Configuraciones/Mod_04_Configuraciones_Edicion'); ?>
+    <?!= include('001_Configuraciones/Mod_04_Configuraciones_Detalle'); ?>
+
+    <!-- Módulo 04_Actos_Condiciones (Split) -->
+    <?!= include('04_Actos_Condiciones/subconfig_04_Actos_Condiciones.js'); ?>
+    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Resumen'); ?>
+    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Edicion'); ?>
+    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Detalle'); ?>
+
+    <!-- Módulo 05_Incidentes (Split) -->
+    <?!= include('05_Incidentes/subconfig_05_Incidentes.js'); ?>
+    <?!= include('05_Incidentes/Mod_05_Incidentes_Resumen'); ?>
+    <?!= include('05_Incidentes/Mod_05_Incidentes_Edicion'); ?>
+    <?!= include('05_Incidentes/Mod_05_Incidentes_Detalle'); ?>
+
+    <!-- Módulo 06_Capacitaciones (Split) -->
+    <?!= include('06_Capacitaciones/subconfig_06_Capacitaciones.js'); ?>
+    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Resumen'); ?>
+    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Edicion'); ?>
+    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Detalle'); ?>
+
+    <!-- Módulo 07_IPERC (Split) -->
+    <?!= include('07_IPERC/subconfig_07_IPERC.js'); ?>
+    <?!= include('07_IPERC/Mod_07_IPERC_Resumen'); ?>
+    <?!= include('07_IPERC/Mod_07_IPERC_Edicion'); ?>
+    <?!= include('07_IPERC/Mod_07_IPERC_Detalle'); ?>
+
+    <!-- Módulo 08_PETAR (Split) -->
+    <?!= include('08_PETAR/subconfig_08_PETAR.js'); ?>
+    <?!= include('08_PETAR/Mod_08_PETAR_Resumen'); ?>
+    <?!= include('08_PETAR/Mod_08_PETAR_Edicion'); ?>
+    <?!= include('08_PETAR/Mod_08_PETAR_Detalle'); ?>
+
+    <!-- Módulo 09_EPP (Split) -->
+    <?!= include('09_EPP/subconfig_09_EPP.js'); ?>
+    <?!= include('09_EPP/Mod_09_EPP_Resumen'); ?>
+    <?!= include('09_EPP/Mod_09_EPP_Edicion'); ?>
+    <?!= include('09_EPP/Mod_09_EPP_Detalle'); ?>
+
+    <!-- Módulo 10_Charlas (Split) -->
+    <?!= include('10_Charlas/subconfig_10_Charlas.js'); ?>
+    <?!= include('10_Charlas/Mod_10_Charlas_Resumen'); ?>
+    <?!= include('10_Charlas/Mod_10_Charlas_Edicion'); ?>
+    <?!= include('10_Charlas/Mod_10_Charlas_Detalle'); ?>
+  </div>
+
+  <!-- ====================================================================== -->
+  <!-- CARGA FRAGMENTADA DE MOTOR JAVASCRIPT A MODO DE IMPORT                 -->
+  <!-- ====================================================================== -->
+  <?!= include('00_Config/Global_Config.js'); ?>
+  <?!= include('DataProvider.js'); ?>
+  <?!= include('Permisos.js'); ?>
+  <?!= include('Global_Skills.js'); ?>
+  <?!= include('PDF_Templates.js'); ?>
+  <?!= include('Offline_Engine.js'); ?>
+  <?!= include('App_Routing.js'); ?>
+
+  <script>
+    // -------------------------------------------------------------
+    // LOGICA VISUAL TOP-BAR GLOBAL Y APLICACIÓN DE COLORES GLOBALES
+    // -------------------------------------------------------------
+    const btnTheme = document.getElementById("btn-theme");
+    const htmlRoot = document.documentElement;
+
+    // Aplicar colores desde Global_Config a las variables CSS (Defensive Mode)
+    function applyGlobalColors() {
+       try {
+           const colors = AppState.UI_Colors;
+           if(colors) {
+               htmlRoot.style.setProperty('--color-primary', colors.Primary || '#000666');
+               htmlRoot.style.setProperty('--color-bg', colors.Background);
+               htmlRoot.style.setProperty('--color-surface', colors.Surface);
+               htmlRoot.style.setProperty('--color-text', colors.Text);
+               
+               htmlRoot.style.setProperty('--header-bg', colors.Header_BG);
+               htmlRoot.style.setProperty('--footer-bg', colors.Footer_BG);
+               htmlRoot.style.setProperty('--fab-bg', colors.FAB_BG);
+           }
+
+           const footer = AppState.UI_Components?.Footer;
+           if(footer && footer.Visible) {
+              const footerEl = document.getElementById('main-footer');
+              if(footerEl) footerEl.style.display = 'grid';
+              
+              const footerText = document.getElementById('footer-text');
+              if(footerText) footerText.innerText = footer.Text || '';
+              
+              const footerVer = document.getElementById('footer-version');
+              if(footerVer) footerVer.innerText = `v${AppState.VERSION}`;
+           }
+       } catch(e) {
+           console.warn('Advertencia en UI Theming:', e);
+       }
+    }
+    applyGlobalColors();
+    
+    // Auto-detección inicial (LocalStorage para Memoria Visual)
+    const storedTheme = localStorage.getItem('pwa_theme');
+    if(storedTheme === "dark") enableDarkMode();
+
+    btnTheme.addEventListener("click", () => {
+       const currentTheme = htmlRoot.getAttribute("data-theme");
+       if(currentTheme === "dark") disableDarkMode();
+       else enableDarkMode();
+    });
+
+    function enableDarkMode() {
+       htmlRoot.setAttribute("data-theme", "dark");
+       htmlRoot.style.colorScheme = 'dark';   // controles nativos (scroll, selects) acordes al tema
+       const ico = document.getElementById('btn-theme-icon');
+       if (ico) ico.innerText = "light_mode";
+       btnTheme.setAttribute('aria-pressed', 'true');
+       btnTheme.setAttribute('aria-label', 'Activar modo claro');
+       localStorage.setItem('pwa_theme', 'dark');
+    }
+    function disableDarkMode() {
+       htmlRoot.removeAttribute("data-theme");
+       htmlRoot.style.colorScheme = 'light';
+       const ico = document.getElementById('btn-theme-icon');
+       if (ico) ico.innerText = "dark_mode";
+       btnTheme.setAttribute('aria-pressed', 'false');
+       btnTheme.setAttribute('aria-label', 'Activar modo oscuro');
+       localStorage.setItem('pwa_theme', 'light');
+    }
+
+    // -------------------------------------------------------------
+    // HELPERS VISUALES DEL MOTOR DE SINCRONIA (Llamado via Offline_Engine)
+    // -------------------------------------------------------------
+    function updateSyncUI(statusText, isOffline) {
+       document.getElementById('ui-sync-text').innerText = statusText;
+       const dot = document.getElementById('ui-sync-dot');
+       if(isOffline) dot.classList.add('offline');
+       else dot.classList.remove('offline');
+    }
+  </script>
+</body>
+</html>

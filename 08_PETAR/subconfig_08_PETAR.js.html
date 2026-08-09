@@ -1,0 +1,201 @@
+<script>
+/**
+ * =========================================================================
+ * SUBCONFIG — 08_PETAR
+ * =========================================================================
+ * Permiso Escrito de Trabajo de Alto Riesgo.
+ *
+ * POR QUÉ ESTE MÓDULO
+ * Es el documento que autoriza —o detiene— un trabajo peligroso hoy, en el
+ * turno concreto. A diferencia del IPERC, que evalúa el riesgo en general,
+ * el PETAR verifica que las condiciones estén dadas AHORA: equipo probado,
+ * área señalizada, personal capacitado, rescate disponible.
+ *
+ * TRES REGLAS QUE HACEN QUE SIRVA
+ * 1. Vigencia horaria: un permiso vale para una ventana de tiempo, no para
+ *    siempre. Fuera de ella el trabajo no está autorizado.
+ * 2. Verificación completa: no se aprueba con ítems en "No". El sistema lo
+ *    impide, que es justo lo que un papel no puede hacer.
+ * 3. Trazabilidad con el IPERC: el permiso apunta a la matriz que evaluó
+ *    esos peligros, para que los controles no se inventen en campo.
+ * =========================================================================
+ */
+
+var SUBCONFIG_08_PETAR = {
+
+  Config_Modular: {
+    NombreInterno:          "08_PETAR",
+    Titulo:                 "Permisos de Alto Riesgo",
+    DRIVE_FOLDER_NAME:      "08_PETAR_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
+    EMAIL_TEMPLATE_ID:      "",
+    PARENT_TABLE:           "MAIN",
+    CHILD_TABLE:            "VERIFICACIONES",
+    RELATIONAL_KEY:         "PARENT_UUID",
+
+    // Cada fila es un control que debe verificarse ANTES de iniciar
+    Relational_Fields: [
+      { name: "Item",        label: "Control a verificar", type: "text", fullWidth: true, colSpan: "md:col-span-7" },
+      { name: "Cumple",      label: "¿Cumple?",            type: "select", colSpan: "md:col-span-2",
+        options: ["Sí", "No", "N/A"] },
+      { name: "Observacion", label: "Observación",         type: "text", fullWidth: true, colSpan: "md:col-span-2" }
+    ],
+
+    // Matriz de permisos por rol. El SuperAdmin (proveedor) no figura:
+    // PERMISOS.matriz() le concede todo por jerarquía.
+    // alcance: todos | responsable | propios  →  qué registros ve el rol
+    AdminRole:       { canCreate: true , canRead: true , canUpdate: true , canDelete: true , alcance: "todos" },
+    SupervisorRole:  { canCreate: true , canRead: true , canUpdate: true , canDelete: false, alcance: "responsable" },
+    TrabajadorRole:  { canCreate: true , canRead: true , canUpdate: false, canDelete: false, alcance: "propios" }
+  },
+
+  Variables: {
+    "UUID":               { type: "Hidden_UUID", required: true, isFilter: false },
+
+    // ── Qué trabajo se autoriza ──
+    "Tipo_Trabajo":       { type: "Enum", required: true, isFilter: true, label: "Tipo de trabajo",
+                            acceptedValues: [
+                              "Trabajo en altura",
+                              "Espacio confinado",
+                              "Trabajo en caliente",
+                              "Izaje crítico",
+                              "Excavación / zanja",
+                              "Trabajo eléctrico",
+                              "Bloqueo y etiquetado (LOTO)",
+                              "Manipulación de sustancias químicas"
+                            ], allowOtherValues: false },
+    "Descripcion":        { type: "Text", required: true, isFilter: false, label: "Descripción del trabajo" },
+    "Area":               { type: "Enum", required: true, isFilter: true, label: "Área",
+                            acceptedValues: [
+                              "Operaciones", "Mantenimiento", "Almacén", "Logística",
+                              "Producción", "Administración", "Obra / Campo", "Laboratorio"
+                            ], allowOtherValues: true },
+    "Lugar_Especifico":   { type: "Text", required: false, isFilter: false, label: "Lugar específico" },
+
+    // ── Ventana de vigencia: el permiso NO vale fuera de ella ──
+    "Fecha":              { type: "Date", required: true,  isFilter: true,  label: "Fecha" },
+    "Hora_Inicio":        { type: "Text", required: true,  isFilter: false, label: "Hora de inicio" },
+    "Hora_Fin":           { type: "Text", required: true,  isFilter: false, label: "Hora de término" },
+
+    // ── Quiénes ──
+    "Empresa":            { type: "Text", required: false, isFilter: true,  label: "Empresa ejecutora" },
+    "Ejecutante_DNI":     { type: "REF",  required: false, isFilter: false, label: "Responsable de la ejecución",
+                            relationalDataOrigin: "01_Usuarios" },
+    "Num_Trabajadores":   { type: "Text", required: false, isFilter: false, label: "N.º de trabajadores" },
+    "Supervisor_DNI":     { type: "REF",  required: false, isFilter: false, label: "Supervisor a cargo",
+                            relationalDataOrigin: "01_Usuarios",
+                            slice: { column: "Rol", value: "Supervisor" } },
+
+    // ── Enlace con la matriz de riesgos ──
+    "IPERC_Referencia":   { type: "REF",  required: false, isFilter: false, label: "IPERC de referencia",
+                            relationalDataOrigin: "07_IPERC" },
+
+    // ── Autorización y cierre ──
+    "Estado":             { type: "Enum", required: true, isFilter: true, label: "Estado",
+                            acceptedValues: ["Solicitado", "Aprobado", "En ejecución", "Cerrado", "Rechazado", "Anulado"],
+                            allowOtherValues: false },
+    "Aprobado_Por":       { type: "REF",  required: false, isFilter: false, label: "Aprobado por",
+                            relationalDataOrigin: "01_Usuarios",
+                            slice: { column: "Rol", value: "Supervisor" } },
+    "Fecha_Aprobacion":   { type: "Date", required: false, isFilter: false, label: "Fecha de aprobación" },
+    "Hora_Cierre":        { type: "Text", required: false, isFilter: false, label: "Hora de cierre real" },
+    "Observaciones":      { type: "Text", required: false, isFilter: false, label: "Observaciones de cierre" },
+
+    // Se guarda calculado: permite filtrar sin recorrer la tabla hija
+    "Controles_No_Cumple":{ type: "Text", required: false, isFilter: false, label: "Controles incumplidos" },
+    "Total_Controles":    { type: "Text", required: false, isFilter: false, label: "Controles verificados" },
+
+    // ── Firmas (Skill 11: cada archivo lleva su _ID y _Path) ──
+    "Firma_Solicitante":      { type: "Signature", required: false, isFilter: false, label: "Firma del solicitante" },
+    "Firma_Solicitante_ID":   { type: "Hidden", required: false },
+    "Firma_Solicitante_Path": { type: "Hidden", required: false },
+
+    "Firma_Aprobador":        { type: "Signature", required: false, isFilter: false, label: "Firma del aprobador" },
+    "Firma_Aprobador_ID":     { type: "Hidden", required: false },
+    "Firma_Aprobador_Path":   { type: "Hidden", required: false },
+
+    "Registrado_Por":     { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
+    "Fecha_Registro":     { type: "Hidden", required: false }
+  },
+
+  /**
+   * Controles estándar por tipo de trabajo.
+   * Al elegir el tipo, el formulario carga esta lista: el ejecutante no parte
+   * de una hoja en blanco ni se le olvida un control crítico. Editar esta
+   * sección adapta el sistema a los procedimientos de cada empresa sin tocar
+   * ninguna vista.
+   */
+  Checklists: {
+    "Trabajo en altura": [
+      "Arnés de cuerpo completo inspeccionado y con certificación vigente",
+      "Punto de anclaje verificado (resistencia mínima 2268 kg)",
+      "Línea de vida instalada y probada",
+      "Escaleras/andamios inspeccionados y asegurados",
+      "Área inferior delimitada y señalizada",
+      "Personal con capacitación vigente en trabajo en altura",
+      "Condiciones climáticas aptas (viento, lluvia, visibilidad)"
+    ],
+    "Espacio confinado": [
+      "Medición de atmósfera: oxígeno entre 19.5% y 23.5%",
+      "Medición de gases inflamables y tóxicos dentro de límites",
+      "Ventilación forzada instalada y operativa",
+      "Vigía permanente asignado en el exterior",
+      "Equipo de rescate disponible en el punto",
+      "Bloqueo y etiquetado de energías aplicado",
+      "Comunicación permanente verificada"
+    ],
+    "Trabajo en caliente": [
+      "Extintor operativo a menos de 3 metros",
+      "Material combustible retirado en radio de 11 metros",
+      "Mantas ignífugas colocadas donde corresponda",
+      "Vigía de fuego asignado durante y 30 min después",
+      "Equipo de soldadura/corte inspeccionado",
+      "Ventilación adecuada del área",
+      "Detección de incendios notificada o inhibida con control"
+    ],
+    "Izaje crítico": [
+      "Plan de izaje elaborado y aprobado",
+      "Grúa con certificación e inspección vigente",
+      "Operador y rigger certificados",
+      "Accesorios de izaje inspeccionados (eslingas, grilletes)",
+      "Carga y radio dentro de la tabla de capacidad",
+      "Área de maniobra delimitada y sin personal bajo carga",
+      "Condiciones de viento dentro del límite del fabricante"
+    ],
+    "Excavación / zanja": [
+      "Verificación de servicios enterrados (energía, agua, gas)",
+      "Talud o entibado según profundidad y tipo de suelo",
+      "Acceso y salida cada 7.5 metros como máximo",
+      "Material excavado a más de 60 cm del borde",
+      "Perímetro señalizado y con barreras",
+      "Inspección diaria del talud antes de ingresar"
+    ],
+    "Trabajo eléctrico": [
+      "Desenergización verificada con instrumento",
+      "Bloqueo y etiquetado aplicado por cada ejecutante",
+      "Prueba de ausencia de tensión realizada",
+      "Puesta a tierra temporal instalada",
+      "EPP dieléctrico según nivel de tensión",
+      "Distancias mínimas de seguridad respetadas",
+      "Personal calificado y autorizado"
+    ],
+    "Bloqueo y etiquetado (LOTO)": [
+      "Todas las fuentes de energía identificadas",
+      "Dispositivos de bloqueo instalados en cada fuente",
+      "Energía residual liberada y verificada",
+      "Tarjetas con nombre y fecha colocadas",
+      "Prueba de arranque fallido realizada",
+      "Candado personal de cada ejecutante instalado"
+    ],
+    "Manipulación de sustancias químicas": [
+      "Hoja de seguridad (MSDS) disponible y revisada",
+      "EPP específico según la sustancia",
+      "Ventilación o extracción localizada operativa",
+      "Kit antiderrame disponible en el punto",
+      "Ducha de emergencia y lavaojos operativos",
+      "Envases rotulados correctamente",
+      "Incompatibilidades químicas verificadas"
+    ]
+  }
+};
+</script>
