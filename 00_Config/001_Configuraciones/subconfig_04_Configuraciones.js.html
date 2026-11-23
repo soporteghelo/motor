@@ -2,7 +2,7 @@
 // =========================================================================
 // SUBCONFIG: 04_Configuraciones
 // =========================================================================
-const SUBCONFIG_04_CONFIGURACIONES = {
+var SUBCONFIG_04_CONFIGURACIONES = {   // var (no const): PERMISOS lo busca en window
   Module_ID: '04_Configuraciones',
   Module_Name: 'Configuraciones',
   Icon: 'settings',
@@ -12,14 +12,12 @@ const SUBCONFIG_04_CONFIGURACIONES = {
     App_Empresa:          'Empresa Demo S.A.C.',
     App_Version:          '1.5.0',
     App_Logo_URL:         '',
-    Color_Primario:       '#1A73E8',
+    Color_Primario:       '#162138',   // azul marino de marca (antes #1A73E8)
     Sync_Intervalo:       '5',
     Calidad_Compresion:   'Medio',
     Max_Batch_Size:       '50',
     Session_Timeout:      '480',
-    Modulo_Inspecciones:  'Activo',
-    Modulo_Reportes:      'Activo',
-    Modulo_Usuarios:      'Activo'
+    Modulos_Visibles:     {}   // { '07_IPERC': { trabajador: false } } — lo edita el Admin (pestaña Módulos)
   },
 
   Config_Modular: {
@@ -36,26 +34,48 @@ const SUBCONFIG_04_CONFIGURACIONES = {
 };
 
 /**
- * Lee configuración desde localStorage, mezclando con Defaults.
+ * Configuración efectiva = Defaults ← config de la empresa (Supabase,
+ * empresas.config, llega con el login) ← ajustes locales de este navegador.
  */
 function getAppSettings() {
+  const empresa = (typeof AppState !== 'undefined' && AppState.User && AppState.User.EmpresaConfig) || {};
   try {
     const raw = localStorage.getItem('pwa_app_settings');
     const saved = raw ? JSON.parse(raw) : {};
-    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults, saved);
+    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults, empresa, saved);
   } catch(e) {
-    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults);
+    return Object.assign({}, SUBCONFIG_04_CONFIGURACIONES.Defaults, empresa);
   }
 }
 
 /**
- * Guarda configuración parcial o total en localStorage.
+ * Guarda la configuración. Con rol Admin se guarda para TODA la empresa
+ * (Supabase: empresas.config vía RPC · Apps Script: pestaña _CONFIG); si no
+ * hay red o permiso, queda local en este navegador.
+ * @returns {Promise<{status:string,msg?:string}>}
  */
-function saveAppSettings(settings) {
+async function saveAppSettings(settings) {
   const current = getAppSettings();
   const merged = Object.assign({}, current, settings);
+  let resultado = { status: 'OK', alcance: 'local' };
+
+  const esAdmin = typeof PERMISOS !== 'undefined' && ['Admin', 'SuperAdmin'].indexOf(PERMISOS.rol()) !== -1;
+  const backendListo = AppState.DB_PROVIDER === 'appscript' ? !!AppState.User.Token : !!AppState.User.EmpresaId;
+  if (esAdmin && backendListo && navigator.onLine && !window.__MOTOR_DEMO__) {
+    const r = await DataService.saveCompanyConfig(settings);
+    if (r.status === 'OK') {
+      AppState.updateSession({ EmpresaConfig: Object.assign({}, AppState.User.EmpresaConfig || {}, r.config || settings) });
+      // Lo que ya está en la empresa no necesita sombra local
+      localStorage.removeItem('pwa_app_settings');
+      resultado = { status: 'OK', alcance: 'empresa' };
+      applyAppSettings();
+      return resultado;
+    }
+    resultado = { status: 'WARN', alcance: 'local', msg: r.msg };
+  }
   localStorage.setItem('pwa_app_settings', JSON.stringify(merged));
   applyAppSettings();
+  return resultado;
 }
 
 /**
@@ -78,7 +98,12 @@ function applyAppSettings() {
     }
 
     // CSS: color primario
-    document.documentElement.style.setProperty('--color-primary', s.Color_Primario);
+    // Migración: el azul antiguo era el valor por defecto, no una elección de la empresa
+    const _cp = String(s.Color_Primario || '').toLowerCase() === '#1a73e8' ? '#162138' : s.Color_Primario;
+    // Con el color de marca por defecto NO se fija nada en línea: así el modo oscuro
+    // puede aclararlo (un valor en línea ganaría al tema y dejaría marino sobre marino).
+    if (String(_cp).toLowerCase() === '#162138') document.documentElement.style.removeProperty('--color-primary');
+    else document.documentElement.style.setProperty('--color-primary', _cp);
 
     // Footer versión
     const fv = document.getElementById('footer-version-tag');

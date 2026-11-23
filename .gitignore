@@ -1,0 +1,22 @@
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Build y herramientas
+dist/
+node_modules/
+.vercel/
+.playwright-mcp/
+
+# App instalable (Capacitor)
+# El proyecto android/ se regenera con "npx cap add android": no hace falta
+# versionarlo. Lo que NO se puede perder es la clave de firma.
+android/
+ios/
+.apk/
+.ota/
+keystore.properties
+*.keystore
+*.jks
+.ota-test-*/

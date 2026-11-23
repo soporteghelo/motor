@@ -22,6 +22,9 @@ var SUBCONFIG_10_CHARLAS = {
 
   Config_Modular: {
     NombreInterno:          "10_Charlas",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "Foto_Charla",
+    Card_Icon:              "campaign",
     Titulo:                 "Charlas de 5 Minutos",
     DRIVE_FOLDER_NAME:      "10_Charlas_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -70,7 +73,8 @@ var SUBCONFIG_10_CHARLAS = {
     "Expositor_DNI":   { type: "REF",  required: false, isFilter: false, label: "Expositor",
                          relationalDataOrigin: "01_Usuarios" },
     "Expositor":       { type: "Text", required: false, isFilter: true,  label: "Nombre del expositor" },
-    "Duracion_Min":    { type: "Text", required: false, isFilter: false, label: "Duración (min)" },
+    "Duracion_Min":    { type: "Text", required: false, isFilter: false, label: "Duración (min)",
+                      control: "number", min: 1, max: 480, step: 1 },
 
     "Puntos_Tratados": { type: "Text", required: false, isFilter: false, label: "Puntos tratados" },
     "Compromisos":     { type: "Text", required: false, isFilter: false, label: "Compromisos asumidos" },
@@ -90,6 +94,72 @@ var SUBCONFIG_10_CHARLAS = {
 
     "Registrado_Por":  { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
     "Fecha_Registro":  { type: "Hidden", required: false }
+  },
+
+  /**
+   * Cómo se dibujan las tres vistas. MOTOR_RENDER las construye con esto;
+   * no hay HTML por módulo. Lo que no se declara se deduce de Variables.
+   */
+  Vistas: {
+    Subtitulo: "Cobertura diaria por área y turno",
+
+    Resumen: {
+      etiquetaCrear: "Registrar",
+      ordenPor: "Fecha",
+      columnas: [
+        { campo: "Tema",  sub: "Categoria", etiqueta: "Tema" },
+        { campo: "Fecha", sub: "Hora",      etiqueta: "Fecha / Hora", numero: true },
+        { campo: "Area" },
+        { campo: "Turno", tipo: "badge" },
+        { campo: "Expositor" },
+        { campo: "Total_Asistentes", etiqueta: "Asistentes", numero: true }
+      ],
+      vacio: {
+        icono: "campaign", titulo: "Sin charlas registradas",
+        mensaje: "La charla de 5 minutos es el hábito más barato de sostener y el que más incidentes evita.",
+        accion: "Registrar charla"
+      }
+    },
+
+    Edicion: {
+      tituloNuevo: "Registrar Charla", tituloEditar: "Editar Charla",
+      secciones: [
+        { titulo: "Tema de la charla", icono: "campaign", campos: ["Tema", "Categoria"] },
+        { titulo: "Cuándo y dónde",    icono: "event",
+          campos: ["Fecha", "Hora", "Turno", "Area", "Lugar", "Duracion_Min", "Expositor_DNI"] },
+        { titulo: "Contenido y evidencia", icono: "edit_note",
+          campos: ["Puntos_Tratados", "Compromisos", "Estado", "Foto_Charla", "Firma_Expositor"] }
+      ]
+    },
+
+    Detalle: {
+      titulo: "Tema", subtitulo: ["Area", "Fecha"],
+      secciones: [
+        { titulo: "Datos de la charla",
+          campos: ["Fecha", "Hora", "Turno", "Area", "Lugar", "Duracion_Min", "Expositor", "Categoria", "Estado"] },
+        { titulo: "Contenido", campos: ["Puntos_Tratados", "Compromisos"] }
+      ]
+    },
+
+    Hijos: {
+      titulo: "Asistentes", icono: "groups",
+      vacio: "Sin lista de asistencia la charla no queda documentada.",
+      vacioDetalle: "Sin asistentes la charla no queda documentada ante una fiscalización."
+    },
+
+    // Color por estado: tokens --st-*, nunca hex (regla 22)
+    Badges: {
+      Turno: {
+        "Día":   { tono: "warn", icono: "light_mode" },
+        "Tarde": { tono: "warn", icono: "wb_twilight" },
+        "Noche": { tono: "info", icono: "dark_mode" }
+      },
+      Estado: {
+        "Ejecutada":    { tono: "ok",   icono: "check_circle" },
+        "Programada":   { tono: "info", icono: "schedule" },
+        "No realizada": { tono: "bad",  icono: "cancel" }
+      }
+    }
   },
 
   /**
@@ -117,5 +187,145 @@ var SUBCONFIG_10_CHARLAS = {
    * lista: lo que no aparezca hoy es una cuadrilla que empezó sin charla.
    */
   AreasConCobertura: ["Operaciones", "Mantenimiento", "Producción", "Obra / Campo", "Almacén"]
+};
+
+/**
+ * =========================================================================
+ * Lo propio de Charlas que el renderizador genérico no puede deducir.
+ * El resto de la pantalla (tabla, formulario, detalle) lo dibuja MOTOR_RENDER
+ * leyendo el bloque Vistas de arriba.
+ * =========================================================================
+ */
+// Los subconfigs se cargan ANTES que Motor_Render.js: el registro se
+// inicializa aquí para no depender del orden de los <script>.
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["10_Charlas"] = {
+
+  /** Fecha local GMT-5: a las 19:00 de Perú en UTC ya es otro día */
+  _hoy: function () { return PWA_SKILLS.getPeruTime(false); },
+
+  /**
+   * Lo primero que mira un supervisor no es el histórico sino la cobertura
+   * de HOY: qué cuadrilla empezó el turno sin charla.
+   */
+  /**
+   * El tablero de cobertura mira UN dia, asi que no puede depender de las
+   * filas que el Resumen tenga cargadas: con la tabla paginada, las charlas de
+   * hoy pueden estar fuera de la primera pagina (o dentro, da igual: no hay
+   * forma de saberlo). Se piden aparte, con su propia condicion, que acota el
+   * resultado a las charlas de hoy y nunca crece con el historico.
+   */
+  resumen: async function () {
+    const areas = SUBCONFIG_10_CHARLAS.AreasConCobertura || [];
+    const extra = document.querySelector("#main-container #m10-charlas-extra");
+
+    let deHoy = [];
+    if (areas.length && extra) {
+      const res = await DataService.query("10_Charlas", {
+        cond: { Fecha: { eq: "@hoy" }, Estado: { eq: "Ejecutada" } },
+        limite: 500, orden: "area.asc"
+      }).catch(() => null);
+      if (res && res.status === "OK" && Array.isArray(res.payload)) deHoy = res.payload;
+      else {
+        // Sin conexion: lo que haya en pantalla. Se avisa, porque una cobertura
+        // incompleta leida como completa es un "area cubierta" que no lo esta.
+        deHoy = (MOTOR_RENDER._datos["10_Charlas"] || [])
+          .filter(r => r.Fecha === this._hoy() && r.Estado === "Ejecutada");
+        PWA_SKILLS.toast("Cobertura de hoy calculada sin conexión: puede estar incompleta.", "warning", 4000);
+      }
+    }
+
+    let cubiertas = 0;
+    if (extra && areas.length) {
+      const tarjetas = areas.map(a => {
+        const charlas = deHoy.filter(r => r.Area === a);
+        const ok = charlas.length > 0;
+        if (ok) cubiertas++;
+        const turnos = [...new Set(charlas.map(c => c.Turno))].filter(Boolean).join(", ");
+        const tono = ok ? "ok" : "bad";
+        return '<button type="button" data-area="' + esc(a) + '" ' +
+          'class="chl-area text-left p-2.5 rounded-xl border transition-all hover:shadow-md" ' +
+          'style="background:var(--st-' + tono + '-bg);border-color:var(--st-' + tono + '-bd)">' +
+          '<div class="flex items-center gap-1.5 mb-1">' +
+            '<span class="material-symbols-outlined text-[14px]" style="color:var(--st-' + tono + '-fg)" aria-hidden="true">' +
+            (ok ? "check_circle" : "cancel") + '</span>' +
+            '<span class="text-[11px] font-black truncate" style="color:var(--st-' + tono + '-fg)">' + esc(a) + '</span>' +
+          '</div><p class="text-[10px]" style="color:var(--st-' + tono + '-fg)">' +
+          (ok ? charlas.length + " charla(s)" + (turnos ? " · " + esc(turnos) : "") : "Sin charla hoy") +
+          '</p></button>';
+      }).join("");
+      const pct = areas.length ? Math.round(cubiertas / areas.length * 100) : 0;
+      const tonoRes = pct === 100 ? "ok" : pct >= 60 ? "warn" : "bad";
+      extra.innerHTML =
+        '<div class="bg-white rounded-2xl border border-outline-variant p-4 shadow-sm">' +
+          '<div class="flex items-center justify-between mb-3 gap-2 flex-wrap">' +
+            '<h3 class="text-[11px] font-black text-on-surface uppercase tracking-wider flex items-center gap-1.5">' +
+              '<span class="material-symbols-outlined text-[15px] text-primary" aria-hidden="true">today</span>Cobertura de hoy</h3>' +
+            '<span class="text-[10px] font-bold" style="color:var(--st-' + tonoRes + '-fg)">' +
+              cubiertas + " de " + areas.length + " áreas · " + pct + '%</span>' +
+          '</div>' +
+          '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">' + tarjetas + '</div></div>';
+      extra.classList.remove("hidden");
+      extra.querySelectorAll(".chl-area").forEach(b => {
+        b.addEventListener("click", () => {
+          // El filtro va al servidor: asi la tarjeta de un area muestra TODAS
+          // sus charlas de hoy, no solo las que estuvieran descargadas.
+          MOTOR_RENDER.recargar("10_Charlas", {
+            cond: { Area: { eq: b.dataset.area }, Fecha: { eq: "@hoy" } },
+            condEtiqueta: "Área " + b.dataset.area, filtros: {}, busqueda: ""
+          });
+          PWA_SKILLS.toast("Mostrando charlas de hoy del área " + b.dataset.area + ".", "info", 3000);
+        });
+      });
+    }
+
+    MOTOR_RENDER.kpis("10_Charlas", [
+      { tono: "ok",   etiqueta: "Charlas de hoy", cond: { Fecha: { eq: "@hoy" } } },
+      // Depende de la cobertura que se acaba de calcular arriba, no de un
+      // conteo de filas: va como valor ya resuelto.
+      { tono: "bad",  etiqueta: "Áreas sin charla", valor: Math.max(0, areas.length - cubiertas) },
+      { tono: "mute", etiqueta: "Este mes", cond: { Fecha: { gte: "@mes", lt: "@mes+1" } } },
+      { tono: "mute", etiqueta: "Asistencias", metrica: "sum", campo: "Total_Asistentes",
+        formato: n => n == null ? "—" : String(Math.round(parseFloat(n) || 0)) }
+    ]);
+  },
+
+  /** Temas de un toque y hora/turno ya puestos: anotar no debe tomar más que dar la charla */
+  edicion: function (ctx) {
+    const cont = ctx.root.querySelector("#m10-charlas-f-Tema");
+    if (cont && !ctx.root.querySelector("#chl-sugerencias")) {
+      const caja = document.createElement("div");
+      caja.id = "chl-sugerencias";
+      caja.className = "col-span-2 -mt-1 flex flex-wrap gap-1.5";
+      (SUBCONFIG_10_CHARLAS.TemasSugeridos || []).forEach(t => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "px-2.5 py-1.5 rounded-lg border border-outline-variant bg-surface-container-low " +
+                      "text-[11px] font-semibold text-on-surface hover:border-primary hover:bg-primary/5 transition-colors min-h-[34px]";
+        b.textContent = t;
+        b.addEventListener("click", () => { cont.value = t; cont.focus(); });
+        caja.appendChild(b);
+      });
+      cont.parentNode.parentNode.insertBefore(caja, cont.parentNode.nextSibling);
+    }
+    if (!ctx.nuevo) return;
+    const hora = ctx.root.querySelector("#m10-charlas-f-Hora");
+    if (hora && !hora.value) hora.value = PWA_SKILLS.getPeruTime(true).slice(11, 16);
+    const turno = ctx.root.querySelector("#m10-charlas-f-Turno");
+    if (turno && !turno.value) {
+      const h = parseInt(PWA_SKILLS.getPeruTime(true).slice(11, 13), 10);
+      turno.value = h < 13 ? "Día" : h < 20 ? "Tarde" : "Noche";
+    }
+  },
+
+  /** El total de asistentes es la lista, no un número que alguien teclea */
+  antesDeGuardar: function (ctx) {
+    ctx.datos.Total_Asistentes = String(ctx.hijos.length);
+    if (ctx.datos.Estado === "Ejecutada" && !ctx.hijos.length) {
+      return confirm("No registraste asistentes. Sin lista de asistencia la charla no queda documentada. ¿Guardar igual?");
+    }
+    return true;
+  }
 };
 </script>

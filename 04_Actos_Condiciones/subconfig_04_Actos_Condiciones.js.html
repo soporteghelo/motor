@@ -18,6 +18,9 @@ var SUBCONFIG_04_ACTOS_CONDICIONES = {
 
   Config_Modular: {
     NombreInterno:          "04_Actos_Condiciones",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "Evidencia_Foto",
+    Card_Icon:              "report_problem",
     Titulo:                 "Actos y Condiciones Sub-Estándar",
     DRIVE_FOLDER_NAME:      "04_Actos_Condiciones_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",
@@ -79,8 +82,89 @@ var SUBCONFIG_04_ACTOS_CONDICIONES = {
       defaultValue: "App Móvil"
     },
     "Fecha_Registro":     { type: "Hidden",  required: false }
-  }
+  },
+
+  Vistas: {
+    Subtitulo: "Reportes sub-estándar y su cierre",
+    Resumen: {
+      etiquetaCrear: "Reportar", ordenPor: "Fecha_Reporte",
+      columnas: [
+        { campo: "Fecha_Reporte", etiqueta: "Fecha" },
+        { campo: "Nombre_Reportante", sub: "Area", etiqueta: "Reportante / Área" },
+        { campo: "Tipo_Reporte", etiqueta: "Tipo", tipo: "badge" },
+        { campo: "Categoria", etiqueta: "Categoría" },
+        { campo: "Nivel_Riesgo", etiqueta: "Riesgo", tipo: "badge" },
+        { campo: "Estado", tipo: "badge" }
+      ],
+      vacio: { icono: "report_problem", titulo: "Sin reportes registrados",
+               mensaje: "Reportar un acto o condición sub-estándar es la forma más barata de evitar un accidente.",
+               accion: "Reportar" }
+    },
+    Edicion: {
+      tituloNuevo: "Reportar Acto o Condición", tituloEditar: "Editar Reporte",
+      secciones: [
+        { titulo: "Quién reporta", icono: "person",
+          campos: ["Fecha_Reporte", "Fecha_Incidente", "Reportado_Por", "Nombre_Reportante", "Area"] },
+        { titulo: "Qué ocurrió", icono: "report_problem",
+          campos: ["Tipo_Reporte", "Categoria", "Nivel_Riesgo", "Descripcion"] },
+        { titulo: "Gestión", icono: "task_alt",
+          campos: ["Estado", "Moderado_Por", "Fecha_Moderacion", "Accion_Correctiva", "Observaciones_Mod", "Fuente"] },
+        { titulo: "Evidencia", icono: "photo_camera", campos: ["Evidencia_Foto"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Categoria", subtitulo: ["Area", "Fecha_Reporte"],
+      secciones: [
+        { titulo: "Datos del reporte",
+          campos: ["Fecha_Reporte", "Fecha_Incidente", "Nombre_Reportante", "Area", "Tipo_Reporte", "Categoria", "Nivel_Riesgo", "Fuente"] },
+        { titulo: "Descripción", campos: ["Descripcion"] },
+        { titulo: "Gestión", campos: ["Estado", "Moderado_Por", "Fecha_Moderacion", "Accion_Correctiva", "Observaciones_Mod"] }
+      ]
+    },
+    Badges: {
+      Nivel_Riesgo: { "Bajo (Verde)": { tono: "ok", icono: "check_circle" },
+                      "Medio (Amarillo)": { tono: "warn", icono: "warning" },
+                      "Alto (Rojo)": { tono: "bad", icono: "priority_high" },
+                      "Crítico (Negro)": { tono: "crit", icono: "dangerous" } },
+      Estado: { "Pendiente":   { tono: "warn", icono: "schedule" },
+                "En Revisión": { tono: "info", icono: "search" },
+                "Aprobado":    { tono: "ok",   icono: "check_circle" },
+                "Rechazado":   { tono: "bad",  icono: "cancel" },
+                "Cerrado":     { tono: "mute", icono: "task_alt" } },
+      Tipo_Reporte: { "Acto Subestándar":      { tono: "info", icono: "person_alert" },
+                      "Condición Subestándar": { tono: "mute", icono: "foundation" } }
+    }
+  },
 };
 
 console.log("✅ Subconfig 04_Actos_Condiciones cargado.");
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["04_Actos_Condiciones"] = {
+  resumen: function () {
+    MOTOR_RENDER.kpis("04_Actos_Condiciones", [
+      { tono: "mute", etiqueta: "Total",       cond: {} },
+      { tono: "warn", etiqueta: "Pendientes",  cond: { Estado: { eq: "Pendiente" } } },
+      { tono: "info", etiqueta: "En revisión", cond: { Estado: { eq: "En Revisión" } } },
+      // Los valores van completos, como los declara acceptedValues: la
+      // condicion se evalua en Postgres y alli no hay expresiones regulares.
+      { tono: "bad",  etiqueta: "Riesgo alto abierto",
+        cond: { Nivel_Riesgo: { in: ["Alto (Rojo)", "Crítico (Negro)"] }, Estado: { neq: "Cerrado" } } }
+    ]);
+  },
+  /** Quien reporta queda identificado sin tener que escribirlo */
+  edicion: function (ctx) {
+    if (!ctx.nuevo) return;
+    const u = AppState.User || {};
+    const nombre = ctx.root.querySelector("#m04-actos-condiciones-f-Nombre_Reportante");
+    if (nombre && !nombre.value) nombre.value = u.Nombre || "";
+    const dni = ctx.root.querySelector("#m04-actos-condiciones-f-Reportado_Por");
+    if (dni && !dni.value) dni.value = u.DNI || "";
+    const fuente = ctx.root.querySelector("#m04-actos-condiciones-f-Fuente");
+    if (fuente && !fuente.value) fuente.value = "App Móvil";
+    const estado = ctx.root.querySelector("#m04-actos-condiciones-f-Estado");
+    if (estado && !estado.value) estado.value = "Pendiente";
+  }
+};
 </script>

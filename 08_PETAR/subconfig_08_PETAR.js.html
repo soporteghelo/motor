@@ -25,6 +25,9 @@ var SUBCONFIG_08_PETAR = {
 
   Config_Modular: {
     NombreInterno:          "08_PETAR",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "",
+    Card_Icon:              "assignment_turned_in",
     Titulo:                 "Permisos de Alto Riesgo",
     DRIVE_FOLDER_NAME:      "08_PETAR_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -81,7 +84,8 @@ var SUBCONFIG_08_PETAR = {
     "Empresa":            { type: "Text", required: false, isFilter: true,  label: "Empresa ejecutora" },
     "Ejecutante_DNI":     { type: "REF",  required: false, isFilter: false, label: "Responsable de la ejecución",
                             relationalDataOrigin: "01_Usuarios" },
-    "Num_Trabajadores":   { type: "Text", required: false, isFilter: false, label: "N.º de trabajadores" },
+    "Num_Trabajadores":   { type: "Text", required: false, isFilter: false, label: "N.º de trabajadores",
+                         control: "number", min: 1, max: 999, step: 1 },
     "Supervisor_DNI":     { type: "REF",  required: false, isFilter: false, label: "Supervisor a cargo",
                             relationalDataOrigin: "01_Usuarios",
                             slice: { column: "Rol", value: "Supervisor" } },
@@ -116,6 +120,61 @@ var SUBCONFIG_08_PETAR = {
 
     "Registrado_Por":     { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
     "Fecha_Registro":     { type: "Hidden", required: false }
+  },
+
+  Vistas: {
+    Subtitulo: "Permisos de trabajo de alto riesgo",
+    Resumen: {
+      etiquetaCrear: "Solicitar", ordenPor: "Fecha",
+      columnas: [
+        { campo: "Tipo_Trabajo", sub: "Descripcion", etiqueta: "Tipo de trabajo" },
+        { campo: "Fecha", etiqueta: "Fecha", render: "ventana" },
+        { campo: "Estado", etiqueta: "Vigencia", render: "vigencia" },
+        { campo: "Estado", tipo: "badge" },
+        { campo: "Area", etiqueta: "Área" }
+      ],
+      vacio: { icono: "assignment_turned_in", titulo: "Sin permisos registrados",
+               mensaje: "Ningún trabajo de alto riesgo debería empezar sin su PETAR aprobado.",
+               accion: "Solicitar permiso" }
+    },
+    Edicion: {
+      tituloNuevo: "Solicitar PETAR", tituloEditar: "Editar PETAR",
+      secciones: [
+        { titulo: "Trabajo solicitado", icono: "assignment_turned_in",
+          campos: ["Tipo_Trabajo", "Descripcion", "Area", "Lugar_Especifico"] },
+        { titulo: "Ventana autorizada", icono: "schedule",
+          campos: ["Fecha", "Hora_Inicio", "Hora_Fin"] },
+        { titulo: "Quiénes intervienen", icono: "groups",
+          campos: ["Empresa", "Ejecutante_DNI", "Num_Trabajadores", "Supervisor_DNI", "IPERC_Referencia"] },
+        { titulo: "Aprobación y cierre", icono: "verified",
+          campos: ["Estado", "Aprobado_Por", "Fecha_Aprobacion", "Hora_Cierre", "Observaciones"] },
+        { titulo: "Firmas", icono: "draw",
+          campos: ["Firma_Solicitante", "Firma_Aprobador"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Tipo_Trabajo", subtitulo: ["Area", "Fecha"],
+      secciones: [
+        { titulo: "Trabajo autorizado",
+          campos: ["Tipo_Trabajo", "Area", "Lugar_Especifico", "Fecha", "Hora_Inicio", "Hora_Fin", "Estado"] },
+        { titulo: "Descripción", campos: ["Descripcion"] },
+        { titulo: "Quiénes intervienen",
+          campos: ["Empresa", "Ejecutante_DNI", "Num_Trabajadores", "Supervisor_DNI", "IPERC_Referencia"] },
+        { titulo: "Aprobación y cierre",
+          campos: ["Aprobado_Por", "Fecha_Aprobacion", "Hora_Cierre", "Total_Controles", "Controles_No_Cumple", "Observaciones"] }
+      ]
+    },
+    Hijos: { titulo: "Verificaciones previas", icono: "checklist",
+             vacio: "Carga los controles estándar del tipo de trabajo o agrégalos uno a uno.",
+             vacioDetalle: "Este permiso no registró verificaciones." },
+    Badges: {
+      Estado: { "Solicitado":   { tono: "warn", icono: "pending" },
+                "Aprobado":     { tono: "ok",   icono: "verified" },
+                "En ejecución": { tono: "info", icono: "play_circle" },
+                "Cerrado":      { tono: "mute", icono: "task_alt" },
+                "Rechazado":    { tono: "bad",  icono: "cancel" },
+                "Anulado":      { tono: "mute", icono: "block" } }
+    }
   },
 
   /**
@@ -196,6 +255,107 @@ var SUBCONFIG_08_PETAR = {
       "Envases rotulados correctamente",
       "Incompatibilidades químicas verificadas"
     ]
+  }
+};
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["08_PETAR"] = {
+  /** La pregunta operativa no es el estado guardado sino "¿puedo trabajar ahora?" */
+  vigencia: function (r) {
+    if (r.Estado === "Cerrado") return { tono: "mute", texto: "Cerrado" };
+    if (r.Estado === "Rechazado" || r.Estado === "Anulado") return { tono: "mute", texto: r.Estado };
+    if (!r.Fecha || !r.Hora_Inicio || !r.Hora_Fin) return { tono: "mute", texto: "Sin horario" };
+    const ini = new Date(r.Fecha + "T" + r.Hora_Inicio), fin = new Date(r.Fecha + "T" + r.Hora_Fin);
+    if (isNaN(ini) || isNaN(fin)) return { tono: "mute", texto: "Sin horario" };
+    const ahora = new Date();
+    if (ahora < ini) return { tono: "info", texto: "Programado" };
+    if (ahora > fin) return { tono: "bad",  texto: "Vencido sin cerrar" };
+    const restan = Math.round((fin - ahora) / 60000);
+    return { tono: "ok", texto: restan > 60 ? "Vigente · " + Math.floor(restan / 60) + " h" : "Vigente · " + restan + " min" };
+  },
+  columnas: {
+    ventana: function (r) {
+      return '<div class="text-[11px] font-semibold text-on-surface tabular-nums">' + esc(r.Fecha || "—") + "</div>" +
+             '<div class="text-[10px] text-secondary tabular-nums">' +
+             esc((r.Hora_Inicio || "--") + " a " + (r.Hora_Fin || "--")) + "</div>";
+    },
+    vigencia: function (r) {
+      const v = this.vigencia(r);
+      return '<span class="mr-badge" style="background:var(--st-' + v.tono + "-bg);color:var(--st-" + v.tono +
+             "-fg);border-color:var(--st-" + v.tono + '-bd)">' + esc(v.texto) + "</span>";
+    }
+  },
+  // Estados en los que un permiso sigue "vivo": los que vigencia() no descarta
+  // de entrada. Cerrado, Rechazado y Anulado ya no vencen.
+  ESTADOS_VIVOS: ["Solicitado", "Aprobado", "En ejecución"],
+
+  resumen: function () {
+    const vivos = this.ESTADOS_VIVOS;
+    MOTOR_RENDER.kpis("08_PETAR", [
+      // La ventana del permiso es fecha + hora, asi que se compara con la hora
+      // de Peru: un permiso de hoy que ya acabo no esta vigente.
+      { tono: "ok", etiqueta: "Vigentes ahora",
+        cond: { Estado: { in: vivos }, Fecha: { eq: "@hoy" },
+                Hora_Inicio: { lte: "@hora" }, Hora_Fin: { gte: "@hora" } } },
+      { tono: "warn", etiqueta: "Por aprobar", cond: { Estado: { eq: "Solicitado" } } },
+      // Vencido = de un dia anterior, O de hoy con la hora de fin ya pasada.
+      // Esas dos alternativas son el motivo de que el lenguaje admita "$o":
+      // con una sola condicion habria que elegir cual de los dos casos contar.
+      { tono: "bad", etiqueta: "Vencidos sin cerrar",
+        cond: { Estado: { in: vivos },
+                $o: [ { Fecha: { lt: "@hoy" } },
+                      { Fecha: { eq: "@hoy" }, Hora_Fin: { lt: "@hora" } } ] } },
+      { tono: "mute", etiqueta: "Cerrados", cond: { Estado: { eq: "Cerrado" } } }
+    ]);
+  },
+  /** Los controles estándar del tipo de trabajo se cargan de un toque */
+  edicion: function (ctx) {
+    const raiz = ctx.root;
+    const tipo = raiz.querySelector("#m08-petar-f-Tipo_Trabajo");
+    if (tipo && !raiz.querySelector("#ptr-cargar-checklist")) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.id = "ptr-cargar-checklist";
+      b.className = "mt-2 h-9 px-3 rounded-lg border border-outline-variant text-[11px] font-bold text-primary " +
+                    "hover:bg-primary/5 transition-all inline-flex items-center gap-1.5";
+      b.innerHTML = '<span class="material-symbols-outlined text-[15px]" aria-hidden="true">checklist</span>' +
+                    "Cargar controles estándar";
+      b.addEventListener("click", () => this.cargarChecklist(raiz));
+      tipo.parentNode.appendChild(b);
+    }
+    if (ctx.nuevo) {
+      const e = raiz.querySelector("#m08-petar-f-Estado");
+      if (e && !e.value) e.value = "Solicitado";
+    }
+  },
+  cargarChecklist: function (raiz) {
+    const tipo = raiz.querySelector("#m08-petar-f-Tipo_Trabajo");
+    if (!tipo || !tipo.value) { PWA_SKILLS.toast("Elige primero el tipo de trabajo.", "warning", 3000); return; }
+    const items = (SUBCONFIG_08_PETAR.Checklists || {})[tipo.value] || [];
+    if (!items.length) { PWA_SKILLS.toast("No hay controles estándar para este tipo de trabajo.", "info", 3000); return; }
+    const cont = raiz.querySelector("#m08-petar-hijos");
+    const yaHay = cont ? cont.querySelectorAll('[id^="row-"]').length : 0;
+    if (yaHay && !confirm("Ya hay " + yaHay + ' control(es). ¿Reemplazarlos por los estándar de "' + tipo.value + '"?')) return;
+    if (cont) cont.innerHTML = "";
+    items.forEach(t => MOTOR_RENDER.agregarFila("08_PETAR", { Item: t, Cumple: "" }));
+    MOTOR_RENDER.contarHijos("08_PETAR");
+    PWA_SKILLS.toast(items.length + ' controles cargados para "' + tipo.value + '".', "success", 3000);
+  },
+  /** Segregación: nadie aprueba el permiso que él mismo solicitó (RLS lo repite) */
+  antesDeGuardar: function (ctx) {
+    const d = ctx.datos;
+    d.Total_Controles = String(ctx.hijos.length);
+    d.Controles_No_Cumple = String(ctx.hijos.filter(h => String(h.Cumple || "").toLowerCase() === "no").length);
+    if (d.Estado === "Aprobado" && d.Aprobado_Por && d.Aprobado_Por === (AppState.User || {}).DNI &&
+        !confirm("Vas a aprobar un permiso que tú mismo solicitaste. El servidor lo rechazará. ¿Continuar igual?")) {
+      return false;
+    }
+    if (parseInt(d.Controles_No_Cumple, 10) > 0 && d.Estado === "Aprobado" &&
+        !confirm("Hay " + d.Controles_No_Cumple + " control(es) que no cumplen. ¿Aprobar de todas formas?")) {
+      return false;
+    }
+    return true;
   }
 };
 </script>

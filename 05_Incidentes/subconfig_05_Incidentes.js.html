@@ -22,6 +22,9 @@ var SUBCONFIG_05_INCIDENTES = {
 
   Config_Modular: {
     NombreInterno:          "05_Incidentes",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "Evidencia_Fotos",
+    Card_Icon:              "personal_injury",
     Titulo:                 "Incidentes y Accidentes",
     DRIVE_FOLDER_NAME:      "05_Incidentes_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -62,6 +65,10 @@ var SUBCONFIG_05_INCIDENTES = {
                            ], allowOtherValues: false },
     "Gravedad":          { type: "Enum", required: true,  isFilter: true,  label: "Gravedad",
                            acceptedValues: ["Leve", "Grave", "Mortal"], allowOtherValues: false },
+    // Distinción clásica de Flash Report: lo ocurrido vs. lo que pudo pasar.
+    // Es lo que prioriza la investigación de un cuasi accidente frente a otro.
+    "Severidad_Potencial": { type: "Enum", required: false, isFilter: true, label: "Severidad potencial (si hubiera sido peor)",
+                           acceptedValues: ["Leve", "Grave", "Mortal"], allowOtherValues: false },
     "Area":              { type: "Enum", required: true,  isFilter: true,  label: "Área",
                            acceptedValues: [
                              "Operaciones", "Mantenimiento", "Almacén", "Logística",
@@ -80,8 +87,22 @@ var SUBCONFIG_05_INCIDENTES = {
                              "No aplica", "Cabeza", "Ojos", "Rostro", "Cuello", "Tronco / espalda",
                              "Brazos", "Manos / dedos", "Piernas", "Pies", "Órganos internos", "Múltiples"
                            ], allowOtherValues: false },
-    "Dias_Descanso":     { type: "Text", required: false, isFilter: false, label: "Días de descanso médico" },
+    "Dias_Descanso":     { type: "Text", required: false, isFilter: false, label: "Días de descanso médico",
+                         control: "number", min: 0, max: 999, step: 1 },
     "Testigos":          { type: "Text", required: false, isFilter: false, label: "Testigos" },
+    "Tipo_Personal":     { type: "Enum", required: false, isFilter: true,  label: "Tipo de personal involucrado",
+                           acceptedValues: ["Personal propio", "Contratista", "Visita / Tercero"],
+                           allowOtherValues: false },
+
+    // ── Respuesta inmediata (Flash Report: se reporta ANTES de cerrar la investigación) ──
+    "Acciones_Inmediatas": { type: "Text", required: false, isFilter: false, label: "Acciones inmediatas tomadas" },
+    "Equipo_Involucrado":  { type: "Text", required: false, isFilter: false, label: "Equipo / maquinaria involucrada" },
+    "Costo_Estimado_Danos":{ type: "Text", required: false, isFilter: false, label: "Costo estimado de daños materiales (S/)",
+                         control: "number", min: 0, step: 0.01 },
+    "Requiere_Notificacion_Autoridad": { type: "Enum", required: false, isFilter: true,
+                           label: "¿Requiere notificación a la autoridad?",
+                           acceptedValues: ["Sí", "No", "Pendiente de evaluar"], allowOtherValues: false },
+    "Notificados":        { type: "Text", required: false, isFilter: false, label: "Notificado a (nombres, cargos, hora)" },
 
     // ── Por qué pasó ── (el análisis que evita la repetición)
     "Causa_Inmediata":   { type: "Text", required: false, isFilter: false, label: "Causa inmediata" },
@@ -112,6 +133,109 @@ var SUBCONFIG_05_INCIDENTES = {
 
     "Reportado_Por":     { type: "Text", required: false, isFilter: false, label: "Reportado por" },
     "Fecha_Registro":    { type: "Hidden", required: false }
+  },
+
+  Vistas: {
+    Subtitulo: "Registro, investigación y cierre",
+    Resumen: {
+      etiquetaCrear: "Reportar", ordenPor: "Fecha_Evento",
+      columnas: [
+        { campo: "Fecha_Evento", sub: "Hora_Evento", etiqueta: "Fecha / Hora" },
+        { campo: "Tipo_Evento", etiqueta: "Tipo" },
+        { campo: "Gravedad", tipo: "badge" },
+        { campo: "Nombre_Trabajador", sub: "Area", etiqueta: "Afectado / Área" },
+        { campo: "Estado", tipo: "badge" }
+      ],
+      vacio: { icono: "personal_injury", titulo: "Sin incidentes registrados",
+               mensaje: "Que no haya registros no significa que no haya ocurrido nada: reportar es el primer control.",
+               accion: "Reportar incidente" }
+    },
+    Edicion: {
+      tituloNuevo: "Reportar Incidente", tituloEditar: "Editar Incidente",
+      secciones: [
+        { titulo: "Qué pasó y cuándo", icono: "event",
+          campos: ["Fecha_Evento", "Hora_Evento", "Tipo_Evento", "Gravedad", "Severidad_Potencial", "Area", "Lugar_Exacto", "Descripcion"] },
+        { titulo: "Persona afectada", icono: "person",
+          campos: ["Trabajador_DNI", "Nombre_Trabajador", "Puesto", "Tipo_Personal", "Parte_Afectada", "Dias_Descanso", "Testigos"] },
+        { titulo: "Respuesta inmediata", icono: "emergency",
+          campos: ["Acciones_Inmediatas", "Equipo_Involucrado", "Costo_Estimado_Danos", "Requiere_Notificacion_Autoridad", "Notificados"] },
+        { titulo: "Investigación", icono: "search",
+          campos: ["Causa_Inmediata", "Causa_Basica", "Categoria_Causa", "Estado", "Investigador_DNI", "Fecha_Cierre"] },
+        { titulo: "Evidencia", icono: "photo_camera",
+          campos: ["Evidencia_Fotos", "Firma_Investigador"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Tipo_Evento", subtitulo: ["Area", "Fecha_Evento"],
+      secciones: [
+        { titulo: "El evento",
+          campos: ["Fecha_Evento", "Hora_Evento", "Tipo_Evento", "Gravedad", "Severidad_Potencial", "Area", "Lugar_Exacto"] },
+        { titulo: "Descripción", campos: ["Descripcion"] },
+        { titulo: "Persona afectada",
+          campos: ["Nombre_Trabajador", "Trabajador_DNI", "Puesto", "Tipo_Personal", "Parte_Afectada", "Dias_Descanso", "Testigos"] },
+        { titulo: "Respuesta y notificación",
+          campos: ["Acciones_Inmediatas", "Equipo_Involucrado", "Costo_Estimado_Danos", "Requiere_Notificacion_Autoridad", "Notificados"] },
+        { titulo: "Investigación",
+          campos: ["Causa_Inmediata", "Causa_Basica", "Categoria_Causa", "Estado", "Investigador_DNI", "Fecha_Cierre"] }
+      ]
+    },
+    Hijos: { titulo: "Acciones correctivas", icono: "task_alt",
+             vacio: "Un incidente sin acciones correctivas se repite.",
+             vacioDetalle: "Este incidente todavía no tiene acciones correctivas." },
+    Badges: {
+      Gravedad: { "Leve":  { tono: "warn", icono: "info" },
+                  "Grave": { tono: "bad",  icono: "priority_high" },
+                  "Mortal":{ tono: "crit", icono: "dangerous" } },
+      Estado: { "Reportado":           { tono: "warn", icono: "flag" },
+                "En investigación":    { tono: "info", icono: "search" },
+                "Con acciones abiertas":{ tono: "warn", icono: "pending_actions" },
+                "Cerrado":             { tono: "ok",   icono: "task_alt" } }
+    }
+  },
+};
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["05_Incidentes"] = {
+  resumen: function () {
+    MOTOR_RENDER.kpis("05_Incidentes", [
+      { tono: "mute", etiqueta: "Este mes",
+        cond: { Fecha_Evento: { gte: "@mes", lt: "@mes+1" } } },
+      { tono: "warn", etiqueta: "Sin cerrar", cond: { Estado: { neq: "Cerrado" } } },
+      { tono: "bad",  etiqueta: "Graves o mortales", cond: { Gravedad: { in: ["Grave", "Mortal"] } } },
+      // Dias sin accidentes con tiempo perdido: el indicador que la gente mira.
+      // Es la fecha MAS RECIENTE de ese tipo de evento, y la pide la base con
+      // max(): depende justamente del registro mas antiguo que importa, que es
+      // lo que una tabla paginada nunca tendria cargado.
+      { tono: "ok", etiqueta: "Días sin acc. c/ tiempo perdido",
+        metrica: "max", campo: "Fecha_Evento", filtrable: false,
+        cond: { Tipo_Evento: { like: "tiempo perdido" } },
+        formato: function (ultima) {
+          if (!ultima) return "—";
+          const f = new Date(ultima), hoy = new Date(PWA_SKILLS.getPeruTime(false));
+          if (isNaN(f)) return "—";
+          return String(Math.max(0, Math.round((hoy - f) / 86400000)));
+        } }
+    ]);
+  },
+  edicion: function (ctx) {
+    if (!ctx.nuevo) return;
+    const hora = ctx.root.querySelector("#m05-incidentes-f-Hora_Evento");
+    if (hora && !hora.value) hora.value = PWA_SKILLS.getPeruTime(true).slice(11, 16);
+    const estado = ctx.root.querySelector("#m05-incidentes-f-Estado");
+    if (estado && !estado.value) estado.value = "Reportado";
+    const quien = ctx.root.querySelector("#m05-incidentes-f-Reportado_Por");
+    if (quien && !quien.value) quien.value = (AppState.User || {}).DNI || "";
+  },
+  /** Un evento mortal o con tiempo perdido no se cierra sin investigación */
+  antesDeGuardar: function (ctx) {
+    const d = ctx.datos;
+    if ((d.Gravedad === "Mortal" || /tiempo perdido/i.test(d.Tipo_Evento || "")) &&
+        d.Estado === "Cerrado" && !String(d.Causa_Basica || "").trim()) {
+      PWA_SKILLS.toast("Un evento de esta gravedad no se cierra sin causa básica registrada.", "error", 5000);
+      return false;
+    }
+    return true;
   }
 };
 </script>

@@ -21,6 +21,9 @@ var SUBCONFIG_09_EPP = {
 
   Config_Modular: {
     NombreInterno:          "09_EPP",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "Foto_Cargo",
+    Card_Icon:              "shield",
     Titulo:                 "Entrega de EPP",
     DRIVE_FOLDER_NAME:      "09_EPP_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -42,7 +45,7 @@ var SUBCONFIG_09_EPP = {
         ] },
       { name: "Marca",      label: "Marca / modelo", type: "text", fullWidth: true, colSpan: "md:col-span-2" },
       { name: "Talla",      label: "Talla",    type: "text",   colSpan: "md:col-span-1" },
-      { name: "Cantidad",   label: "Cant.",    type: "number", colSpan: "md:col-span-1" },
+      { name: "Cantidad",   label: "Cant.",    type: "number", min: 1, max: 999, step: 1, colSpan: "md:col-span-1" },
       { name: "Vida_Util",  label: "Vida útil", type: "select", colSpan: "md:col-span-2",
         options: [
           { value: "3",  label: "3 meses" },  { value: "6",  label: "6 meses" },
@@ -111,6 +114,54 @@ var SUBCONFIG_09_EPP = {
     "Fecha_Registro":    { type: "Hidden", required: false }
   },
 
+  Vistas: {
+    Subtitulo: "Entrega y reposición de equipos",
+    Resumen: {
+      etiquetaCrear: "Registrar entrega", ordenPor: "Fecha_Entrega",
+      columnas: [
+        { campo: "Nombre_Trabajador", sub: "Area", etiqueta: "Trabajador / Área" },
+        { campo: "Tipo_Entrega", etiqueta: "Motivo" },
+        { campo: "Fecha_Entrega", etiqueta: "Entrega" },
+        { campo: "Total_Items", etiqueta: "Ítems", numero: true },
+        { campo: "Proxima_Reposicion", etiqueta: "Reposición", render: "reposicion" },
+        { campo: "Estado", tipo: "badge" }
+      ],
+      vacio: { icono: "shield", titulo: "Sin entregas registradas",
+               mensaje: "El cargo de EPP firmado es la prueba de que el equipo se entregó.",
+               accion: "Registrar entrega" }
+    },
+    Edicion: {
+      tituloNuevo: "Registrar Entrega de EPP", tituloEditar: "Editar Entrega de EPP",
+      secciones: [
+        { titulo: "A quién se entrega", icono: "person",
+          campos: ["Trabajador_DNI", "Nombre_Trabajador", "Area", "Puesto"] },
+        { titulo: "Entrega", icono: "shield",
+          campos: ["Tipo_Entrega", "Fecha_Entrega", "Entregado_Por", "Estado", "Proxima_Reposicion", "Observaciones"] },
+        { titulo: "Cargo firmado", icono: "draw",
+          campos: ["Firma_Trabajador", "Foto_Cargo"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Nombre_Trabajador", subtitulo: ["Area", "Fecha_Entrega"],
+      secciones: [
+        { titulo: "Trabajador",
+          campos: ["Nombre_Trabajador", "Trabajador_DNI", "Area", "Puesto"] },
+        { titulo: "Entrega",
+          campos: ["Tipo_Entrega", "Fecha_Entrega", "Entregado_Por", "Estado", "Total_Items", "Proxima_Reposicion"] },
+        { titulo: "Observaciones", campos: ["Observaciones"] }
+      ]
+    },
+    Hijos: { titulo: "Equipos entregados", icono: "inventory_2",
+             vacio: "Agrega cada equipo entregado con su talla y vida útil.",
+             vacioDetalle: "Esta entrega no detalla los equipos." },
+    Badges: {
+      Estado: { "Entregado":          { tono: "ok",   icono: "check_circle" },
+                "Pendiente de firma": { tono: "warn", icono: "draw" },
+                "Devuelto":           { tono: "info", icono: "undo" },
+                "Anulado":            { tono: "mute", icono: "block" } }
+    }
+  },
+
   /**
    * Vida útil sugerida por tipo de equipo, en meses.
    * Al elegir el equipo, la fila propone su vida útil habitual; el usuario
@@ -132,6 +183,53 @@ var SUBCONFIG_09_EPP = {
     "Traje impermeable":        "12",
     "Guantes dieléctricos":     "6",
     "Botas dieléctricas":       "12"
+  }
+};
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["09_EPP"] = {
+  /** Un EPP vencido es un trabajador sin protección real */
+  reposicion: function (r) {
+    if (!r.Proxima_Reposicion) return { tono: "mute", texto: "—", clave: "sin-fecha" };
+    const f = new Date(r.Proxima_Reposicion);
+    if (isNaN(f)) return { tono: "mute", texto: "—", clave: "sin-fecha" };
+    const dias = Math.round((f - new Date(PWA_SKILLS.getPeruTime(false))) / 86400000);
+    if (dias < 0)   return { tono: "bad",  texto: "Vencida hace " + Math.abs(dias) + " d", clave: "vencida" };
+    if (dias <= 30) return { tono: "warn", texto: "En " + dias + " d", clave: "por-vencer" };
+    return { tono: "ok", texto: "Vigente", clave: "vigente" };
+  },
+  columnas: {
+    reposicion: function (r) {
+      const v = this.reposicion(r);
+      return '<div class="text-[11px] font-semibold" style="color:var(--st-' + v.tono + '-fg)">' + esc(v.texto) + "</div>" +
+             (r.Proxima_Reposicion ? '<div class="text-[10px] text-secondary tabular-nums">' + esc(r.Proxima_Reposicion) + "</div>" : "");
+    }
+  },
+  resumen: function () {
+    MOTOR_RENDER.kpis("09_EPP", [
+      { tono: "bad",  etiqueta: "Reposición vencida", cond: { Proxima_Reposicion: { lt: "@hoy" } } },
+      { tono: "warn", etiqueta: "Por vencer", cond: { Proxima_Reposicion: { gte: "@hoy", lte: "@hoy+30" } } },
+      { tono: "info", etiqueta: "Sin firma", cond: { Estado: { eq: "Pendiente de firma" } } },
+      { tono: "mute", etiqueta: "Ítems entregados", metrica: "sum", campo: "Total_Items",
+        formato: n => n == null ? "—" : String(Math.round(parseFloat(n) || 0)) }
+    ]);
+  },
+  edicion: function (ctx) {
+    if (!ctx.nuevo) return;
+    const e = ctx.root.querySelector("#m09-epp-f-Estado");
+    if (e && !e.value) e.value = "Entregado";
+    const quien = ctx.root.querySelector("#m09-epp-f-Entregado_Por");
+    if (quien && !quien.value) quien.value = (AppState.User || {}).Nombre || "";
+  },
+  /** El total y la próxima reposición salen del detalle, no se teclean */
+  antesDeGuardar: function (ctx) {
+    ctx.datos.Total_Items = String(ctx.hijos.length);
+    if (!ctx.datos.Proxima_Reposicion) {
+      const fechas = ctx.hijos.map(h => h.Fecha_Reposicion).filter(Boolean).sort();
+      if (fechas.length) ctx.datos.Proxima_Reposicion = fechas[0];
+    }
+    return true;
   }
 };
 </script>

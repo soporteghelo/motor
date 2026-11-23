@@ -1,0 +1,192 @@
+<script>
+/**
+ * OTA_Updater.js.html — actualización por aire de la app instalada
+ * =========================================================================
+ * Solo actúa dentro de la app empaquetada con Capacitor (Android/iOS). En el
+ * navegador y en Apps Script no hace NADA: ahí la actualización ya la da el
+ * despliegue (Vercel) o el service worker.
+ *
+ * QUÉ ES UN "BUNDLE"
+ *   Dentro de la app, el dist/ vive como una carpeta de archivos que lee el
+ *   WebView. Actualizar = descargar otra carpeta y decirle al WebView que la
+ *   próxima vez arranque desde ahí. El APK no se reinstala.
+ *
+ * FLUJO (el otro lado está en tools/ota_publish.js)
+ *   1. notifyAppReady() — confirma que el bundle actual arrancó bien. Si no
+ *      se llama antes de appReadyTimeout, el plugin REVIERTE al anterior por
+ *      su cuenta. Es la red de seguridad contra publicar un bundle roto.
+ *   2. Se lee <OTA_URL>/latest.json sin caché.
+ *   3. Si la versión difiere y la app nativa alcanza, se descarga el zip. El
+ *      plugin comprueba su SHA-256 EN NATIVO y rechaza el archivo si no
+ *      cuadra: nadie puede colar otro bundle.
+ *   4. next() — se activa en el SIGUIENTE arranque, nunca ahora. Recargar en
+ *      caliente borraría el formulario que alguien esté llenando en campo.
+ *
+ * No se envía nada a terceros: updateUrl y statsUrl van vacíos en
+ * capacitor.config.json, así que el plugin solo habla con tu Supabase.
+ * =========================================================================
+ */
+window.MOTOR_OTA = (function () {
+  'use strict';
+
+  var API = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
+  var nativo = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+  var env = window.__MOTOR_ENV__ || {};
+
+  var estado = {
+    activo: nativo && !!API,
+    versionActual: '',
+    versionNativa: '',
+    disponible: null,      // versión ya descargada, lista para el próximo arranque
+    ultimaRevision: null,
+    motivo: ''
+  };
+
+  /**
+   * Base donde viven latest.json y los zips.
+   * Orden: OTA_URL del build → SUPABASE_URL del build → la URL que ya tiene
+   * la app. Lo último importa: el build se hace a menudo sin .env y entonces
+   * la URL real es la de Global_Config.js.html, no la del entorno.
+   */
+  function base() {
+    var u = String(env.OTA_URL || '').trim();
+    if (!u) {
+      var sb = String(env.SUPABASE_URL || '').trim() ||
+               (window.AppState && AppState.Supabase && String(AppState.Supabase.URL || '').trim()) || '';
+      if (sb) u = sb.replace(/\/+$/, '') + '/storage/v1/object/public/actualizaciones';
+    }
+    return u.replace(/\/+$/, '');
+  }
+
+  /** Compara "1.2.3" o "1.2.3-abc". Devuelve -1, 0 o 1. El sufijo se ignora. */
+  function comparar(a, b) {
+    var pa = String(a || '0').split('-')[0].split('.').map(Number);
+    var pb = String(b || '0').split('-')[0].split('.').map(Number);
+    for (var i = 0; i < 3; i++) {
+      var x = pa[i] || 0, y = pb[i] || 0;
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function avisar(msg, tipo, ms) {
+    try {
+      if (window.PWA_SKILLS && PWA_SKILLS.toast) PWA_SKILLS.toast(msg, tipo || 'info', ms || 5000);
+      else console.log('[OTA] ' + msg);
+    } catch (e) { console.log('[OTA] ' + msg); }
+  }
+
+  /**
+   * Confirma que este bundle funciona. Hasta que esto corre, el plugin tiene
+   * un cronómetro en marcha para revertir. Se llama lo antes posible.
+   */
+  function confirmarArranque() {
+    if (!estado.activo) return Promise.resolve();
+    return API.notifyAppReady()
+      .then(function (r) {
+        if (r && r.bundle) {
+          estado.versionActual = r.bundle.version || '';
+          console.log('[OTA] bundle confirmado: ' + (estado.versionActual || '(del APK)'));
+        }
+      })
+      .catch(function (e) { console.warn('[OTA] notifyAppReady falló: ' + (e && e.message)); });
+  }
+
+  /** Versión en uso: la del bundle descargado o, si es el del APK, la del build. */
+  function versionEnUso(bundle) {
+    var v = bundle && bundle.version;
+    return (v && v !== 'builtin') ? v : (env.OTA_VERSION || '');
+  }
+
+  /**
+   * Busca una actualización y la deja lista para el próximo arranque.
+   * @param {boolean} manual true si lo pidió el usuario. En automático se
+   *        calla: sin señal esto falla a diario y la app sigue funcionando.
+   */
+  function buscar(manual) {
+    if (!estado.activo) {
+      estado.motivo = 'La actualización por aire solo existe en la app instalada.';
+      if (manual) avisar(estado.motivo, 'info');
+      return Promise.resolve(null);
+    }
+    var raiz = base();
+    if (!raiz) {
+      estado.motivo = 'Falta OTA_URL (o SUPABASE_URL) en la configuración del build.';
+      if (manual) avisar(estado.motivo, 'error');
+      return Promise.resolve(null);
+    }
+
+    estado.ultimaRevision = new Date().toISOString();
+    var info = null;
+
+    return API.current()
+      .then(function (actual) {
+        estado.versionActual = versionEnUso(actual && actual.bundle);
+        estado.versionNativa = (actual && actual.native) || '';
+        return fetch(raiz + '/latest.json?t=' + Date.now(), { cache: 'no-store' });
+      })
+      .then(function (r) {
+        if (!r.ok) throw new Error('latest.json respondió HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        info = j || {};
+        if (!info.version || !info.url || !info.sha256) {
+          throw new Error('latest.json incompleto: faltan version, url o sha256.');
+        }
+        if (info.version === estado.versionActual) {
+          estado.motivo = 'Ya tienes la última versión.';
+          if (manual) avisar(estado.motivo, 'success', 3000);
+          return null;
+        }
+        // Un bundle que necesita código nativo nuevo (un plugin, un permiso) NO
+        // se puede aplicar sobre un APK viejo: eso solo se arregla reinstalando.
+        if (info.minNativa && estado.versionNativa && comparar(estado.versionNativa, info.minNativa) < 0) {
+          estado.motivo = 'Hay una versión nueva que requiere reinstalar la app. Pide el instalador al administrador.';
+          avisar(estado.motivo, 'warning', 9000);
+          return null;
+        }
+        console.log('[OTA] descargando ' + info.version + ' (' + (info.bytes || '?') + ' bytes)');
+        return API.download({ url: info.url, version: info.version, checksum: info.sha256 });
+      })
+      .then(function (bundle) {
+        if (!bundle) return null;
+        // next(): se activa al próximo arranque. Nunca en caliente: alguien
+        // puede estar a mitad de un PETAR sin conexión.
+        return API.next({ id: bundle.id }).then(function () {
+          estado.disponible = info.version;
+          estado.motivo = 'Actualización lista: se aplicará al reabrir la app.';
+          avisar(estado.motivo, 'success', 7000);
+          return info.version;
+        });
+      })
+      .catch(function (e) {
+        var m = (e && e.message) || String(e);
+        estado.motivo = m;
+        console.warn('[OTA] sin actualizar: ' + m);
+        if (manual) avisar('No se pudo buscar la actualización: ' + m, 'error', 7000);
+        return null;
+      });
+  }
+
+  if (nativo && API) {
+    // 1) Confirmar cuanto antes. 2) Buscar sin estorbar el arranque.
+    confirmarArranque().then(function () {
+      setTimeout(function () { buscar(false); }, 8000);
+    });
+
+    // Al volver del fondo, si pasó más de una hora, se vuelve a mirar.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') return;
+      var t = estado.ultimaRevision ? Date.parse(estado.ultimaRevision) : 0;
+      if (Date.now() - t > 3600000) buscar(false);
+    });
+  }
+
+  return {
+    estado: function () { return JSON.parse(JSON.stringify(estado)); },
+    buscar: function () { return buscar(true); },
+    activo: function () { return estado.activo; }
+  };
+})();
+</script>

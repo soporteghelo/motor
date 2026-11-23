@@ -24,6 +24,42 @@
 </div>
 
 <script>
+/** Botón "Verificar conexión": diagnóstico del proveedor activo (Supabase o Apps Script). */
+async function verificarConexionBD() {
+  const btn = document.querySelector('#main-container #cfg-btn-verificar-bd');
+  if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+  try {
+    const r = await PWA_SKILLS.renderDiagnosticoBD('cfg-diag-bd');
+    if (r) PWA_SKILLS.toast(r.ok ? 'Conexión con la base de datos verificada.' : 'Se encontraron problemas: revisa la lista.', r.ok ? 'success' : 'warning', 3500);
+  } catch (e) {
+    PWA_SKILLS.toast('No se pudo verificar: ' + e.message, 'error', 5000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+  }
+}
+
+/** Una fila por módulo con los roles que lo ven (o el motivo por el que nadie lo ve). */
+function resumenVisibilidad() {
+  if (typeof PERMISOS === 'undefined') return '';
+  const vis = PERMISOS._visibilidad();
+  const mods = PERMISOS.modulos();
+  if (!mods.length) return '<p class="text-[11px] text-secondary py-2">Sin módulos registrados.</p>';
+  return mods.map(m => {
+    let det;
+    if (!PERMISOS.moduloEnPlan(m.id)) det = '<span class="text-[11px] font-bold text-secondary">Fuera del plan</span>';
+    else {
+      const roles = PERMISOS.ROLES_CONFIGURABLES.filter(r => PERMISOS.visibleParaRol(m.id, r, vis));
+      det = roles.length === PERMISOS.ROLES_CONFIGURABLES.length
+        ? '<span class="text-[11px] font-bold text-on-surface">Todos</span>'
+        : roles.length
+          ? '<span class="text-[11px] font-bold text-on-surface">' + esc(roles.join(', ')) + '</span>'
+          : '<span class="text-[11px] font-bold" style="color:var(--st-warn-fg)">Oculto</span>';
+    }
+    return '<div class="flex justify-between items-center gap-3 py-2 border-b border-outline-variant/40 last:border-0">' +
+      '<span class="text-[11px] text-secondary font-medium truncate">' + esc(m.titulo) + '</span>' + det + '</div>';
+  }).join('');
+}
+
 function loadResumen_04_Configuraciones() {
   const s = getAppSettings();
   const grid = document.getElementById('config-resumen-grid');
@@ -39,11 +75,39 @@ function loadResumen_04_Configuraciones() {
 
   const row = (label, value) => `
     <div class="flex justify-between items-center py-2 border-b border-outline-variant/40 last:border-0">
-      <span class="text-[11px] text-secondary font-medium">${label}</span>
-      <span class="text-[11px] font-bold text-on-surface truncate max-w-[55%] text-right">${value || '—'}</span>
+      <span class="text-[11px] text-secondary font-medium">${esc(label)}</span>
+      <span class="text-[11px] font-bold text-on-surface truncate max-w-[55%] text-right">${esc(value || '—')}</span>
     </div>`;
 
+  const bd = (typeof DataService !== 'undefined' && DataService.info) ? DataService.info() : { etiqueta: '—', destino: '—', nombre: '' };
+
   grid.innerHTML = `
+    <!-- Base de datos: proveedor activo y verificación de la conexión -->
+    <div class="lg:col-span-3 bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
+      <div class="px-5 py-3 bg-surface-container-low border-b border-outline-variant flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="material-symbols-outlined text-primary text-lg" aria-hidden="true">database</span>
+          <h2 class="text-xs font-black text-on-surface uppercase tracking-wider">Base de datos</h2>
+        </div>
+        <button type="button" id="cfg-btn-verificar-bd" onclick="verificarConexionBD()"
+          class="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-bold flex items-center gap-2 whitespace-nowrap hover:opacity-90 transition-all">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">network_check</span>
+          Verificar conexión
+        </button>
+      </div>
+      <div class="px-5 py-3">
+        ${row('Proveedor activo', bd.etiqueta)}
+        ${row('Conexión', bd.destino)}
+        <p class="text-[12px] text-secondary mt-3">
+          Para cambiar de base de datos: variable <span class="font-mono font-bold">DB_PROVIDER</span>
+          (<span class="font-mono">supabase</span> o <span class="font-mono">appscript</span>) en Vercel, o en
+          <span class="font-mono">Global_Config.js.html</span>. Apps Script necesita además
+          <span class="font-mono font-bold">APPS_SCRIPT_URL</span> (la URL /exec de la implementación).
+        </p>
+        <div id="cfg-diag-bd" class="mt-4" aria-live="polite"></div>
+      </div>
+    </div>
+
     <!-- General -->
     <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
       <div class="px-5 py-3 bg-surface-container-low border-b border-outline-variant flex items-center gap-2">
@@ -68,8 +132,8 @@ function loadResumen_04_Configuraciones() {
         <div class="flex justify-between items-center py-2 border-b border-outline-variant/40">
           <span class="text-[11px] text-secondary font-medium">Color Primario</span>
           <div class="flex items-center gap-2">
-            <div class="w-5 h-5 rounded-full border border-outline-variant" style="background:${s.Color_Primario}"></div>
-            <span class="text-[11px] font-bold text-on-surface font-mono">${s.Color_Primario}</span>
+            <div class="w-5 h-5 rounded-full border border-outline-variant" style="background:${esc(s.Color_Primario)}"></div>
+            <span class="text-[11px] font-bold text-on-surface font-mono">${esc(s.Color_Primario)}</span>
           </div>
         </div>
         ${row('Calidad Compresión', s.Calidad_Compresion)}
@@ -89,29 +153,19 @@ function loadResumen_04_Configuraciones() {
       </div>
     </div>
 
-    <!-- Módulos -->
+    <!-- Módulos: qué ve cada rol (Configuración → Editar → Módulos) -->
     <div class="bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
       <div class="px-5 py-3 bg-surface-container-low border-b border-outline-variant flex items-center gap-2">
-        <span class="material-symbols-outlined text-primary text-lg">apps</span>
-        <h2 class="text-xs font-black text-on-surface uppercase tracking-wider">Módulos Activos</h2>
+        <span class="material-symbols-outlined text-primary text-lg" aria-hidden="true">visibility</span>
+        <h2 class="text-xs font-black text-on-surface uppercase tracking-wider">Módulos visibles</h2>
       </div>
       <div class="px-5 py-3">
-        <div class="flex justify-between items-center py-2 border-b border-outline-variant/40">
-          <span class="text-[11px] text-secondary font-medium">Inspecciones</span>
-          ${statusBadge(s.Modulo_Inspecciones)}
-        </div>
-        <div class="flex justify-between items-center py-2 border-b border-outline-variant/40">
-          <span class="text-[11px] text-secondary font-medium">Reportes</span>
-          ${statusBadge(s.Modulo_Reportes)}
-        </div>
-        <div class="flex justify-between items-center py-2">
-          <span class="text-[11px] text-secondary font-medium">Usuarios</span>
-          ${statusBadge(s.Modulo_Usuarios)}
-        </div>
+        ${resumenVisibilidad()}
       </div>
     </div>
 
-    <!-- Usuario Demo -->
+    <!-- Usuario Demo (solo en la vista previa local) -->
+    ${!window.__MOTOR_DEMO__ ? '' : `
     <div class="lg:col-span-2 bg-white rounded-2xl border border-outline-variant shadow-sm overflow-hidden">
       <div class="px-5 py-3 bg-primary/5 border-b border-primary/20 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -127,14 +181,14 @@ function loadResumen_04_Configuraciones() {
             <div class="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-outline-variant mb-2 last:mb-0">
               <div class="flex items-center gap-3">
                 <div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-black text-sm">
-                  ${u.Nombre_Completo.charAt(0)}
+                  ${esc(u.Nombre_Completo.charAt(0))}
                 </div>
                 <div>
-                  <p class="text-sm font-bold text-on-surface">${u.Nombre_Completo}</p>
-                  <p class="text-[10px] text-secondary">DNI/Usuario: <span class="font-black font-mono text-primary">${u.DNI}</span> &nbsp;·&nbsp; Contraseña: <span class="font-black font-mono text-primary">admin123</span></p>
+                  <p class="text-sm font-bold text-on-surface">${esc(u.Nombre_Completo)}</p>
+                  <p class="text-[10px] text-secondary">DNI/Usuario: <span class="font-black font-mono text-primary">${esc(u.DNI)}</span> &nbsp;·&nbsp; Contraseña: <span class="font-black font-mono text-primary">admin123</span></p>
                 </div>
               </div>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary-container text-on-primary-container">${u.Rol}</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary-container text-on-primary-container">${esc(u.Rol)}</span>
             </div>`).join('')
         }
         <div class="mt-4 p-3 rounded-xl bg-amber-50 border border-amber-200">
@@ -143,7 +197,7 @@ function loadResumen_04_Configuraciones() {
           </p>
         </div>
       </div>
-    </div>
+    </div>`}
   `;
 }
 </script>

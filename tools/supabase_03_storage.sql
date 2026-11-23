@@ -19,30 +19,65 @@ values
   ('documentos', 'documentos', false, 26214400,
    array['application/pdf','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-         'application/msword','application/vnd.ms-excel','text/csv','image/jpeg','image/png']),
+         'application/msword','application/vnd.ms-excel','text/csv','text/plain',
+         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+         'application/vnd.ms-powerpoint','image/jpeg','image/png']),
   ('publico',    'publico',    true,   2097152,
-   array['image/jpeg','image/png','image/webp','image/svg+xml'])
+   array['image/jpeg','image/png','image/webp'])
 on conflict (id) do update
   set file_size_limit    = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
+-- Sin image/svg+xml en publico: un SVG puede llevar <script> y se serviría
+-- desde un dominio público como contenido activo.
 
--- El primer segmento de la ruta es la empresa: (storage.foldername(name))[1]
+-- El primer segmento de la ruta es la empresa: (storage.foldername(name))[1].
+-- Si no es un uuid (p. ej. "sin-empresa/…") devuelve NULL en vez de lanzar
+-- un error de conversión que rompería el listado entero.
 create or replace function storage_empresa(ruta text) returns uuid as $$
-  select nullif((storage.foldername(ruta))[1], '')::uuid;
+  select case when (storage.foldername(ruta))[1] ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              then ((storage.foldername(ruta))[1])::uuid end;
 $$ language sql stable;
+
+create or replace function storage_puede_leer(ruta text) returns boolean
+language plpgsql stable security invoker set search_path = public as $$
+declare
+  v_mod text := split_part(ruta, '/', 2);
+  v_id  text := split_part(ruta, '/', 3);
+begin
+  if auth_rol() = 'superadmin' then return true; end if;
+  if storage_empresa(ruta) is distinct from auth_empresa() then return false; end if;
+  if auth_rol() = 'admin' then return true; end if;
+  case v_mod
+    when '02_Reportes' then return exists (select 1 from reportes t where t.uuid = v_id);
+    when '03_Inspecciones' then return exists (select 1 from inspecciones t where t.uuid = v_id);
+    when '04_Actos_Condiciones' then return exists (select 1 from actos_condiciones t where t.uuid = v_id);
+    when '05_Incidentes' then return exists (select 1 from incidentes t where t.uuid = v_id);
+    when '06_Capacitaciones' then return exists (select 1 from capacitaciones t where t.uuid = v_id);
+    when '07_IPERC' then return exists (select 1 from iperc t where t.uuid = v_id);
+    when '08_PETAR' then return exists (select 1 from petar t where t.uuid = v_id);
+    when '09_EPP' then return exists (select 1 from epp t where t.uuid = v_id);
+    when '10_Charlas' then return exists (select 1 from charlas t where t.uuid = v_id);
+    -- Foto y firma del personal: las ve quien puede ver a esa persona
+    when '01_Usuarios' then return exists (select 1 from usuarios u where u.id::text = v_id);
+    else return false;
+  end case;
+end $$;
 
 -- ── bucket evidencias (privado) ──
 drop policy if exists evidencias_sel on storage.objects;
 create policy evidencias_sel on storage.objects for select using (
-  bucket_id = 'evidencias' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
+  bucket_id = 'evidencias' and storage_puede_leer(name)
 );
 drop policy if exists evidencias_ins on storage.objects;
 create policy evidencias_ins on storage.objects for insert with check (
   bucket_id = 'evidencias' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 );
+-- Sobrescribir una evidencia equivale a destruirla: igual que borrar, solo
+-- admin y proveedor. La app sube cada archivo con nombre único y sin upsert.
 drop policy if exists evidencias_upd on storage.objects;
 create policy evidencias_upd on storage.objects for update using (
-  bucket_id = 'evidencias' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
+  bucket_id = 'evidencias' and auth_rol() in ('superadmin','admin')
+                     and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 );
 -- Borrar evidencia es destruir prueba: reservado a admin y proveedor.
 drop policy if exists evidencias_del on storage.objects;
@@ -54,15 +89,18 @@ create policy evidencias_del on storage.objects for delete using (
 -- ── bucket documentos (privado) ──
 drop policy if exists documentos_sel on storage.objects;
 create policy documentos_sel on storage.objects for select using (
-  bucket_id = 'documentos' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
+  bucket_id = 'documentos' and storage_puede_leer(name)
 );
 drop policy if exists documentos_ins on storage.objects;
 create policy documentos_ins on storage.objects for insert with check (
   bucket_id = 'documentos' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 );
+-- Sobrescribir una evidencia equivale a destruirla: igual que borrar, solo
+-- admin y proveedor. La app sube cada archivo con nombre único y sin upsert.
 drop policy if exists documentos_upd on storage.objects;
 create policy documentos_upd on storage.objects for update using (
-  bucket_id = 'documentos' and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
+  bucket_id = 'documentos' and auth_rol() in ('superadmin','admin')
+                     and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 );
 -- Borrar evidencia es destruir prueba: reservado a admin y proveedor.
 drop policy if exists documentos_del on storage.objects;
@@ -80,6 +118,7 @@ create policy publico_mod on storage.objects for all using (
                         and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 ) with check (
   bucket_id = 'publico' and auth_rol() in ('superadmin','admin')
+                        and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
 );
 
 -- Campos de archivo detectados en los subconfigs:

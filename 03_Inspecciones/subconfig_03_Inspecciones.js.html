@@ -10,6 +10,9 @@ var SUBCONFIG_03_INSPECCIONES = {
   
   Config_Modular: {
     NombreInterno: "03_Inspecciones",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:    "Evidencia_Fotos",
+    Card_Icon:     "assignment",
     Titulo: "Inspecciones Técnicas",
     DRIVE_FOLDER_NAME: "03_Inspecciones_Docs",
     GOOGLE_DOC_TEMPLATE_ID: "", 
@@ -88,6 +91,54 @@ var SUBCONFIG_03_INSPECCIONES = {
     "Firma_Digital_Path": { type: "Hidden", required: false }
   },
 
+  Vistas: {
+    Subtitulo: "Hallazgos y su cierre",
+    Resumen: {
+      etiquetaCrear: "Nueva inspección", ordenPor: "Fecha_Peru",
+      columnas: [
+        { campo: "Fecha_Peru", etiqueta: "Fecha" },
+        { campo: "Area_Inspeccion", etiqueta: "Área" },
+        { campo: "Tipo_Hallazgo", etiqueta: "Hallazgo", tipo: "badge" },
+        { campo: "Estado_Actual", etiqueta: "Estado", tipo: "badge" },
+        { campo: "Responsable" },
+        { campo: "Plazo", render: "plazo" }
+      ],
+      vacio: { icono: "assignment", titulo: "Sin inspecciones registradas",
+               mensaje: "Una inspección documentada es la prueba de que el control existe.",
+               accion: "Nueva inspección" }
+    },
+    Edicion: {
+      tituloNuevo: "Nueva Inspección", tituloEditar: "Editar Inspección",
+      secciones: [
+        { titulo: "Datos de la inspección", icono: "assignment",
+          campos: ["Fecha_Peru", "Auditor_DNI", "Area_Inspeccion", "Tipo_Hallazgo"] },
+        { titulo: "Hallazgo y cierre", icono: "task_alt",
+          campos: ["Descripcion_Tecnica", "Estado_Actual", "Responsable", "Plazo"] },
+        { titulo: "Evidencia", icono: "photo_camera",
+          campos: ["Evidencia_Fotos", "Firma_Digital"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Tipo_Hallazgo", subtitulo: ["Area_Inspeccion", "Fecha_Peru"],
+      secciones: [
+        { titulo: "Datos de la inspección",
+          campos: ["Fecha_Peru", "Auditor_DNI", "Area_Inspeccion", "Tipo_Hallazgo", "Estado_Actual", "Responsable", "Plazo"] },
+        { titulo: "Descripción técnica", campos: ["Descripcion_Tecnica"] }
+      ]
+    },
+    Hijos: { titulo: "Hallazgos detectados", icono: "checklist",
+             vacio: "Agrega cada hallazgo con su riesgo y recomendación.",
+             vacioDetalle: "Esta inspección no detalló hallazgos." },
+    Badges: {
+      Estado_Actual: { "Pendiente": { tono: "warn", icono: "schedule" },
+                       "En Proceso": { tono: "info", icono: "autorenew" },
+                       "Cerrado":    { tono: "ok",   icono: "task_alt" } },
+      Tipo_Hallazgo: { "Seguridad":    { tono: "bad",  icono: "health_and_safety" },
+                       "Mantenimiento":{ tono: "info", icono: "build" },
+                       "Ambiental":    { tono: "ok",   icono: "eco" } }
+    }
+  },
+
   // Configuración de Vistas Segregadas
   Views: {
     Summary: "Mod_03_Inspecciones_Resumen",
@@ -97,4 +148,37 @@ var SUBCONFIG_03_INSPECCIONES = {
 };
 
 console.log("✅ Subconfig 03_Inspecciones (Estandarizada) cargada.");
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["03_Inspecciones"] = {
+  columnas: {
+    /** El plazo solo informa si dice cuánto falta — o cuánto lleva vencido */
+    plazo: function (r) {
+      if (!r.Plazo) return '<span class="text-[11px] text-secondary">—</span>';
+      if (r.Estado_Actual === "Cerrado") {
+        return '<span class="text-[11px] text-secondary tabular-nums">' + esc(r.Plazo) + "</span>";
+      }
+      const hoy = new Date(PWA_SKILLS.getPeruTime(false));
+      const lim = new Date(r.Plazo);
+      if (isNaN(lim)) return '<span class="text-[11px] text-secondary">' + esc(r.Plazo) + "</span>";
+      const dias = Math.round((lim - hoy) / 86400000);
+      const tono = dias < 0 ? "bad" : dias <= 3 ? "warn" : "ok";
+      const texto = dias < 0 ? "Vencido " + Math.abs(dias) + " d" : dias === 0 ? "Vence hoy" : "Faltan " + dias + " d";
+      return '<div class="text-[11px] font-semibold tabular-nums" style="color:var(--st-' + tono + '-fg)">' +
+             esc(texto) + '</div><div class="text-[10px] text-secondary tabular-nums">' + esc(r.Plazo) + "</div>";
+    }
+  },
+  // Los numeros los cuenta la base de datos sobre TODAS las inspecciones, no
+  // sobre las que esten cargadas en pantalla: una con el plazo vencido hace
+  // ocho meses esta miles de filas atras y tiene que seguir apareciendo aqui.
+  resumen: function () {
+    MOTOR_RENDER.kpis("03_Inspecciones", [
+      { tono: "mute", etiqueta: "Inspecciones",  cond: {} },
+      { tono: "warn", etiqueta: "Abiertas",      cond: { Estado_Actual: { neq: "Cerrado" } } },
+      { tono: "bad",  etiqueta: "Plazo vencido", cond: { Estado_Actual: { neq: "Cerrado" }, Plazo: { lt: "@hoy" } } },
+      { tono: "ok",   etiqueta: "Cerradas",      cond: { Estado_Actual: { eq: "Cerrado" } } }
+    ]);
+  }
+};
 </script>

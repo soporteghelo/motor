@@ -14,6 +14,7 @@ create table if not exists empresas (
   modulos        jsonb not null default '{}'::jsonb, -- { "07_IPERC": true, ... }
   activa         boolean not null default true,
   trial_hasta    date,
+  config         jsonb not null default '{}'::jsonb, -- ajustes de la app que edita el Admin
   creada_en      timestamptz not null default now()
 );
 
@@ -29,7 +30,16 @@ create table if not exists usuarios (
   area           text,
   puesto         text,
   status         text not null default 'Activo',
+  foto_perfil    text,                               -- ruta en Storage (bucket evidencias)
+  firma_cargo    text,                               -- ruta en Storage (bucket evidencias)
+  -- Constancia de autorizacion de firma digital que cada persona firma la
+  -- primera vez que entra (00_Config/Consentimiento.js.html). Con la fecha
+  -- puesta, el asistente ya no vuelve a pedirse.
+  consentimiento_fecha text,
+  consentimiento_folio text,
+  consentimiento_path  text,                         -- documentos/<empresa>/consentimientos/<dni>.pdf
   creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
   unique (empresa_id, dni)
 );
 create index if not exists idx_usuarios_empresa on usuarios(empresa_id);
@@ -61,7 +71,8 @@ create table if not exists reportes (
   firma_operario_path text,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_reportes_empresa on reportes(empresa_id);
 create index if not exists idx_reportes_creador on reportes(creado_por_dni);
@@ -71,7 +82,8 @@ create table if not exists reportes_child (
   empresa_id     uuid not null references empresas(id) on delete cascade,
   parent_uuid    text not null references reportes(uuid) on delete cascade,
   observacion    text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_reportes_child_padre on reportes_child(parent_uuid);
 
@@ -95,7 +107,8 @@ create table if not exists inspecciones (
   firma_digital_path text,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_inspecciones_empresa on inspecciones(empresa_id);
 create index if not exists idx_inspecciones_creador on inspecciones(creado_por_dni);
@@ -107,7 +120,8 @@ create table if not exists inspecciones_child (
   hallazgo       text,
   riesgo         text,
   recomendacion  text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_inspecciones_child_padre on inspecciones_child(parent_uuid);
 
@@ -136,7 +150,8 @@ create table if not exists actos_condiciones (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_actos_condiciones_empresa on actos_condiciones(empresa_id);
 create index if not exists idx_actos_condiciones_creador on actos_condiciones(creado_por_dni);
@@ -149,6 +164,7 @@ create table if not exists incidentes (
   hora_evento    text,
   tipo_evento    text,
   gravedad       text,
+  severidad_potencial text,
   area           text,
   lugar_exacto   text,
   descripcion    text,
@@ -158,6 +174,12 @@ create table if not exists incidentes (
   parte_afectada text,
   dias_descanso  text,
   testigos       text,
+  tipo_personal  text,
+  acciones_inmediatas text,
+  equipo_involucrado text,
+  costo_estimado_danos text,
+  requiere_notificacion_autoridad text,
+  notificados    text,
   causa_inmediata text,
   causa_basica   text,
   categoria_causa text,
@@ -174,7 +196,8 @@ create table if not exists incidentes (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_incidentes_empresa on incidentes(empresa_id);
 create index if not exists idx_incidentes_creador on incidentes(creado_por_dni);
@@ -187,7 +210,8 @@ create table if not exists incidentes_acciones (
   responsable    text,
   fecha_limite   date,
   estado_accion  text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_incidentes_acciones_padre on incidentes_acciones(parent_uuid);
 
@@ -220,7 +244,8 @@ create table if not exists capacitaciones (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_capacitaciones_empresa on capacitaciones(empresa_id);
 create index if not exists idx_capacitaciones_creador on capacitaciones(creado_por_dni);
@@ -232,9 +257,10 @@ create table if not exists capacitaciones_asistentes (
   dni            text,
   nombre         text,
   area_asis      text,
-  nota           text,
+  nota           numeric,
   resultado      text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_capacitaciones_asistentes_padre on capacitaciones_asistentes(parent_uuid);
 
@@ -262,7 +288,8 @@ create table if not exists iperc (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_iperc_empresa on iperc(empresa_id);
 create index if not exists idx_iperc_creador on iperc(creado_por_dni);
@@ -278,7 +305,8 @@ create table if not exists iperc_peligros (
   nivel_riesgo   text,
   jerarquia      text,
   controles      text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_iperc_peligros_padre on iperc_peligros(parent_uuid);
 
@@ -315,7 +343,8 @@ create table if not exists petar (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_petar_empresa on petar(empresa_id);
 create index if not exists idx_petar_creador on petar(creado_por_dni);
@@ -327,7 +356,8 @@ create table if not exists petar_verificaciones (
   item           text,
   cumple         text,
   observacion    text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_petar_verificaciones_padre on petar_verificaciones(parent_uuid);
 
@@ -356,7 +386,8 @@ create table if not exists epp (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_epp_empresa on epp(empresa_id);
 create index if not exists idx_epp_creador on epp(creado_por_dni);
@@ -371,7 +402,8 @@ create table if not exists epp_items (
   cantidad       numeric,
   vida_util      text,
   fecha_reposicion date,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_epp_items_padre on epp_items(parent_uuid);
 
@@ -403,7 +435,8 @@ create table if not exists charlas (
   fecha_registro date,
   creado_por     uuid references usuarios(id),
   creado_por_dni text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_charlas_empresa on charlas(empresa_id);
 create index if not exists idx_charlas_creador on charlas(creado_por_dni);
@@ -415,6 +448,7 @@ create table if not exists charlas_asistentes (
   dni            text,
   nombre         text,
   area_asis      text,
-  creado_en      timestamptz not null default now()
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_charlas_asistentes_padre on charlas_asistentes(parent_uuid);

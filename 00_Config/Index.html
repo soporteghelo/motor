@@ -14,74 +14,77 @@
   -->
 
   <!-- Fuentes Externas y Configuración PWA base -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   
   <!-- Tailwind CSS Engine & Plugins -->
-  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp,container-queries"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,container-queries"></script>
   <script>
     tailwind.config = {
         darkMode: "class",
         theme: {
             extend: {
                 "colors": {
-                    "tertiary-fixed": "#ffdbd0",
-                    "secondary": "#505f76",
-                    "on-surface-variant": "#454652",
-                    "surface-bright": "#fbf8ff",
-                    "error": "#ba1a1a",
-                    "primary-fixed": "#e0e0ff",
+                    "accent": "#ffd53f",
+                    "accent-strong": "#f5c400",
+                    "on-accent": "#162138",
+                    "tertiary-fixed": "#ffe7c9",
+                    "secondary": "#4f5c78",
+                    "on-surface-variant": "#4f5c78",
+                    "surface-bright": "#f4f6fb",
+                    "error": "#b8322a",
+                    "primary-fixed": "#e3e9f7",
                     "on-tertiary": "#ffffff",
-                    "secondary-fixed": "#d3e4fe",
-                    "on-tertiary-container": "#e17c5a",
-                    "surface-container": "#efecf5",
-                    "surface-tint": "#4c56af",
-                    "outline": "#767683",
-                    "inverse-primary": "#bdc2ff",
-                    "tertiary-container": "#5c1800",
-                    "on-secondary-container": "#54647a",
-                    "on-error-container": "#93000a",
-                    "background": "#fbf8ff",
-                    "on-primary-fixed-variant": "#343d96",
-                    "secondary-container": "#d0e1fb",
-                    "on-primary-fixed": "#000767",
-                    "on-surface": "#1b1b21",
-                    "on-background": "#1b1b21",
+                    "secondary-fixed": "#e3e9f5",
+                    "on-tertiary-container": "#ffc27a",
+                    "surface-container": "#eef2f9",
+                    "surface-tint": "#2f5aae",
+                    "outline": "#6b7791",
+                    "inverse-primary": "#b9c6e4",
+                    "tertiary-container": "#7a4300",
+                    "on-secondary-container": "#3a4768",
+                    "on-error-container": "#7d1b15",
+                    "background": "#f4f6fb",
+                    "on-primary-fixed-variant": "#2a3a5c",
+                    "secondary-container": "#e3e9f5",
+                    "on-primary-fixed": "#0b1426",
+                    "on-surface": "#162138",
+                    "on-background": "#162138",
                     "surface-container-lowest": "#ffffff",
-                    "primary-container": "#1a237e",
-                    "error-container": "#ffdad6",
-                    "surface-container-high": "#eae7ef",
-                    "surface-variant": "#e4e1ea",
-                    "surface-dim": "#dbd9e1",
-                    "on-secondary-fixed": "#0b1c30",
-                    "tertiary-fixed-dim": "#ffb59d",
+                    "primary-container": "#1e2c4a",
+                    "error-container": "#fbe7e5",
+                    "surface-container-high": "#e7ebf4",
+                    "surface-variant": "#e7ebf4",
+                    "surface-dim": "#d6dcea",
+                    "on-secondary-fixed": "#0b1426",
+                    "tertiary-fixed-dim": "#ffc27a",
                     "on-secondary": "#ffffff",
-                    "surface": "#fbf8ff",
+                    "surface": "#f4f6fb",
                     "on-error": "#ffffff",
-                    "tertiary": "#380b00",
-                    "surface-container-highest": "#e4e1ea",
+                    "tertiary": "#5c3200",
+                    "surface-container-highest": "#dee4f0",
                     "on-primary": "#ffffff",
-                    "primary": "#000666",
-                    "secondary-fixed-dim": "#b7c8e1",
-                    "on-tertiary-fixed": "#390c00",
-                    "on-tertiary-fixed-variant": "#7b2e12",
-                    "primary-fixed-dim": "#bdc2ff",
-                    "on-primary-container": "#8690ee",
-                    "inverse-on-surface": "#f2eff8",
-                    "inverse-surface": "#303036",
-                    "surface-container-low": "#f5f2fb",
-                    "outline-variant": "#c6c5d4",
-                    "on-secondary-fixed-variant": "#38485d"
+                    "primary": "#162138",
+                    "secondary-fixed-dim": "#c6d0e4",
+                    "on-tertiary-fixed": "#2b1700",
+                    "on-tertiary-fixed-variant": "#7a4300",
+                    "primary-fixed-dim": "#b9c6e4",
+                    "on-primary-container": "#c7d0e4",
+                    "inverse-on-surface": "#f2f5fb",
+                    "inverse-surface": "#26355a",
+                    "surface-container-low": "#f7f9fd",
+                    "outline-variant": "#d3daea",
+                    "on-secondary-fixed-variant": "#3a4768"
                 },
                 "fontFamily": {
-                    "sans": ["Inter", "sans-serif"],
-                    "h3": ["Inter"],
-                    "body-md": ["Inter"],
-                    "body-lg": ["Inter"],
-                    "label-md": ["Inter"],
-                    "h2": ["Inter"],
-                    "h1": ["Inter"],
-                    "button": ["Inter"]
+                    "sans": ["Archivo", "sans-serif"],
+                    "h3": ["Archivo"],
+                    "body-md": ["Archivo"],
+                    "body-lg": ["Archivo"],
+                    "label-md": ["Archivo"],
+                    "h2": ["Archivo"],
+                    "h1": ["Archivo"],
+                    "button": ["Archivo"]
                 },
                 "fontSize": {
                     "h3": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
@@ -98,33 +101,38 @@
   </script>
 
   <!-- LIBRERIA EXCEL NATIVA (.XLSX) - MANDATORIO GUÍA MAESTRA -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-r22gChDnGvBylk90+2e/ycr3RVrDi8DIOkIGNhJlKfuyQM4tIRAI062MaV8sfjQKYVGjOBaZBOA87z+IhZE9DA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   
   <style>
     /* Variables Maestras Globales e Inicialización del Root CSS */
     :root {
       /* [MODIFICABLE]: Inyecta tus códigos Hex de Color Stitch aquí */
-      --color-primary: #1A73E8;
-      --color-bg: #f8f9fa;
+      --color-primary: #162138;      /* azul marino de marca (texto/acciones oscuras) */
+      --color-bg: #f4f6fb;
       --color-surface: #ffffff;
-      --color-text: #202124;
-      --color-border: #dadce0;
+      --color-text: #162138;
+      --color-border: #d3daea;
+      --brand-accent: #ffd53f;       /* amarillo de seguridad: SOLO relleno de acción */
+      --brand-accent-strong: #f5c400;
+      --brand-ink: #162138;          /* texto sobre el amarillo (12:1) */
       
       --topbar-height: 60px;
       --footer-height: 68px;
 
-      --header-bg: var(--color-surface);
+      --header-bg: #162138;
+      --header-fg: #ffffff;
       --footer-bg: var(--color-surface);
       --fab-bg: var(--color-primary);
     }
     
     /* Variable para Switch Mode Dark (Automático) */
     [data-theme="dark"] {
-      --color-primary: #bdc2ff;
-      --color-bg: #101014;
-      --color-surface: #1b1b21;
-      --color-text: #e4e1e9;
-      --color-border: #45464f;
+      --color-primary: #dce5fa;      /* texto de énfasis: azul muy claro, NO amarillo */
+      --color-bg: #0c1424;
+      --color-surface: #141f36;
+      --color-text: #eef2fa;
+      --color-border: #26355a;
+      --header-bg: #0a1020;
     }
 
     /* ─── Tokens semánticos del sistema "Data-Dense Dashboard" ───
@@ -132,28 +140,33 @@
        (regla dark-mode-pairing). Los módulos NO deben usar hex crudos. */
     :root {
       --ds-surface:        #ffffff;   /* tarjeta / fila */
-      --ds-surface-sunken: #f5f2fb;   /* cabecera de tabla, zonas hundidas */
-      --ds-fg:             #1b1b21;   /* texto principal  — 15.8:1 sobre surface */
-      --ds-fg-muted:       #454652;   /* texto secundario —  9.1:1 sobre surface */
-      --ds-border:         #c6c5d4;
-      --ds-border-soft:    rgba(198,197,212,0.45);
-      --ds-skeleton:       #e8e6ef;
-      --ds-skeleton-shine: #f5f3fa;
-      --ds-scrim:          rgba(27,27,33,0.55);
+      --ds-surface-sunken: #f7f9fd;   /* cabecera de tabla, zonas hundidas */
+      --ds-fg:             #162138;   /* texto principal  — 16.0:1 sobre surface */
+      --ds-fg-muted:       #4f5c78;   /* texto secundario —  6.7:1 sobre surface */
+      --ds-border:         #d3daea;
+      --ds-border-soft:    rgba(211,218,234,0.60);
+      --ds-skeleton:       #e6eaf3;
+      --ds-skeleton-shine: #f4f6fb;
+      --ds-scrim:          rgba(22,33,56,0.55);
+      --ds-shadow:         0 1px 2px rgba(22,33,56,.06), 0 1px 3px rgba(22,33,56,.05);
+      --ds-shadow-lg:      0 6px 20px rgba(22,33,56,.10);
+      --ds-radius:         14px;
     }
     [data-theme="dark"] {
-      --ds-surface:        #1b1b21;
-      --ds-surface-sunken: #24242b;
-      --ds-fg:             #e4e1e9;   /* 13.4:1 sobre surface */
-      --ds-fg-muted:       #c7c5d0;   /*  9.6:1 sobre surface */
-      --ds-border:         #45464f;
-      --ds-border-soft:    rgba(199,197,208,0.20);
-      --ds-skeleton:       #2a2a32;
-      --ds-skeleton-shine: #35353f;
+      --ds-surface:        #141f36;
+      --ds-surface-sunken: #1a2745;
+      --ds-fg:             #eef2fa;   /* 14.6:1 sobre surface */
+      --ds-fg-muted:       #aeb9d0;   /*  8.3:1 sobre surface */
+      --ds-border:         #26355a;
+      --ds-border-soft:    rgba(174,185,208,0.20);
+      --ds-skeleton:       #1f2c4d;
+      --ds-skeleton-shine: #2b3b66;
       --ds-scrim:          rgba(0,0,0,0.68);
+      --ds-shadow:         0 1px 2px rgba(0,0,0,.4);
+      --ds-shadow-lg:      0 6px 20px rgba(0,0,0,.45);
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Archivo', system-ui, sans-serif; }
     
     body {
       background-color: var(--color-bg);
@@ -167,8 +180,9 @@
     /* Top AppBar (Navegación Suprema) */
     .top-bar {
       height: var(--topbar-height);
-      background-color: var(--color-surface);
-      border-bottom: 1px solid var(--color-border);
+      background-color: var(--header-bg);
+      color: var(--header-fg, #fff);
+      border-bottom: 3px solid var(--brand-accent);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -177,7 +191,11 @@
       z-index: 100;
     }
 
-    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 600;}
+    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
+    /* Todo control de la cabecera hereda el blanco; sin esto 'text-primary' lo dejaría navy sobre navy */
+    .top-bar button, .top-bar .icon-btn, .top-bar .sync-indicator { color: var(--header-fg, #fff) !important; }
+    .top-bar button:hover { background: rgba(255,255,255,.10); }
+    .top-bar .sync-indicator { opacity: .92; }
     
     .top-bar .controls { display: flex; align-items: center; gap: 16px; }
     
@@ -221,8 +239,8 @@
       width: 56px;
       height: 56px;
       border-radius: 16px;
-      background-color: var(--color-primary);
-      color: white;
+      background-color: var(--brand-accent);
+      color: var(--brand-ink);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -259,7 +277,7 @@
       background-color: var(--footer-bg);
       border-top: 1px solid var(--color-border);
       display: grid;
-      grid-template-columns: repeat(3, minmax(112px, 136px));
+      grid-auto-flow: column; grid-auto-columns: minmax(112px, 136px);   /* un acceso oculto no deja hueco */
       justify-content: center;
       column-gap: 8px;
       align-items: center;
@@ -304,7 +322,7 @@
     /* En celular, las tres opciones aprovechan todo el ancho disponible. */
     @media (max-width: 480px) {
       .main-footer {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-auto-columns: minmax(0, 1fr);
         column-gap: 4px;
         padding-inline: 4px;
       }
@@ -314,8 +332,8 @@
     /* ─── Scrollbar delgado ─── */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(0,6,102,0.18); border-radius: 99px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(0,6,102,0.32); }
+    ::-webkit-scrollbar-thumb { background: rgba(22,33,56,0.20); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(22,33,56,0.34); }
 
     /* ─── Toast / Notificaciones ─── */
     #toast-container {
@@ -369,8 +387,8 @@
       display: flex;
       flex-direction: column;
       background: #ffffff;
-      border-right: 1px solid #e4e1ea;
-      box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+      border-right: 1px solid #d3daea;
+      box-shadow: 4px 0 24px rgba(22,33,56,0.14);
       overflow: hidden;
       transform: translateX(-100%);
       transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
@@ -411,20 +429,21 @@
       border-radius: 8px;
       font-size: 13px;
       font-weight: 600;
-      color: #505f76;
+      color: #4f5c78;
       cursor: pointer;
       transition: all 0.18s ease;
       text-decoration: none;
       border-right: 3px solid transparent;
     }
     .drawer-nav-link:hover {
-      background: #f5f2fb;
-      color: #000666;
+      background: #f1f4fa;
+      color: #162138;
     }
     .drawer-nav-link.active {
-      background: #f0f0ff;
-      color: #000666;
-      border-right-color: #000666;
+      background: #fff4c7;           /* tinte del amarillo de marca */
+      color: #162138;
+      border-right-color: #ffd53f;
+      border-right-width: 4px;
     }
     .drawer-nav-more {
       display: flex;
@@ -434,15 +453,15 @@
       width: 100%;
       min-height: 36px;
       margin-top: 6px;
-      border: 1px solid #d9dcf2;
+      border: 1px solid #d3daea;
       border-radius: 9px;
-      color: #000666;
-      background: #f7f7ff;
+      color: #162138;
+      background: #f7f9fd;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
     }
-    .drawer-nav-more:hover { background: #eeeeff; }
+    .drawer-nav-more:hover { background: #eef2f9; }
     .drawer-work-summary { margin-top: 18px; padding: 14px 8px 4px; border-top: 1px solid var(--ds-border); }
     .drawer-work-summary-head { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px; }
     .drawer-work-summary-title { font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--ds-fg-muted); }
@@ -483,6 +502,28 @@
        Referencia completa: design-system/motor-pwa/MASTER.md
        Se aplica a TODOS los módulos sin tocar sus archivos (Zero-Touch).
        ══════════════════════════════════════════════════════════════════ */
+
+
+    /* Colores de estado para distintivos pintados desde JS (IPERC, EPP…).
+       Los módulos usan var(--st-*): nunca hex crudos, y el modo oscuro se adapta solo. */
+    :root {
+      --st-ok-bg:#e6f5ee;   --st-ok-fg:#1f7a52;   --st-ok-bd:#bfe3d0;
+      --st-lime-bg:#eef6d8; --st-lime-fg:#4a6a12; --st-lime-bd:#d6e6a8;
+      --st-warn-bg:#fdf0d9; --st-warn-fg:#8a5300; --st-warn-bd:#f2d9a6;
+      --st-bad-bg:#fbe7e5;  --st-bad-fg:#a5281f;  --st-bad-bd:#f1c0bb;
+      --st-crit-bg:#162138; --st-crit-fg:#ffffff; --st-crit-bd:#2a3a5c;
+      --st-mute-bg:#f7f9fd; --st-mute-fg:#4f5c78; --st-mute-bd:#d3daea;
+      --st-info-bg:#e7eefa; --st-info-fg:#2f5aae; --st-info-bd:#c6d6f1;
+    }
+    [data-theme="dark"] {
+      --st-ok-bg:rgba(95,211,155,.14);   --st-ok-fg:#5fd39b;   --st-ok-bd:rgba(95,211,155,.32);
+      --st-lime-bg:rgba(190,230,100,.14);--st-lime-fg:#c4e277; --st-lime-bd:rgba(190,230,100,.30);
+      --st-warn-bg:rgba(255,194,92,.14); --st-warn-fg:#ffc25c; --st-warn-bd:rgba(255,194,92,.32);
+      --st-bad-bg:rgba(255,143,134,.14); --st-bad-fg:#ff8f86;  --st-bad-bd:rgba(255,143,134,.32);
+      --st-crit-bg:#eef2fa;              --st-crit-fg:#162138; --st-crit-bd:#aeb9d0;
+      --st-mute-bg:#1a2745;              --st-mute-fg:#aeb9d0; --st-mute-bd:#26355a;
+      --st-info-bg:rgba(141,178,255,.14);--st-info-fg:#8db2ff; --st-info-bd:rgba(141,178,255,.32);
+    }
 
     /* ─── Tokens de densidad ─── */
     :root {
@@ -651,6 +692,16 @@
       }
       table.pwa-table-cards tbody tr[data-ds-ui] td::before { display: none; }
 
+      /* Cabecera de grupo (p. ej. "Agrupar por empresa" en 01_Usuarios): fuera
+         del marco de tarjeta, a ancho completo, como un separador de sección */
+      table.pwa-table-cards tbody tr[data-ds-ui="group"] {
+        border: 0; background: transparent; box-shadow: none;
+        padding: 0; margin: 14px 0 6px;
+      }
+      table.pwa-table-cards tbody tr[data-ds-ui="group"] td {
+        display: block; padding: 0 !important; border: 0 !important; min-height: 0;
+      }
+
       /* Piso de legibilidad: 12px es el mínimo del sistema; se comprime el
          interlineado, nunca el cuerpo de letra. */
       table.pwa-table-cards tbody td p,
@@ -672,80 +723,57 @@
       table.pwa-table-cards tbody td.truncate,
       table.pwa-table-cards tbody td[class*="max-w-"] { max-width: none !important; }
 
-      /* Inspecciones: el patrón genérico etiqueta cada una de las seis
-         columnas, lo que convierte una fila en una ficha de formulario. Esta
-         composición prioriza: identificación, hallazgo y decisión operativa.
-         Mantiene todos los datos, pero los agrupa en cuatro bloques breves. */
+      /* Inspecciones — aprovecha todo el ancho de la tarjeta:
+         fila 1: ID · fecha ............ [área] [›]
+         fila 2: hallazgo (ancho completo)
+         fila 3: estado · responsable ......... plazo
+         Antes ID y fecha se apilaban en media tarjeta y dejaban la derecha vacía. */
       #inspecciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0;
+        column-gap: 8px;
+        row-gap: 6px;
         padding: 10px 12px;
         margin-bottom: 8px;
-        border-radius: 12px;
+        border-radius: var(--ds-radius, 14px);
       }
       #inspecciones-table.pwa-table-cards tbody td,
-      #inspecciones-table.pwa-table-cards tbody td::before {
-        border: 0 !important;
-      }
+      #inspecciones-table.pwa-table-cards tbody td::before { border: 0 !important; }
       #inspecciones-table.pwa-table-cards tbody td::before { display: none; }
-      #inspecciones-table.pwa-table-cards tbody td:not(:first-child) > * {
-        margin-left: 0;
-        text-align: left;
-      }
+      #inspecciones-table.pwa-table-cards tbody td:not(:first-child) > * { margin-left: 0; text-align: left; }
+      /* 1) ID + fecha en la misma línea */
       #inspecciones-table.pwa-table-cards tbody td:first-child {
-        order: 1;
-        flex: 1 1 auto;
-        display: block;
-        padding: 0 38px 0 0 !important;
-        margin: 0;
-        border: 0 !important;
+        order: 1; flex: 0 1 auto; width: auto;
+        display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px;
+        padding: 0 !important; margin: 0;
       }
-      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) {
-        order: 2;
-        flex: 0 0 100%;
-        display: block;
-        margin-top: 6px;
-      }
-      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p:first-child {
-        font-size: 13px !important;
-        line-height: 1.35;
-      }
-      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p + p {
-        margin-top: 2px;
-        color: var(--ds-fg-muted);
-      }
+      #inspecciones-table.pwa-table-cards tbody td:first-child p + p { font-size: 11px !important; color: var(--ds-fg-muted); margin-top: 0; }
+      /* 1b) Área: empujada a la derecha, dejando sitio al botón › de la esquina */
       #inspecciones-table.pwa-table-cards tbody td:nth-child(2) {
-        order: 3;
-        flex: 0 0 auto;
-        width: auto;
-        min-height: 0;
-        margin-top: 8px;
+        order: 1; flex: 0 0 auto; width: auto; min-height: 0;
+        margin-left: auto; margin-right: 36px;
+      }
+      /* 2) Hallazgo: ancho completo */
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) {
+        order: 2; flex: 0 0 100%; width: 100%; display: block; margin: 0;
+      }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p:first-child { font-size: 13px !important; line-height: 1.35; }
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(3) p + p { margin-top: 1px; color: var(--ds-fg-muted); }
+      /* 3) Estado · responsable (se estira y recorta) · plazo a la derecha */
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(4) {
+        order: 3; flex: 0 0 auto; width: auto; min-height: 0;
       }
       #inspecciones-table.pwa-table-cards tbody td:nth-child(5) {
-        order: 3;
-        flex: 1 1 auto;
-        width: auto;
-        min-width: 0;
-        min-height: 0;
-        margin-top: 8px;
-        justify-content: flex-end;
+        order: 3; flex: 1 1 0; width: auto; min-width: 0; min-height: 0; justify-content: flex-start;
       }
-      #inspecciones-table.pwa-table-cards tbody td:nth-child(4),
+      #inspecciones-table.pwa-table-cards tbody td:nth-child(5) span:not(.material-symbols-outlined) {
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+      }
       #inspecciones-table.pwa-table-cards tbody td:nth-child(6) {
-        order: 4;
-        flex: 0 0 auto;
-        width: auto;
-        min-height: 0;
-        margin-top: 8px;
+        order: 3; flex: 0 0 auto; width: auto; min-height: 0; margin-left: auto;
       }
-      #inspecciones-table.pwa-table-cards tbody td:nth-child(6) { margin-left: auto; }
-      #inspecciones-table.pwa-table-cards tbody td.pwa-cell-actions {
-        order: 0;
-        flex: 0 0 auto;
-        margin: 0;
-      }
+      #inspecciones-table.pwa-table-cards tbody td.pwa-cell-actions { order: 0; flex: 0 0 auto; margin: 0; }
 
       /* PETAR: orden fijado a pedido — permiso+fecha arriba, horario+área
          como dato secundario, el tipo de trabajo como titular (es lo que de
@@ -1183,8 +1211,14 @@
 
       /* ── Cabecera de formulario: de dos filas a una ──
          Las 5 vistas de Edición comparten la misma estructura
-         (section > div[título] + div[acciones]), así que se resuelve una vez. */
-      #main-container [id*="edicion"] > section:first-of-type {
+         (section > div[título] + div[acciones]), así que se resuelve una vez.
+
+         El selector apunta SOLO a la raíz de la vista (.module-view con id
+         terminado en "-edicion"). Con el anterior [id*="edicion"] entraba
+         cualquier id que contuviera esa palabra —#usr-edicion-titulo,
+         #usr-edicion-boton—, así que la etiqueta del botón Guardar heredaba
+         los 72px de reserva inferior y se salía fuera del botón. */
+      #main-container .module-view[id$="-edicion"] > section:first-of-type {
         flex-direction: row !important;
         align-items: center !important;
         gap: 8px !important;
@@ -1195,7 +1229,7 @@
       /* ── Acciones a barra fija inferior (thumb zone) ──
          Guardar/Cancelar dejan de ocupar 56px arriba y quedan siempre
          alcanzables con el pulgar sin volver al inicio del formulario. */
-      #main-container [id*="edicion"] > section:first-of-type > div:last-child {
+      #main-container .module-view[id$="-edicion"] > section:first-of-type > div:last-child {
         position: fixed; left: 0; right: 0;
         bottom: var(--footer-height, 40px);
         z-index: 95;
@@ -1205,7 +1239,7 @@
         border-top: 1px solid var(--ds-border);
         box-shadow: 0 -3px 14px rgba(0,0,0,0.10);
       }
-      #main-container [id*="edicion"] > section:first-of-type > div:last-child > button {
+      #main-container .module-view[id$="-edicion"] > section:first-of-type > div:last-child > button {
         flex: 1 1 0; justify-content: center; min-height: 44px;
         /* El interletrado ancho de escritorio parte las etiquetas en dos líneas */
         white-space: nowrap;
@@ -1213,7 +1247,7 @@
         padding-left: 10px !important; padding-right: 10px !important;
       }
       /* Reserva al final del formulario para que la barra no tape el último campo */
-      #main-container [id*="edicion"] { padding-bottom: 72px; }
+      #main-container .module-view[id$="-edicion"] { padding-bottom: 72px; }
     }
 
     /* ─── 6. ESTADOS DE CARGA Y VACÍO (progressive-loading / empty-states) ─── */
@@ -1248,7 +1282,7 @@
        Tailwind CDN genera utilidades con colores fijos de modo claro.
        Aquí se remapean bajo [data-theme="dark"] (mayor especificidad, sin !important)
        para que tarjetas, bordes, texto y distintivos acompañen al tema. */
-    [data-theme="dark"] body { background-color: var(--ds-surface-sunken); }
+    [data-theme="dark"] body { background-color: var(--color-bg); }
 
     /* Superficies */
     [data-theme="dark"] .bg-white,
@@ -1259,21 +1293,23 @@
     [data-theme="dark"] .bg-surface-container   { background-color: var(--ds-surface-sunken); }
     [data-theme="dark"] .bg-surface-container-high,
     [data-theme="dark"] .bg-surface-container-highest,
-    [data-theme="dark"] .bg-surface-variant     { background-color: #2f2f37; }
+    [data-theme="dark"] .bg-surface-variant     { background-color: #26355a; }
 
     /* Texto */
     [data-theme="dark"] .text-on-surface,
     [data-theme="dark"] .text-on-background     { color: var(--ds-fg); }
     [data-theme="dark"] .text-on-surface-variant,
     [data-theme="dark"] .text-secondary         { color: var(--ds-fg-muted); }
-    [data-theme="dark"] .text-outline           { color: #90909a; }
-    [data-theme="dark"] .text-primary           { color: #bdc2ff; }
-    [data-theme="dark"] .bg-primary             { background-color: #3b45b5; }
+    [data-theme="dark"] .text-outline           { color: #8a95ab; }
+    [data-theme="dark"] .text-primary           { color: #dce5fa; }
+    [data-theme="dark"] .text-primary-container { color: #dce5fa; }
+    [data-theme="dark"] .bg-primary-container   { background-color: #26355a; }
+    [data-theme="dark"] .bg-primary             { background-color: #26355a; }
     [data-theme="dark"] .text-on-primary        { color: #ffffff; }
 
     /* Bordes y divisores (border-visibility en ambos temas) */
     [data-theme="dark"] .border-outline-variant { border-color: var(--ds-border); }
-    [data-theme="dark"] .border-outline         { border-color: #6f6f7a; }
+    [data-theme="dark"] .border-outline         { border-color: #5c6b8f; }
     [data-theme="dark"] .divide-outline-variant\/40 > * + * { border-color: var(--ds-border-soft); }
     [data-theme="dark"] .border-surface-variant { border-color: var(--ds-border); }
 
@@ -1281,8 +1317,8 @@
     [data-theme="dark"] #nav-drawer { background: var(--ds-surface); border-right-color: var(--ds-border); }
     [data-theme="dark"] #nav-overlay { background: var(--ds-scrim); }
     [data-theme="dark"] .drawer-nav-link { color: var(--ds-fg-muted); }
-    [data-theme="dark"] .drawer-nav-link:hover { background: #2a2a32; color: #bdc2ff; }
-    [data-theme="dark"] .drawer-nav-link.active { background: #262f6b; color: #dfe1ff; border-right-color: #bdc2ff; }
+    [data-theme="dark"] .drawer-nav-link:hover { background: #1a2745; color: #eef2fa; }
+    [data-theme="dark"] .drawer-nav-link.active { background: #26355a; color: #ffffff; border-right-color: #ffd53f; }
     [data-theme="dark"] table.pwa-table-cards tbody tr { background: var(--ds-surface); border-color: var(--ds-border); }
     [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(199,197,208,0.28); }
 
@@ -1301,7 +1337,7 @@
     [data-theme="dark"] .bg-rose-50,     [data-theme="dark"] .bg-rose-100    { background-color: rgba(244,63,94,0.18); }
     [data-theme="dark"] .bg-teal-50,     [data-theme="dark"] .bg-teal-100    { background-color: rgba(20,184,166,0.18); }
     [data-theme="dark"] .bg-slate-50,    [data-theme="dark"] .bg-slate-100   { background-color: rgba(148,163,184,0.16); }
-    [data-theme="dark"] .bg-gray-900,    [data-theme="dark"] .bg-gray-800    { background-color: #0b0b0f; }
+    [data-theme="dark"] .bg-gray-900,    [data-theme="dark"] .bg-gray-800    { background-color: #060b16; }
 
     [data-theme="dark"] .text-emerald-600, [data-theme="dark"] .text-emerald-700, [data-theme="dark"] .text-emerald-800 { color: #6ee7b7; }
     [data-theme="dark"] .text-green-600,   [data-theme="dark"] .text-green-700,   [data-theme="dark"] .text-green-800   { color: #86efac; }
@@ -1324,7 +1360,197 @@
     [data-theme="dark"] .border-red-200     { border-color: rgba(239,68,68,0.38); }
     [data-theme="dark"] .border-blue-200    { border-color: rgba(59,130,246,0.38); }
     [data-theme="dark"] .border-slate-200   { border-color: rgba(148,163,184,0.30); }
-    [data-theme="dark"] .border-gray-700    { border-color: #3a3a44; }
+    [data-theme="dark"] .border-gray-700    { border-color: #33456f; }
+
+    /* ══════════════════════════════════════════════════════════════════
+       8. IDENTIDAD «INDUSTRIAL SEGURO»  (ver .claude/skills/motor-pwa-design y
+          design-system/motor-pwa/MASTER.md)
+       Azul marino = confianza y texto · amarillo de seguridad = acción.
+       El amarillo SOLO se usa como relleno (texto marino encima, 12:1);
+       jamás como color de texto sobre claro (1.4:1, incumple 4.5:1).
+       ══════════════════════════════════════════════════════════════════ */
+
+    /* Acción principal: todo botón/enlace con bg-primary pasa a amarillo de seguridad */
+    button.bg-primary, a.bg-primary, label.bg-primary,
+    .ds-empty .ds-empty-action {
+      background-color: var(--brand-accent) !important;
+      color: var(--brand-ink) !important;
+      box-shadow: inset 0 -1px 0 var(--brand-accent-strong), var(--ds-shadow);
+    }
+    button.bg-primary:hover, a.bg-primary:hover, label.bg-primary:hover,
+    .ds-empty .ds-empty-action:hover { background-color: var(--brand-accent-strong) !important; opacity: 1 !important; }
+    button.bg-primary [class*="text-"], a.bg-primary [class*="text-"],
+    label.bg-primary [class*="text-"] { color: inherit !important; }
+    button.bg-primary:disabled, button.bg-primary[aria-disabled="true"] { opacity: .5 !important; box-shadow: none; }
+
+    /* Campos: borde marino + halo amarillo al enfocar (el borde garantiza el contraste 3:1) */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+    select:focus, textarea:focus {
+      outline: none !important;
+      border-color: var(--color-primary) !important;
+      box-shadow: 0 0 0 3px rgba(255, 213, 63, 0.55) !important;
+    }
+    [data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+    [data-theme="dark"] select:focus, [data-theme="dark"] textarea:focus { border-color: var(--brand-accent) !important; }
+
+    /* Campo obligatorio: el asterisco lo pone PWA_SKILLS.marcarObligatorios() */
+    .req-star { color: var(--st-bad-fg); font-weight: 800; margin-left: 2px; }
+    .req-legend { font-size: 12px; color: var(--ds-fg-muted); }
+
+    /* Aprovechar el ancho: en formularios, los campos cortos comparten fila.
+       Cualquier .field-pair coloca dos controles lado a lado, también en móvil. */
+    .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    @media (min-width: 768px) { .field-pair.field-trio { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+    /* Tarjetas: radio y sombra de la identidad */
+    #main-container .rounded-2xl.border { border-radius: var(--ds-radius, 14px); }
+    #main-container .shadow-sm { box-shadow: var(--ds-shadow); }
+
+    /* Titulares con el peso de la identidad */
+    #main-container h1, #main-container h2 { letter-spacing: -.015em; }
+
+    /* ─── 8.b TARJETAS MÓVILES: APROVECHAR EL ANCHO ───
+       Causa del hueco: cada celda heredaba `width:100%` del patrón genérico, así que
+       aunque el módulo pidiera "fecha + asistentes en la misma línea", cada dato caía
+       en su propia fila y dejaba la derecha vacía. Ahora el ancho es el del contenido
+       (las celdas que deben ocupar la fila entera ya declaran flex-basis:100%) y
+       hay un respiro horizontal entre datos contiguos. */
+    @media (max-width: 639px) {
+      #inspecciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #petar-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #actos-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #epp-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #charlas-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #reportes-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td,
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td { width: auto; }
+      #inspecciones-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #petar-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #actos-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #epp-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #charlas-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #reportes-table.pwa-table-cards tbody tr:not([data-ds-ui]),
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) { column-gap: 10px; row-gap: 6px; }
+
+      /* SALTO ANTES DE LOS CHIPS: los datos (order ≤ 3) quedan en sus filas y los
+         distintivos (order 4) arrancan siempre en una fila propia; sin esto un chip
+         largo se colaba en la fila anterior y recortaba el texto contiguo. */
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui])::after,
+      #petar-table.pwa-table-cards tbody tr:not([data-ds-ui])::after,
+      #actos-table.pwa-table-cards tbody tr:not([data-ds-ui])::after,
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui])::after,
+      #epp-table.pwa-table-cards tbody tr:not([data-ds-ui])::after,
+      #charlas-table.pwa-table-cards tbody tr:not([data-ds-ui])::after {
+        content: ''; order: 3; flex: 0 0 100%; height: 0; margin-top: -6px;
+      }
+
+      /* PETAR: la 1.ª fila (permiso + fecha + iconos) es solo de la primera celda;
+         con ancho automático el horario subía a ella y se montaba sobre los iconos. */
+      #petar-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:first-child { flex: 1 1 100%; }
+
+      /* Usuarios: empresa · rol · estado en una sola fila. El DNI subió junto al
+         nombre y la primera celda pasó a ser la empresa de la persona. */
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:first-child {
+        order: 2; flex: 0 0 auto; margin-top: 8px;
+        padding: 0 !important;   /* no comparte fila con los botones de la esquina */
+        min-width: 0; max-width: 100%;
+      }
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(3) {
+        order: 2; margin-top: 8px;
+      }
+      /* El estado deja de ocupar un distintivo en la tarjeta: lo dice el borde
+         de la miniatura (abajo). Se oculta a la vista pero NO a los lectores de
+         pantalla —con display:none se perdería el dato—, así que se recorta. */
+      #usuarios-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(4) {
+        position: absolute !important; width: 1px !important; height: 1px !important;
+        padding: 0 !important; margin: -1px !important; overflow: hidden;
+        clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+      }
+      /* Activo = contorno verde; cesado = contorno rojo. 3px para que se
+         distinga de un vistazo y sin depender solo del color (el lector de
+         pantalla sigue leyendo el estado de la celda recortada). */
+      #usuarios-table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-card-thumb {
+        border-width: 3px;
+      }
+      #usuarios-table.pwa-table-cards tbody tr[data-estado="activo"].pwa-card-thumb-row .pwa-card-thumb {
+        border-color: var(--st-ok-fg);
+      }
+      #usuarios-table.pwa-table-cards tbody tr[data-estado="cesado"].pwa-card-thumb-row .pwa-card-thumb {
+        border-color: var(--st-bad-fg);
+      }
+
+      /* Capacitaciones: fecha · asistentes · instructor en una sola fila */
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(6) {
+        order: 2; flex: 1 1 0; min-width: 0; margin-top: 0; text-align: right;
+      }
+      #capacitaciones-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(6) > * {
+        display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+
+      /* IPERC: lo decisivo primero — riesgo · estado ......... revisión;
+         debajo, como dato secundario: tipo ......... n.º de peligros */
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(3),
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(5) {
+        order: 2; flex: 0 0 auto; margin-top: 0;
+      }
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(6) {
+        order: 2; flex: 0 0 auto; margin: 0 0 0 auto;
+      }
+      /* Salto de línea explícito: el pseudo-elemento de la fila es un ítem flex
+         de ancho completo y alto 0 que separa la fila de chips de la secundaria. */
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui])::after {
+        content: ''; order: 3; flex: 0 0 100%; height: 0; margin-top: -6px;
+      }
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(2) {
+        order: 4; flex: 1 1 auto; margin-top: 0; color: var(--ds-fg-muted);
+      }
+      #iperc-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(4) {
+        order: 4; flex: 0 0 auto; margin-top: 0;
+      }
+
+      /* Incidentes: el tipo de evento comparte fila con gravedad y estado */
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(2) {
+        order: 4; flex: 0 0 auto; margin-top: 8px;
+      }
+      #incidentes-table.pwa-table-cards tbody tr:not([data-ds-ui]) > td:nth-child(2) > * { padding-left: 0 !important; }
+    }
+
+    /* ─── MINIATURA DE TARJETA (todas las tarjetas móviles) ───
+       Cuadrado a la izquierda con la imagen de la columna Card_Image del
+       subconfig, o el icono del módulo si el registro no tiene foto. Lo inserta
+       PWA_SKILLS.enhanceTable(). Va posicionado sobre la tarjeta, así no altera
+       el orden de filas que cada módulo define arriba. En tabla (≥640px) no se ve. */
+    .pwa-card-thumb { display: none; }
+    @media (max-width: 639px) {
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row:not([data-ds-ui]) {
+        padding-left: 66px !important;
+        min-height: 66px;
+      }
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-card-thumb {
+        display: flex; align-items: center; justify-content: center;
+        position: absolute; left: 11px; top: 11px;
+        width: 44px; height: 44px; margin: 0; padding: 0;
+        border-radius: 12px; overflow: hidden;
+        background: var(--ds-surface-sunken);
+        border: 1px solid var(--ds-border);
+        color: var(--ds-fg-muted);
+      }
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-card-thumb .material-symbols-outlined {
+        font-size: 22px !important; line-height: 1;
+      }
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-card-thumb img {
+        position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      }
+      /* Con foto, el icono queda debajo y no se ve; sin foto, solo el icono */
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-card-thumb.has-img { background: var(--ds-surface); }
+      /* La miniatura sustituye al avatar con inicial (Usuarios) */
+      table.pwa-table-cards tbody tr.pwa-card-thumb-row .pwa-avatar { display: none !important; }
+    }
   </style>
 
 </head>
@@ -1340,7 +1566,7 @@
   <aside id="nav-drawer" role="dialog" aria-modal="true" aria-label="Menú de navegación" aria-hidden="true">
 
     <!-- ═══ HEADER: Perfil con gradiente de marca ═══ -->
-    <div class="relative shrink-0 overflow-hidden" style="background: linear-gradient(145deg, #000666 0%, #1a237e 55%, #283593 100%);">
+    <div class="relative shrink-0 overflow-hidden" style="background: linear-gradient(145deg, #0e1730 0%, #162138 55%, #1e2c4a 100%); border-bottom: 3px solid #ffd53f;">
       <!-- Dot-pattern overlay sutil -->
       <div class="absolute inset-0 opacity-[0.07]" style="background-image: radial-gradient(circle, white 1px, transparent 1px); background-size: 18px 18px;"></div>
       <!-- X Close -->
@@ -1373,22 +1599,22 @@
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">dashboard</span>
         <span class="flex-1">Panel Principal</span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('03_Inspecciones')" class="drawer-nav-link w-full text-left" id="dnav-03">
+      <button type="button" data-modulo="03_Inspecciones" onclick="toggleNavDrawer(); showView('03_Inspecciones')" class="drawer-nav-link w-full text-left" id="dnav-03">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">assignment</span>
         <span class="flex-1">Inspecciones</span>
         <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-03"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('05_Incidentes')" class="drawer-nav-link w-full text-left" id="dnav-05">
+      <button type="button" data-modulo="05_Incidentes" onclick="toggleNavDrawer(); showView('05_Incidentes')" class="drawer-nav-link w-full text-left" id="dnav-05">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">personal_injury</span>
         <span class="flex-1">Incidentes</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-05"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('06_Capacitaciones')" class="drawer-nav-link w-full text-left" id="dnav-06">
+      <button type="button" data-modulo="06_Capacitaciones" onclick="toggleNavDrawer(); showView('06_Capacitaciones')" class="drawer-nav-link w-full text-left" id="dnav-06">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">school</span>
         <span class="flex-1">Capacitaciones</span>
         <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-06"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('07_IPERC')" class="drawer-nav-link w-full text-left" id="dnav-07">
+      <button type="button" data-modulo="07_IPERC" onclick="toggleNavDrawer(); showView('07_IPERC')" class="drawer-nav-link w-full text-left" id="dnav-07">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">grid_view</span>
         <span class="flex-1">Matriz IPERC</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-07"></span>
@@ -1400,28 +1626,28 @@
       </button>
 
       <div id="drawer-nav-extra" hidden>
-      <button type="button" onclick="toggleNavDrawer(); showView('08_PETAR')" class="drawer-nav-link w-full text-left" id="dnav-08">
+      <button type="button" data-modulo="08_PETAR" onclick="toggleNavDrawer(); showView('08_PETAR')" class="drawer-nav-link w-full text-left" id="dnav-08">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">assignment_turned_in</span>
         <span class="flex-1">Permisos (PETAR)</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-08"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('09_EPP')" class="drawer-nav-link w-full text-left" id="dnav-09">
+      <button type="button" data-modulo="09_EPP" onclick="toggleNavDrawer(); showView('09_EPP')" class="drawer-nav-link w-full text-left" id="dnav-09">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">shield</span>
         <span class="flex-1">Entrega de EPP</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-09"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('10_Charlas')" class="drawer-nav-link w-full text-left" id="dnav-10">
+      <button type="button" data-modulo="10_Charlas" onclick="toggleNavDrawer(); showView('10_Charlas')" class="drawer-nav-link w-full text-left" id="dnav-10">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">campaign</span>
         <span class="flex-1">Charlas 5 Minutos</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-10"></span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('02_Reportes')" class="drawer-nav-link w-full text-left" id="dnav-02">
+      <button type="button" data-modulo="02_Reportes" onclick="toggleNavDrawer(); showView('02_Reportes')" class="drawer-nav-link w-full text-left" id="dnav-02">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">analytics</span>
         <span class="flex-1">Reportes</span>
         <span class="text-[9px] font-black bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-02"></span>
       </button>
 
-      <button type="button" onclick="toggleNavDrawer(); showView('04_Actos_Condiciones')" class="drawer-nav-link w-full text-left" id="dnav-04ac">
+      <button type="button" data-modulo="04_Actos_Condiciones" onclick="toggleNavDrawer(); showView('04_Actos_Condiciones')" class="drawer-nav-link w-full text-left" id="dnav-04ac">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">report_problem</span>
         <span class="flex-1">Actos y Condiciones</span>
         <span class="text-[9px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full min-w-[18px] text-center hidden" id="dnav-badge-04ac"></span>
@@ -1430,15 +1656,15 @@
       </div>
 
       <div class="text-[9px] font-black text-on-surface-variant/50 uppercase tracking-[0.12em] px-2 pt-3 pb-1.5">Configuración y administración</div>
-      <button type="button" onclick="toggleNavDrawer(); showView('01_Usuarios')" class="drawer-nav-link w-full text-left" id="dnav-01">
+      <button type="button" data-modulo="01_Usuarios" onclick="toggleNavDrawer(); showView('01_Usuarios')" class="drawer-nav-link w-full text-left" id="dnav-01">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">manage_accounts</span>
         <span class="flex-1">Administración de usuarios</span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('00_Admin')" class="drawer-nav-link w-full text-left" id="dnav-00">
+      <button type="button" data-modulo="00_Admin" onclick="toggleNavDrawer(); showView('00_Admin')" class="drawer-nav-link w-full text-left" id="dnav-00">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">admin_panel_settings</span>
         <span class="flex-1">Administración de plataforma</span>
       </button>
-      <button type="button" onclick="toggleNavDrawer(); showView('04_Configuraciones')" class="drawer-nav-link w-full text-left" id="dnav-04">
+      <button type="button" data-modulo="04_Configuraciones" onclick="toggleNavDrawer(); showView('04_Configuraciones')" class="drawer-nav-link w-full text-left" id="dnav-04">
         <span class="material-symbols-outlined text-[18px]" aria-hidden="true">settings</span>
         <span class="flex-1">Configuración del sistema</span>
       </button>
@@ -1511,7 +1737,7 @@
 
   <!-- PIE DE PÁGINA (Footer Configurable - Skill #18) -->
   <footer class="main-footer" id="main-footer" style="display:none;">
-      <button type="button" class="footer-nav-button" data-footer-view="03_Inspecciones" onclick="showView('03_Inspecciones')" aria-label="Ir a Inspecciones">
+      <button type="button" data-modulo="03_Inspecciones" class="footer-nav-button" data-footer-view="03_Inspecciones" onclick="showView('03_Inspecciones')" aria-label="Ir a Inspecciones">
          <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
          <span>Inspecciones</span>
       </button>
@@ -1519,7 +1745,7 @@
          <span class="material-symbols-outlined" aria-hidden="true">home</span>
          <span>Men&uacute; principal</span>
       </button>
-      <button type="button" class="footer-nav-button" data-footer-view="02_Reportes" onclick="showView('02_Reportes')" aria-label="Ir a Reportes">
+      <button type="button" data-modulo="02_Reportes" class="footer-nav-button" data-footer-view="02_Reportes" onclick="showView('02_Reportes')" aria-label="Ir a Reportes">
          <span class="material-symbols-outlined" aria-hidden="true">summarize</span>
          <span>Reportes</span>
       </button>
@@ -1544,15 +1770,9 @@
 
     <!-- Módulo 02_Reportes (Split) -->
     <?!= include('02_Reportes/subconfig_02_Reportes.js'); ?>
-    <?!= include('02_Reportes/Mod_02_Reportes_Resumen'); ?>
-    <?!= include('02_Reportes/Mod_02_Reportes_Edicion'); ?>
-    <?!= include('02_Reportes/Mod_02_Reportes_Detalle'); ?>
 
     <!-- Módulo 03_Inspecciones (Split) -->
     <?!= include('03_Inspecciones/subconfig_03_Inspecciones.js'); ?>
-    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Resumen'); ?>
-    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Edicion'); ?>
-    <?!= include('03_Inspecciones/Mod_03_Inspecciones_Detalle'); ?>
 
     <!-- Módulo 001_Configuraciones (Split) -->
     <?!= include('001_Configuraciones/subconfig_04_Configuraciones.js'); ?>
@@ -1562,45 +1782,24 @@
 
     <!-- Módulo 04_Actos_Condiciones (Split) -->
     <?!= include('04_Actos_Condiciones/subconfig_04_Actos_Condiciones.js'); ?>
-    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Resumen'); ?>
-    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Edicion'); ?>
-    <?!= include('04_Actos_Condiciones/Mod_04_Actos_Condiciones_Detalle'); ?>
 
     <!-- Módulo 05_Incidentes (Split) -->
     <?!= include('05_Incidentes/subconfig_05_Incidentes.js'); ?>
-    <?!= include('05_Incidentes/Mod_05_Incidentes_Resumen'); ?>
-    <?!= include('05_Incidentes/Mod_05_Incidentes_Edicion'); ?>
-    <?!= include('05_Incidentes/Mod_05_Incidentes_Detalle'); ?>
 
     <!-- Módulo 06_Capacitaciones (Split) -->
     <?!= include('06_Capacitaciones/subconfig_06_Capacitaciones.js'); ?>
-    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Resumen'); ?>
-    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Edicion'); ?>
-    <?!= include('06_Capacitaciones/Mod_06_Capacitaciones_Detalle'); ?>
 
     <!-- Módulo 07_IPERC (Split) -->
     <?!= include('07_IPERC/subconfig_07_IPERC.js'); ?>
-    <?!= include('07_IPERC/Mod_07_IPERC_Resumen'); ?>
-    <?!= include('07_IPERC/Mod_07_IPERC_Edicion'); ?>
-    <?!= include('07_IPERC/Mod_07_IPERC_Detalle'); ?>
 
     <!-- Módulo 08_PETAR (Split) -->
     <?!= include('08_PETAR/subconfig_08_PETAR.js'); ?>
-    <?!= include('08_PETAR/Mod_08_PETAR_Resumen'); ?>
-    <?!= include('08_PETAR/Mod_08_PETAR_Edicion'); ?>
-    <?!= include('08_PETAR/Mod_08_PETAR_Detalle'); ?>
 
     <!-- Módulo 09_EPP (Split) -->
     <?!= include('09_EPP/subconfig_09_EPP.js'); ?>
-    <?!= include('09_EPP/Mod_09_EPP_Resumen'); ?>
-    <?!= include('09_EPP/Mod_09_EPP_Edicion'); ?>
-    <?!= include('09_EPP/Mod_09_EPP_Detalle'); ?>
 
     <!-- Módulo 10_Charlas (Split) -->
     <?!= include('10_Charlas/subconfig_10_Charlas.js'); ?>
-    <?!= include('10_Charlas/Mod_10_Charlas_Resumen'); ?>
-    <?!= include('10_Charlas/Mod_10_Charlas_Edicion'); ?>
-    <?!= include('10_Charlas/Mod_10_Charlas_Detalle'); ?>
   </div>
 
   <!-- ====================================================================== -->
@@ -1611,8 +1810,12 @@
   <?!= include('Permisos.js'); ?>
   <?!= include('Global_Skills.js'); ?>
   <?!= include('PDF_Templates.js'); ?>
+  <?!= include('Face_Capture.js'); ?>
+  <?!= include('Consentimiento.js'); ?>
+  <?!= include('Motor_Render.js'); ?>
   <?!= include('Offline_Engine.js'); ?>
   <?!= include('App_Routing.js'); ?>
+  <?!= include('OTA_Updater.js'); ?>
 
   <script>
     // -------------------------------------------------------------

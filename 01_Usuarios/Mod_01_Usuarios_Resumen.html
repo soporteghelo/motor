@@ -25,17 +25,30 @@
           <span class="material-symbols-outlined text-[13px] opacity-60">expand_more</span>
         </button>
         <div id="usr-export-menu" class="hidden absolute right-0 top-full mt-1.5 w-44 bg-white rounded-xl border border-outline-variant shadow-xl z-50 overflow-hidden">
-          <button onclick="PWA_SKILLS.exportFilteredToExcel(); document.getElementById('usr-export-menu').classList.add('hidden')"
+          <button onclick="usrExportar('xlsx'); document.getElementById('usr-export-menu').classList.add('hidden')"
             class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors">
             <span class="material-symbols-outlined text-[17px] text-green-600">grid_on</span>Excel (.xlsx)
           </button>
-          <button onclick="PWA_SKILLS.exportVisibleToCSV('Usuarios'); document.getElementById('usr-export-menu').classList.add('hidden')"
+          <button onclick="usrExportar('csv'); document.getElementById('usr-export-menu').classList.add('hidden')"
             class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
             <span class="material-symbols-outlined text-[17px] text-blue-600">text_snippet</span>CSV (.csv)
           </button>
+          <!-- Padrón por empresa: un archivo con una hoja por empresa cliente,
+               para que el SuperAdmin se lo mande a cada una. -->
+          <button id="usr-export-empresas" style="display:none;"
+            onclick="usrExportarPorEmpresa(); document.getElementById('usr-export-menu').classList.add('hidden')"
+            class="w-full flex items-center gap-2.5 px-4 py-3 text-[12px] font-semibold text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/30">
+            <span class="material-symbols-outlined text-[17px] text-indigo-600">domain</span>Padrón por empresa
+          </button>
         </div>
       </div>
-      <button onclick="changeInternalView('01_Usuarios', 'Edicion')"
+      <!-- Solo SuperAdmin: ve a todas las empresas, así que necesita separarlas -->
+      <button id="usr-agrupar-btn" style="display:none;" onclick="usrToggleAgrupado()" aria-pressed="false"
+        class="flex items-center gap-1.5 px-3 h-9 border border-outline-variant text-[12px] font-bold text-secondary rounded-lg hover:bg-surface-container transition-colors shadow-sm whitespace-nowrap">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">workspaces</span>
+        <span id="usr-agrupar-label">Agrupar</span>
+      </button>
+      <button data-permiso="crear" onclick="changeInternalView('01_Usuarios', 'Edicion')"
         class="flex items-center gap-1.5 px-3 h-9 bg-primary text-on-primary rounded-lg text-[12px] font-bold hover:opacity-90 transition-all shadow-sm whitespace-nowrap">
         <span class="material-symbols-outlined text-[16px]">person_add</span>Nuevo
       </button>
@@ -51,7 +64,7 @@
       <table class="w-full text-left border-collapse" id="usuarios-table">
         <thead>
           <tr class="bg-surface-container-low text-on-surface-variant text-[11px] font-black uppercase tracking-wider">
-            <th class="px-3 py-2.5">Usuario (DNI)</th>
+            <th class="px-3 py-2.5">Empresa</th>
             <th class="px-3 py-2.5">Colaborador</th>
             <th class="px-3 py-2.5">Rol / Permisos</th>
             <th class="px-3 py-2.5">Estado</th>
@@ -100,58 +113,240 @@ function usrRenderTabla(data) {
   }
 
   PWA_SKILLS.finishLoading('usuarios-table-body');
-  tbody.innerHTML = data.map((u, i) => {
-    const rc = USR_ROL_CONF[u.Rol] || USR_ROL_CONF['Trabajador'];
-    const grad = USR_AVATAR_GRADS[i % USR_AVATAR_GRADS.length];
-    const inicial = (u.Nombre_Completo || u.DNI || '?').trim().charAt(0).toUpperCase();
-    const cesado = u.Status === 'Cesado' || u.Status === 'Inactivo';
-    return `
-    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
-        onclick="changeInternalView('01_Usuarios','Detalle','${u.DNI}')">
-      <td class="px-3 py-2.5">
-        <p class="text-[12px] font-black text-on-surface tabular-nums">${u.DNI}</p>
-        <span class="inline-flex items-center gap-1 mt-0.5">
-          <span class="w-1.5 h-1.5 rounded-full ${cesado ? 'bg-red-500' : 'bg-emerald-500'} inline-block"></span>
-          <span class="text-[9px] ${cesado ? 'text-red-700' : 'text-emerald-700'} font-bold uppercase tracking-widest">${u.Status || 'Activo'}</span>
-        </span>
-      </td>
-      <td class="px-3 py-2.5">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-gradient-to-br ${grad} flex items-center justify-center text-white text-[13px] font-black shadow-sm shrink-0">${inicial}</div>
-          <div>
-            <p class="text-[12px] font-bold text-on-surface leading-snug">${u.Nombre_Completo || '—'}</p>
-            <p class="text-[10px] text-secondary">${u.Email || ''}</p>
-          </div>
+
+  // Agrupado por empresa (SuperAdmin): mismas filas, con un separador por
+  // empresa. Se ordena por empresa para que cada bloque quede junto.
+  const agrupado = !!window._usrAgrupado;
+  let orden = data;
+  if (agrupado) {
+    orden = data.slice().sort((a, b) =>
+      String(a.Empresa || 'zzz').localeCompare(String(b.Empresa || 'zzz'), 'es') ||
+      String(a.Nombre_Completo || '').localeCompare(String(b.Nombre_Completo || ''), 'es'));
+  }
+  const conteo = {};
+  if (agrupado) orden.forEach(u => { const k = u.Empresa || 'Sin empresa'; conteo[k] = (conteo[k] || 0) + 1; });
+  let grupoActual = null;
+
+  tbody.innerHTML = orden.map((u, i) => {
+    let cabecera = '';
+    if (agrupado) {
+      const emp = u.Empresa || 'Sin empresa';
+      if (emp !== grupoActual) {
+        grupoActual = emp;
+        cabecera = `
+    <tr data-ds-ui="group" class="bg-surface-container-low">
+      <td colspan="5" class="px-3 py-2 border-y border-outline-variant">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-[15px] text-primary" aria-hidden="true">domain</span>
+          <span class="text-[11px] font-black text-on-surface uppercase tracking-wider">${esc(emp)}</span>
+          <span class="text-[10px] font-bold text-on-surface-variant">${esc(String(conteo[emp]))} persona(s)</span>
         </div>
       </td>
-      <td class="px-3 py-2.5">
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${rc.cls}">
-          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${rc.icon}</span>${u.Rol || '—'}
-        </span>
-      </td>
-      <td class="px-3 py-2.5">
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${cesado ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
-          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${cesado ? 'block' : 'check_circle'}</span>${u.Status || 'Activo'}
-        </span>
-      </td>
-      <td class="px-3 py-2.5 text-center">
-        <button onclick="event.stopPropagation(); changeInternalView('01_Usuarios','Edicion','${u.DNI}')" aria-label="Editar a ${u.Nombre_Completo || u.DNI}"
-          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
-          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
-        </button>
-      </td>
     </tr>`;
+      }
+    }
+    return cabecera + usrFilaHTML(u, i);
   }).join('');
 
   PWA_SKILLS.initSortableTable('usuarios-table-body');
+  // Empresa es un Enum abierto: sus valores están en los datos, no en el subconfig
+  PWA_SKILLS.actualizarOpcionesFiltro('01_Usuarios', data);
   PWA_SKILLS.enhanceTable('usuarios-table-body');
   PWA_SKILLS.updateResultCount('usuarios-table-body', 'ui-result-count');
   const c = document.querySelector('#main-container #ui-result-count');
   if (c) c.classList.remove('hidden');
 }
 
+/** Una fila del directorio. Se extrajo para poder intercalar separadores. */
+function usrFilaHTML(u, i) {
+    const rc = USR_ROL_CONF[u.Rol] || USR_ROL_CONF['Trabajador'];
+    const grad = USR_AVATAR_GRADS[i % USR_AVATAR_GRADS.length];
+    const inicial = (u.Nombre_Completo || u.DNI || '?').trim().charAt(0).toUpperCase();
+    const cesado = u.Status === 'Cesado' || u.Status === 'Inactivo';
+    return `
+    <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer group"
+        data-estado="${esc(cesado ? 'cesado' : 'activo')}"
+        data-dni="${esc(u.DNI)}" onclick="changeInternalView('01_Usuarios','Detalle',this.dataset.dni)">
+      <td class="px-3 py-2.5">
+        <p class="text-[11px] font-bold text-secondary truncate" title="${esc(u.Empresa || 'Sin empresa')}">${esc(u.Empresa || 'Sin empresa')}</p>
+      </td>
+      <td class="px-3 py-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="pwa-avatar w-9 h-9 rounded-xl bg-gradient-to-br ${esc(grad)} flex items-center justify-center text-white text-[13px] font-black shadow-sm shrink-0">${esc(inicial)}</div>
+          <div class="min-w-0">
+            <p class="flex items-baseline gap-2 min-w-0">
+              <span class="text-[12px] font-bold text-on-surface leading-snug truncate">${esc(u.Nombre_Completo || '—')}</span>
+              <span class="text-[11px] font-black text-on-surface tabular-nums shrink-0">${esc(u.DNI)}</span>
+            </p>
+            <p class="text-[10px] text-secondary truncate">${esc(u.Email || '')}</p>
+          </div>
+        </div>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${esc(rc.cls)}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${esc(rc.icon)}</span>${esc(u.Rol || '—')}
+        </span>
+      </td>
+      <td class="px-3 py-2.5">
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${esc(cesado ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}">
+          <span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1" aria-hidden="true">${esc(cesado ? 'block' : 'check_circle')}</span>${esc(u.Status || 'Activo')}
+        </span>
+      </td>
+      <td class="px-3 py-2.5 text-center">
+        <button data-permiso="editar" data-dni="${esc(u.DNI)}" onclick="event.stopPropagation(); changeInternalView('01_Usuarios','Edicion',this.dataset.dni)" aria-label="Editar a ${esc(u.Nombre_Completo || u.DNI)}"
+          class="w-8 h-8 rounded-full hover:bg-primary/10 text-secondary hover:text-primary transition-all flex items-center justify-center mx-auto opacity-0 group-hover:opacity-100">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
+        </button>
+      </td>
+    </tr>`;
+}
+
+/**
+ * Agrupar por empresa. Solo tiene sentido para el SuperAdmin, que es el único
+ * que ve personal de varias empresas a la vez (los demás ven solo la suya).
+ */
+function usrToggleAgrupado() {
+  window._usrAgrupado = !window._usrAgrupado;
+  const btn = document.querySelector('#main-container #usr-agrupar-btn');
+  const lbl = document.querySelector('#main-container #usr-agrupar-label');
+  if (btn) {
+    btn.setAttribute('aria-pressed', String(!!window._usrAgrupado));
+    btn.classList.toggle('bg-primary/10', !!window._usrAgrupado);
+    btn.classList.toggle('text-primary', !!window._usrAgrupado);
+    btn.classList.toggle('border-primary/30', !!window._usrAgrupado);
+  }
+  if (lbl) lbl.textContent = window._usrAgrupado ? 'Agrupado' : 'Agrupar';
+  usrRenderTabla(window._usrData || []);
+  // Los filtros se aplican sobre el DOM recién pintado
+  if (PWA_SKILLS.applyFilters) PWA_SKILLS.applyFilters();
+}
+
+/**
+ * Columnas del padrón, en el orden en que se leen. Una columna = un dato:
+ * el Excel se armaba raspando la tabla, y la celda "Colaborador" junta en
+ * pantalla nombre, DNI y correo — por eso salían los tres apretados en una
+ * sola columna y el resto corrido.
+ *
+ * NO lleva contraseña: el servidor solo guarda su derivación (bcrypt), así
+ * que no existe ningún sitio de donde leerla.
+ */
+function usrFilaExport(u, conEmpresa) {
+  const fila = {};
+  if (conEmpresa) fila['Empresa'] = u.Empresa || 'Sin empresa';
+  fila['DNI'] = String(u.DNI || '');
+  fila['Nombre completo'] = u.Nombre_Completo || '';
+  fila['Rol'] = u.Rol || '';
+  fila['Estado'] = u.Status || 'Activo';
+  fila['Área'] = u.Area || '';
+  fila['Puesto'] = u.Puesto || '';
+  fila['Correo'] = u.Email || '';
+  return fila;
+}
+
+/**
+ * Los registros que el usuario está viendo: los datos cargados, acotados a
+ * las filas que el filtro dejó visibles en la tabla (se cruzan por DNI).
+ */
+function usrDatosVisibles() {
+  const filas = window._usrData || [];
+  const tbody = document.querySelector('#main-container #usuarios-table-body');
+  if (!tbody) return filas;
+  const visibles = {};
+  let hubo = false;
+  tbody.querySelectorAll('tr[data-dni]').forEach(tr => {
+    if (tr.style.display === 'none') return;
+    visibles[String(tr.dataset.dni)] = true;
+    hubo = true;
+  });
+  if (!hubo) return [];
+  return filas.filter(u => visibles[String(u.DNI)]);
+}
+
+/** Exportación del directorio: una columna por dato, no la tabla raspada. */
+function usrExportar(formato) {
+  const filas = usrDatosVisibles();
+  if (!filas.length) { PWA_SKILLS.toast('No hay registros visibles para exportar.', 'warning'); return; }
+  const datos = filas
+    .slice()
+    .sort((a, b) => String(a.Empresa || 'zzz').localeCompare(String(b.Empresa || 'zzz'), 'es') ||
+                    String(a.Nombre_Completo || '').localeCompare(String(b.Nombre_Completo || ''), 'es'))
+    .map(u => usrFilaExport(u, true));
+  if (formato === 'csv') PWA_SKILLS.exportDatosToCSV(datos, 'Usuarios');
+  else PWA_SKILLS.exportToExcel(datos, 'Usuarios');
+}
+
+/**
+ * Padrón por empresa: un .xlsx con una hoja por empresa. Pensado para que el
+ * SuperAdmin se lo mande a cada cliente y ellos repartan los accesos.
+ * NO lleva contraseñas: el servidor solo guarda su derivación (bcrypt), y
+ * mandar claves en un archivo que circula por correo sería regalarlas.
+ */
+function usrExportarPorEmpresa() {
+  const filas = usrDatosVisibles();
+  if (!filas.length) { PWA_SKILLS.toast('No hay personal cargado para exportar.', 'warning'); return; }
+
+  const grupos = {};
+  filas.forEach(u => {
+    const emp = u.Empresa || 'Sin empresa';
+    (grupos[emp] = grupos[emp] || []).push(usrFilaExport(u, false));
+  });
+  // Dentro de cada hoja, por nombre: la hoja YA es la empresa
+  Object.keys(grupos).forEach(k => grupos[k].sort(
+    (a, b) => String(a['Nombre completo']).localeCompare(String(b['Nombre completo']), 'es')));
+
+  PWA_SKILLS.exportToExcelPorHojas(grupos, 'Padron_Usuarios');
+}
+
+/**
+ * Trae el padron COMPLETO por paginas.
+ *
+ * Antes se pedia con DataService.read (tabla entera en una sola llamada).
+ * En Supabase, PostgREST corta en 1 000 filas y responde status OK: una
+ * empresa con mas personal perdia gente del listado, del buscador y del
+ * padron exportado sin ningun aviso. Aqui se pagina hasta tenerlo todo y,
+ * si el servidor dijera que aun falta, se avisa en vez de callarlo.
+ */
+async function usrLeerTodoElPadron() {
+  const TAM = 500, TOPE = 40;            // hasta 20 000 personas
+  const todas = [];
+  let desde = 0, total = null;
+  for (let p = 0; p < TOPE; p++) {
+    const res = await DataService.query('01_Usuarios', { limite: TAM, desde: desde });
+    if (!res || res.status !== 'OK' || !Array.isArray(res.payload)) {
+      if (!todas.length) throw new Error('No se pudo leer el personal');
+      break;
+    }
+    todas.push.apply(todas, res.payload);
+    total = (typeof res.total === 'number') ? res.total : total;
+    desde += res.payload.length;
+    const hayMas = (res.hayMas !== undefined) ? res.hayMas
+                 : (total !== null ? desde < total : res.payload.length === TAM);
+    if (!res.payload.length || !hayMas) break;
+  }
+  if (total !== null && todas.length < total && typeof PWA_SKILLS !== 'undefined') {
+    PWA_SKILLS.toast('Se cargaron ' + todas.length + ' de ' + total + ' personas. Afina la busqueda para ver el resto.', 'warning', 5000);
+  }
+  // Respaldo: un backend que no sepa paginar (o un proveedor antiguo) no
+  // puede dejar el padron vacio. Si la consulta paginada no trajo a nadie,
+  // se pide la lista completa como antes.
+  if (!todas.length && DataService.read) {
+    const res = await DataService.read('01_Usuarios');
+    if (res && res.status === 'OK' && Array.isArray(res.payload)) return res.payload;
+  }
+  return todas;
+}
+
 function loadResumen_01_Usuarios() {
   PWA_SKILLS.renderSkeleton('usuarios-table-body', 6);
+
+  // Agrupar y el padrón por empresa son del SuperAdmin: es el único que ve
+  // personal de más de una empresa (a los demás RLS ya les acota la suya).
+  const esSuper = typeof PERMISOS !== 'undefined' && PERMISOS.esSuperAdmin();
+  ['usr-agrupar-btn', 'usr-export-empresas'].forEach(id => {
+    const el = document.querySelector('#main-container #' + id);
+    if (el) el.style.display = esSuper ? '' : 'none';
+  });
+  if (!esSuper) window._usrAgrupado = false;
 
   if (!window._usrExportListener) {
     window._usrExportListener = true;
@@ -164,9 +359,8 @@ function loadResumen_01_Usuarios() {
     });
   }
 
-  DataService.read('01_Usuarios')
-    .then(res => {
-      const filas = (res && res.status === 'OK' && Array.isArray(res.payload)) ? res.payload : [];
+  usrLeerTodoElPadron()
+    .then(filas => {
       const visibles = (typeof PERMISOS !== 'undefined')
         ? PERMISOS.filtrarDatos('01_Usuarios', filas) : filas;
       window._usrData = visibles;

@@ -25,6 +25,9 @@ var SUBCONFIG_01_USUARIOS = {
   
   Config_Modular: {
     NombreInterno: "01_Usuarios",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:    "Foto_Perfil",
+    Card_Icon:     "person",
     DRIVE_FOLDER_NAME: "01_Usuarios_DB",
     GOOGLE_DOC_TEMPLATE_ID: "", 
     EMAIL_TEMPLATE_ID: "", 
@@ -71,7 +74,11 @@ var SUBCONFIG_01_USUARIOS = {
         type: "Enum",
         required: true,
         isFilter: true,
-        acceptedValues: ["Admin", "Supervisor", "Trabajador"],
+        // "SuperAdmin" (proveedor del servicio) es un valor válido del backend,
+        // pero el formulario solo lo ofrece si quien edita ya es SuperAdmin
+        // (ver Mod_01_Usuarios_Edicion.html). Un Admin que lo intente recibe
+        // "Solo el proveedor del servicio asigna el rol SuperAdmin." de Code.gs.
+        acceptedValues: ["SuperAdmin", "Admin", "Supervisor", "Trabajador"],
         allowOtherValues: false
     },
 
@@ -81,6 +88,20 @@ var SUBCONFIG_01_USUARIOS = {
         isFilter: true,
         acceptedValues: ["Activo", "Cesado"], // "Cesado" activa el Kill-Switch de la Guía Maestra
         allowOtherValues: false
+    },
+
+    // Empresa contratista de la persona. Además de etiquetar la ficha, DELIMITA
+    // LO QUE VE: un Admin o Supervisor con empresa solo ve los registros de su
+    // empresa (Code.gs → mismaEmpresa_). Dejarla vacía = ve todo, que es el
+    // comportamiento anterior y evita dejar a ciegas una instalación ya en uso.
+    // El selector del formulario ofrece estos valores MÁS las empresas que ya
+    // figuran en otras fichas, y "Otra…" para escribir una nueva.
+    "Empresa": {
+        type: "Enum",
+        required: false,
+        isFilter: true,
+        acceptedValues: [],
+        allowOtherValues: true
     },
 
     "Foto_Perfil": {
@@ -97,7 +118,18 @@ var SUBCONFIG_01_USUARIOS = {
         isFilter: false
     },
     "Firma_Cargo_ID": { type: "Hidden", required: false },
-    "Firma_Cargo_Path": { type: "Hidden", required: false }
+    "Firma_Cargo_Path": { type: "Hidden", required: false },
+
+    // ── CONSENTIMIENTO DE USO DE FIRMA DIGITAL ──────────────────────────
+    // Se firma UNA sola vez, la primera vez que la persona entra a la app
+    // (00_Config/Consentimiento.js.html). Con la fecha puesta, no se vuelve
+    // a pedir nunca. Son campos del sistema: el formulario de Edición no los
+    // muestra y nadie los escribe a mano.
+    "Consentimiento_Fecha": { type: "Hidden", required: false },
+    // Folio de verificación impreso en el PDF (CONS-<DNI>-<sello>)
+    "Consentimiento_Folio": { type: "Hidden", required: false },
+    // Dónde quedó la constancia: ruta de Storage (Supabase) o ID de Drive
+    "Consentimiento_Path":  { type: "Hidden", required: false }
   }
 };
 </script>

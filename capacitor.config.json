@@ -1,0 +1,20 @@
+{
+  "appId": "pe.motorssoma.app",
+  "appName": "MOTOR SSOMA",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "updateUrl": "",
+      "statsUrl": "",
+      "channelUrl": "",
+      "resetWhenUpdate": true,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true,
+      "appReadyTimeout": 20000
+    }
+  }
+}

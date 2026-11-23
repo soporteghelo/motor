@@ -38,6 +38,9 @@ var SUBCONFIG_02_REPORTES = {
   // Parametría General del Módulo (Filtros y Permisos Base)
   Config_Modular: {
     NombreInterno: "02_Reportes",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:    "Evidencia_Fotografica",
+    Card_Icon:     "analytics",
     DRIVE_FOLDER_NAME: "02_Reportes_Files",
     GOOGLE_DOC_TEMPLATE_ID: "", 
     EMAIL_TEMPLATE_ID: "", 
@@ -114,6 +117,46 @@ var SUBCONFIG_02_REPORTES = {
     },
     "Firma_Operario_ID": { type: "Hidden", required: false },
     "Firma_Operario_Path": { type: "Hidden", required: false }
-  }
+  },
+
+  Vistas: {
+    Subtitulo: "Monitoreo operativo",
+    Resumen: {
+      etiquetaCrear: "Nuevo reporte", ordenPor: "Fecha_Emision",
+      columnas: [
+        { campo: "Fecha_Emision", etiqueta: "Fecha" },
+        { campo: "Categoria_Reporte", etiqueta: "Categoría" },
+        { campo: "Nivel_Severidad", etiqueta: "Severidad", tipo: "badge" },
+        { campo: "Inspector_DNI", etiqueta: "Inspector" }
+      ],
+      vacio: { icono: "analytics", titulo: "Sin reportes registrados",
+               mensaje: "Los reportes de monitoreo aparecerán aquí.", accion: "Nuevo reporte" }
+    },
+    Edicion: {
+      tituloNuevo: "Nuevo Reporte", tituloEditar: "Editar Reporte",
+      secciones: [
+        { titulo: "Datos del reporte", icono: "analytics",
+          campos: ["Fecha_Emision", "Inspector_DNI", "Categoria_Reporte", "Nivel_Severidad"] },
+        { titulo: "Evidencia", icono: "photo_camera",
+          campos: ["Evidencia_Fotografica", "Firma_Operario"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Categoria_Reporte", subtitulo: ["Fecha_Emision"],
+      secciones: [{ titulo: "Datos del reporte",
+        campos: ["Fecha_Emision", "Inspector_DNI", "Categoria_Reporte", "Nivel_Severidad"] }]
+    },
+    Hijos: { titulo: "Observaciones", icono: "notes",
+             vacio: "Agrega las observaciones del reporte.",
+             vacioDetalle: "Este reporte no registró observaciones." },
+    Badges: {
+      Nivel_Severidad: {
+        "Bajo (Verde)":     { tono: "ok",   icono: "check_circle" },
+        "Medio (Amarillo)": { tono: "warn", icono: "warning" },
+        "Alto (Rojo)":      { tono: "bad",  icono: "priority_high" },
+        "Crítico (Negro)":  { tono: "crit", icono: "dangerous" }
+      }
+    }
+  },
 };
 </script>

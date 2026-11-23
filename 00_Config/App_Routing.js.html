@@ -18,17 +18,29 @@ if(!AppState.currentView) AppState.currentView = 'Login';
 async function initApp() {
   console.log("🚀 Iniciando Ruteador...");
 
-  // 1. Inicializar DB Offline (con timeout de 3s por si falla silenciosamente)
+  // 1. Inicializar DB Offline (con timeout de 3s por si falla silenciosamente).
+  //    Si el navegador no da IndexedDB (ventana privada, almacenamiento
+  //    bloqueado), la promesa se RECHAZA: sin este catch la excepción cortaba
+  //    initApp y la app se quedaba en "Cargando Base Local" para siempre.
+  //    Sin cola offline la app sigue siendo usable en línea.
   await Promise.race([
-    initOfflineDB(),
+    initOfflineDB().catch(e => {
+      console.warn('Sin almacenamiento offline en este navegador: la app funcionará solo en línea.', e);
+      if (typeof PWA_SKILLS !== 'undefined') {
+        setTimeout(() => PWA_SKILLS.toast('Este navegador no permite guardar datos sin conexión. Necesitarás estar en línea.', 'warning', 6000), 1500);
+      }
+    }),
     new Promise(resolve => setTimeout(resolve, 3000))
   ]);
 
   // 2. Aplicar configuraciones guardadas (colores, nombre app, etc.)
   if (typeof applyAppSettings === 'function') applyAppSettings();
 
-  // 3. Sembrar usuario demo si no existe
-  if (typeof seedDemoUsers === 'function') await seedDemoUsers();
+  // 3. Usuario demo (admin/admin123) SOLO en el preview local (mock). Con un
+  //    backend real nunca: daba entrada como Admin a cualquiera que fallara
+  //    la contraseña, con acceso a la caché offline del dispositivo.
+  if (window.__MOTOR_DEMO__ && typeof seedDemoUsers === 'function') await seedDemoUsers();
+  else localStorage.removeItem('pwa_demo_users');
 
   // 4. Kill-switch: verificar expiración de sesión (8 horas)
   const sessionExpiry = localStorage.getItem('pwa_session_expiry');
@@ -52,6 +64,9 @@ async function initApp() {
     showView('Login');
   } else {
     showView('Menu');
+    // 7. Primera vez en la app: verificar datos y autorizar el uso de la
+    //    firma digital. Si ya lo hizo, no aparece nada (ver Consentimiento.js).
+    if (typeof CONSENTIMIENTO !== 'undefined') setTimeout(() => CONSENTIMIENTO.revisarAlIniciar(), 900);
   }
 }
 
@@ -61,6 +76,14 @@ async function initApp() {
  */
 function showView(viewID, options) {
   options = options || {};
+  // Salir de una vista nunca debe dejar la cámara encendida
+  if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+  // El filtro de botones por permiso es del módulo que se deja: se suelta
+  // aquí y aplicarVista() instala el del módulo nuevo.
+  if (typeof PERMISOS !== 'undefined' && PERMISOS._observador) {
+    PERMISOS._observador.disconnect();
+    PERMISOS._observador = null;
+  }
   // Un filtro abierto desde el resumen del drawer pertenece solamente a esa
   // navegación. Cualquier acceso normal (menú, footer, dashboard) vuelve a
   // mostrar el módulo sin arrastrar un filtro anterior.
@@ -112,6 +135,9 @@ function showView(viewID, options) {
   else if (viewID === 'Menu') {
     appTitle.innerText = "Menú Principal";
     container.innerHTML = renderMenu();
+    agregarTarjetasModulosNuevos(container);
+    if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
+    actualizarGruposMenu();
     // Los <script> insertados vía innerHTML no se ejecutan: la carga de datos
     // del panel debe dispararse explícitamente desde aquí.
     setTimeout(() => loadDashboardData(false), 40);
@@ -120,13 +146,11 @@ function showView(viewID, options) {
     // Control de acceso: un módulo desactivado o sin permiso de lectura no se
     // abre ni escribiendo la ruta a mano. La comprobación va ANTES de inyectar.
     if (typeof PERMISOS !== 'undefined' && !PERMISOS.moduloVisible(viewID)) {
-      const motivo = !PERMISOS.moduloActivo(viewID)
-        ? 'Este módulo no está incluido en el plan de tu empresa.'
-        : 'Tu rol (' + PERMISOS.etiqueta() + ') no tiene acceso a este módulo.';
+      const motivo = PERMISOS.motivoBloqueo(viewID);
       container.innerHTML =
         '<div class="ds-empty" role="status" style="min-height:60vh">' +
         '<span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">lock</span>' +
-        '<h4>Acceso no disponible</h4><p>' + motivo + '</p>' +
+        '<h4>Acceso no disponible</h4><p>' + esc(motivo) + '</p>' +
         '<button type="button" class="ds-empty-action" onclick="showView(\'Menu\')">' +
         '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">home</span>Volver al panel</button></div>';
       appTitle.innerText = 'Acceso restringido';
@@ -145,22 +169,27 @@ function showView(viewID, options) {
     views.forEach(v => {
       const viewDOM = document.getElementById(`module-${viewID.toLowerCase()}-${v}`);
       if (viewDOM) {
+        // El módulo trae su propia vista: manda sobre el motor.
         container.appendChild(viewDOM.cloneNode(true));
         foundAny = true;
+      } else if (typeof MOTOR_RENDER !== 'undefined') {
+        // No la trae: MOTOR_RENDER la dibuja desde el subconfig.
+        const generada = MOTOR_RENDER.construir(viewID, v);
+        if (generada) { container.appendChild(generada); foundAny = true; }
       }
     });
 
     if (!foundAny) {
       // Fallback: buscar cualquier elemento cuyo ID contenga el moduleID (ej: 00-admin-container)
       const altSlug = viewID.toLowerCase().replace(/_/g, '-');
-      document.querySelectorAll(`#module-registry [id*="${altSlug}"]`).forEach(el => {
+      document.querySelectorAll(`#module-registry [id*="${esc(altSlug)}"]`).forEach(el => {
         container.appendChild(el.cloneNode(true));
         foundAny = true;
       });
     }
 
     if (!foundAny) {
-      container.innerHTML = `<p style="color:red; text-align:center;">Error: No se encontraron vistas para [${viewID}].</p>`;
+      container.innerHTML = `<p style="color:red; text-align:center;">Error: No se encontraron vistas para [${esc(viewID)}].</p>`;
     } else {
       // Por defecto mostrar el Resumen al entrar
       changeInternalView(viewID, 'Resumen');
@@ -176,6 +205,9 @@ function showView(viewID, options) {
  */
 function changeInternalView(moduleID, viewType, recordID = null) {
   try {
+    // Igual que showView: si se venía de una Edición con captura facial,
+    // se apaga la cámara antes de pintar la vista nueva.
+    if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
     console.log(`🔄 Cambiando vista interna: ${moduleID} -> ${viewType}`);
     const modLower = moduleID.toLowerCase();
     // Normalización de nombres de vistas (Soporte Multi-idioma Detail/Detalle)
@@ -191,6 +223,17 @@ function changeInternalView(moduleID, viewType, recordID = null) {
     const vtLower = viewType.toLowerCase();
     const vtRef = viewMap[vtLower] || vtLower;
 
+    // El formulario no se abre sin permiso, aunque se llame a mano desde la
+    // consola o desde un enlace que se escapó del filtro de botones.
+    // 'CURRENT' es el propio perfil en 01_Usuarios: lo decide su vista.
+    if (vtRef === 'edicion' && typeof PERMISOS !== 'undefined' && recordID !== 'CURRENT') {
+      const accion = recordID ? 'editar' : 'crear';
+      if (!PERMISOS.puede(moduleID, accion)) {
+        PWA_SKILLS.toast('Tu rol (' + PERMISOS.etiqueta() + ') no puede ' + accion + ' registros en este módulo.', 'warning', 4000);
+        return;
+      }
+    }
+
     console.log(`🎯 Buscando elemento con patrón: [${modLower}] + [${vtRef}]`);
 
     // 1. Ocultar todas las vistas del módulo actual dentro del contenedor
@@ -198,7 +241,7 @@ function changeInternalView(moduleID, viewType, recordID = null) {
     allViews.forEach(el => el.style.display = 'none');
 
     // 2. Identificar y activar la vista solicitada (Selector flexible para ID)
-    const activeEl = document.querySelector(`#main-container [id*="${modLower}"][id*="${vtRef}"]`);
+    const activeEl = document.querySelector(`#main-container [id*="${esc(modLower)}"][id*="${esc(vtRef)}"]`);
     
     if (!activeEl) {
         console.error(`❌ No se pudo localizar el elemento de vista para modulo: ${modLower} y vista: ${vtRef}`);
@@ -216,7 +259,7 @@ function changeInternalView(moduleID, viewType, recordID = null) {
     activeEl.style.display = 'block';
 
     // Skill #17: Gestión de Filtros
-    if (vtLower === 'resumen') {
+    if (vtRef === 'resumen') {
         // FIX-13: Barra de búsqueda reutilizable
         const _searchPlaceholders = {
           '01_Usuarios': 'Buscar por nombre, DNI...',
@@ -230,7 +273,10 @@ function changeInternalView(moduleID, viewType, recordID = null) {
           '09_EPP': 'Buscar por trabajador, área, equipo...',
           '10_Charlas': 'Buscar por tema, área, expositor...'
         };
-        PWA_SKILLS.renderSearchBar('ui-search-bar-slot', _searchPlaceholders[moduleID] || 'Buscar...');
+        // Un módulo nuevo no necesita entrar en la lista: su título basta.
+        const _phDefecto = (typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER.subconfig(moduleID))
+          ? 'Buscar en ' + MOTOR_RENDER.titulo(moduleID) + '…' : 'Buscar...';
+        PWA_SKILLS.renderSearchBar('ui-search-bar-slot', _searchPlaceholders[moduleID] || _phDefecto);
         // Skill #19: Renderizado dinámico de filtros basado en Subconfig
         PWA_SKILLS.renderDynamicFilters(moduleID);
         // Módulos con carga dinámica en vista resumen
@@ -250,6 +296,10 @@ function changeInternalView(moduleID, viewType, recordID = null) {
           pads.forEach(p => PWA_SKILLS.initSignaturePad(p.id));
           console.log(`✍️ Signature Pads inicializados en ${moduleID}`);
         }, 300);
+        // Obligatorios: asterisco rojo en cada etiqueta (data-obligatorios / required).
+        // Se repite tras la carga dinámica del formulario; la función es idempotente.
+        setTimeout(() => PWA_SKILLS.marcarObligatorios(activeEl), 80);
+        setTimeout(() => PWA_SKILLS.marcarObligatorios(activeEl), 700);
         // Módulos con carga dinámica en vista edición
         const edicionFn = `loadEdicion_${moduleID}`;
         if (typeof window[edicionFn] === 'function') setTimeout(() => window[edicionFn](recordID), 50);
@@ -306,7 +356,7 @@ function renderLogin() {
                 <label class="block text-[10px] font-black text-secondary uppercase mb-2 ml-1">Identificación (DNI)</label>
                 <div class="relative">
                    <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-xl">person</span>
-                   <input type="text" id="login-dni" placeholder="Ej: 772210..." class="w-full h-14 pl-12 pr-4 rounded-2xl border border-outline-variant bg-surface-container-lowest text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
+                   <input type="text" id="login-dni" maxlength="8" inputmode="numeric" autocomplete="username" placeholder="Ej: 772210..." class="w-full h-14 pl-12 pr-4 rounded-2xl border border-outline-variant bg-surface-container-lowest text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all">
                 </div>
              </div>
 
@@ -325,18 +375,46 @@ function renderLogin() {
                 Ingresar al Sistema
                 <span class="material-symbols-outlined text-xl">chevron_right</span>
              </button>
+
+             <!-- No hay recuperación por correo: la mayoría del personal de campo
+                  no tiene email real (api/usuarios.js les asigna uno técnico).
+                  La restablece el proveedor del servicio por WhatsApp. -->
+             <button type="button" onclick="recuperarAccesoPorSoporte()"
+                class="w-full text-center text-[11px] font-bold text-secondary hover:text-primary transition-colors flex items-center justify-center gap-1.5 py-1">
+                <span class="material-symbols-outlined text-[15px]" aria-hidden="true">help</span>
+                ¿Olvidaste tu contraseña?
+             </button>
           </div>
 
           <div class="mt-10 text-center space-y-2">
              <p class="text-[10px] text-secondary font-medium italic">Protegido por Cifrado SHA-256 nativo</p>
+             ${window.__MOTOR_DEMO__ ? `
              <div class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/5 border border-primary/20">
                <span class="material-symbols-outlined text-primary text-[16px]">key</span>
                <p class="text-[11px] text-primary font-bold">Demo: <span class="font-black">admin</span> / <span class="font-black">admin123</span></p>
-             </div>
+             </div>` : ''}
           </div>
        </div>
     </div>
   `;
+}
+
+/**
+ * Contraseña olvidada: la restablece una persona, no un correo automático.
+ * Se abre WhatsApp con el DNI que el usuario ya escribió, para que el
+ * proveedor identifique la cuenta sin preguntar.
+ */
+function recuperarAccesoPorSoporte() {
+  const dniInput = document.getElementById('login-dni');
+  const dni = dniInput ? dniInput.value.trim() : '';
+  const sop = (typeof AppState !== 'undefined' && AppState.Soporte) || {};
+  if (!dni) {
+    PWA_SKILLS.toast('Escribe tu DNI arriba para que soporte identifique tu cuenta.', 'info', 4000);
+    if (dniInput) dniInput.focus();
+    return;
+  }
+  PWA_SKILLS.toast('Abriendo WhatsApp con ' + (sop.Etiqueta || 'soporte') + '…', 'info', 2500);
+  PWA_SKILLS.escribirASoporte('Olvidé mi contraseña y necesito que la restablezcan.', { dni });
 }
 
 function toggleLoginPassword() {
@@ -368,233 +446,387 @@ function toggleLoginPassword() {
  * Antes: el saludo ocupaba 826×160px arriba y las mismas cifras se repetían
  * en tres bloques distintos. Aquí cada dato aparece UNA vez.
  */
+/**
+ * Módulos de trabajo para el resumen de pendientes: los fijos con su
+ * etiqueta corta + cualquier módulo nuevo descubierto en los subconfigs.
+ */
+function modulosDeTrabajo() {
+  const lista = DRAWER_WORK_MODULES_FIJOS.slice();
+  if (typeof PERMISOS !== 'undefined') {
+    PERMISOS.modulos().forEach(m => {
+      if (!lista.some(x => x.id === m.id)) lista.push({ id: m.id, label: m.titulo });
+    });
+  }
+  return lista;
+}
+
+/**
+ * Motor: un módulo registrado (subconfig + vistas) que todavía no tiene
+ * tarjeta propia en el panel recibe una genérica con su Titulo y Card_Icon,
+ * dentro del grupo «Más módulos». Así un módulo nuevo es alcanzable sin tocar
+ * renderMenu().
+ */
+function agregarTarjetasModulosNuevos(container) {
+  if (typeof PERMISOS === 'undefined') return;
+  const grid = container.querySelector('#dash-grp-otros-grid');
+  if (!grid) return;
+  const conTarjeta = new Set(Array.from(container.querySelectorAll('.mnu-card[data-modulo]')).map(b => b.getAttribute('data-modulo')));
+  PERMISOS.modulos().forEach(m => {
+    if (conTarjeta.has(m.id)) return;
+    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;   // sin vistas registradas
+    grid.insertAdjacentHTML('beforeend', tarjetaModuloMenu({
+      id: m.id, titulo: m.titulo, icono: m.icono || 'apps', acento: 'slate',
+      sub: m.id.replace(/^(\d+)_.*/, 'Módulo $1')
+    }));
+  });
+}
+
+/** Igual que las tarjetas: enlace genérico en el menú lateral para un módulo nuevo. */
+function agregarEnlacesDrawerModulosNuevos() {
+  if (typeof PERMISOS === 'undefined') return;
+  const extra = document.getElementById('drawer-nav-extra');
+  if (!extra) return;
+  PERMISOS.modulos().forEach(m => {
+    if (document.querySelector('.drawer-nav-link[data-modulo="' + CSS.escape(m.id) + '"]')) return;
+    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'drawer-nav-link w-full text-left';
+    b.setAttribute('data-modulo', m.id);
+    b.dataset.ir = m.id;
+    b.addEventListener('click', () => { toggleNavDrawer(); showView(b.dataset.ir); });
+    b.innerHTML = '<span class="material-symbols-outlined text-[18px]" aria-hidden="true">' + esc(m.icono) + '</span>' +
+                  '<span class="flex-1">' + esc(m.titulo) + '</span>';
+    extra.appendChild(b);
+  });
+}
+
+/**
+ * Accesos del panel, agrupados por la tarea que resuelven. El orden dentro de
+ * cada grupo es el de uso diario en campo. `acento` elige un par de tokens
+ * --acc-<acento>-fg / -bg (definidos abajo para claro y oscuro).
+ */
+const MENU_GRUPOS = [
+  { id: 'campo', titulo: 'Operación en campo', icono: 'engineering', modulos: [
+    { id: '03_Inspecciones',      titulo: 'Inspecciones',        sub: 'Gestión en campo',       icono: 'fact_check',           acento: 'blue'   },
+    { id: '04_Actos_Condiciones', titulo: 'Actos y condiciones', sub: 'Sub-estándar',           icono: 'report_problem',       acento: 'amber'  },
+    { id: '05_Incidentes',        titulo: 'Incidentes',          sub: 'Registro y seguimiento', icono: 'personal_injury',      acento: 'red'    },
+    { id: '10_Charlas',           titulo: 'Charlas 5 minutos',   sub: 'Comunicación diaria',    icono: 'campaign',             acento: 'pink'   },
+    { id: '09_EPP',               titulo: 'Entrega de EPP',      sub: 'Equipos de protección',  icono: 'shield',               acento: 'cyan'   }
+  ]},
+  { id: 'riesgos', titulo: 'Gestión de riesgos', icono: 'health_and_safety', modulos: [
+    { id: '07_IPERC',             titulo: 'Matriz IPERC',        sub: 'Riesgos y controles',    icono: 'grid_view',            acento: 'violet' },
+    { id: '08_PETAR',             titulo: 'Permisos PETAR',      sub: 'Trabajo de alto riesgo', icono: 'assignment_turned_in', acento: 'orange' },
+    { id: '06_Capacitaciones',    titulo: 'Capacitaciones',      sub: 'Formación y asistencia', icono: 'school',               acento: 'green'  }
+  ]},
+  { id: 'gestion', titulo: 'Análisis y administración', icono: 'monitoring', modulos: [
+    { id: '02_Reportes',          titulo: 'Reportes',            sub: 'Análisis e indicadores', icono: 'insert_chart',         acento: 'indigo' },
+    { id: '01_Usuarios',          titulo: 'Usuarios',            sub: 'Personal y accesos',     icono: 'manage_accounts',      acento: 'slate'  },
+    { id: '04_Configuraciones',   titulo: 'Configuración',       sub: 'Ajustes de la empresa',  icono: 'settings',             acento: 'slate'  },
+    { id: '00_Admin',             titulo: 'SuperAdmin',          sub: 'Empresas y auditoría',   icono: 'admin_panel_settings', acento: 'navy'   }
+  ]},
+  { id: 'otros', titulo: 'Más módulos', icono: 'apps', modulos: [] }
+];
+
+/** Tarjeta de acceso a un módulo. Todo dato va escapado; el id viaja por data-*. */
+function tarjetaModuloMenu(m) {
+  const ac = esc(m.acento || 'slate');
+  return `
+      <button type="button" class="mnu-card" data-modulo="${esc(m.id)}" data-ir="${esc(m.id)}"
+        style="--acc-fg:var(--acc-${ac}-fg);--acc-bg:var(--acc-${ac}-bg)"
+        onclick="showView(this.dataset.ir)">
+        <span class="mnu-ico"><span class="material-symbols-outlined" aria-hidden="true">${esc(m.icono)}</span></span>
+        <span class="mnu-txt">
+          <span class="mnu-t">${esc(m.titulo)}</span>
+          <span class="mnu-s">${esc(m.sub)}</span>
+        </span>
+        <span class="material-symbols-outlined mnu-go" aria-hidden="true">arrow_forward</span>
+      </button>`;
+}
+
+/**
+ * Oculta los grupos sin ninguna tarjeta visible para el rol y actualiza los
+ * contadores. Se llama después de PERMISOS.aplicarMenu().
+ */
+function actualizarGruposMenu() {
+  let total = 0;
+  document.querySelectorAll('#main-container .mnu-group').forEach(g => {
+    const visibles = Array.from(g.querySelectorAll('.mnu-card')).filter(c => c.style.display !== 'none');
+    const n = visibles.length;
+    // La marca depende de las tarjetas VISIBLES para el rol, no de las escritas
+    visibles.forEach((c, i) => c.classList.toggle('is-solo', n % 2 === 1 && i === n - 1));
+    g.hidden = n === 0;
+    const cnt = g.querySelector('.mnu-group-n');
+    if (cnt) cnt.textContent = n;
+    total += n;
+  });
+  const el = document.getElementById('dash-stat-modulos');
+  if (el) el.textContent = total;
+}
+
 function renderMenu() {
   const userName = AppState?.User?.Nombre || 'Administrador';
   const userRol  = AppState?.User?.Rol   || 'Admin';
+  const empresa  = AppState?.User?.EmpresaNombre || '';
   const now      = new Date();
   const dateStr  = now.toLocaleDateString('es-PE', { weekday:'long', day:'numeric', month:'long' });
   const hour     = now.getHours();
   const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const saludoIco = hour < 12 ? 'wb_sunny' : hour < 19 ? 'wb_twilight' : 'dark_mode';
+  const iniciales = String(userName).trim().split(/\s+/).filter(Boolean).slice(0, 2)
+                      .map(p => p.charAt(0).toUpperCase()).join('') || 'U';
+
+  const grupos = MENU_GRUPOS.map(g => `
+  <section class="mnu-group" id="dash-grp-${esc(g.id)}" aria-labelledby="dash-grp-${esc(g.id)}-t"${g.modulos.length ? '' : ' hidden'}>
+    <div class="mnu-group-head">
+      <span class="material-symbols-outlined" aria-hidden="true">${esc(g.icono)}</span>
+      <h3 id="dash-grp-${esc(g.id)}-t">${esc(g.titulo)}</h3>
+      <span class="mnu-group-n" title="Módulos disponibles en este grupo">${g.modulos.length}</span>
+      <span class="mnu-group-line" aria-hidden="true"></span>
+    </div>
+    <div class="mnu-grid" id="dash-grp-${esc(g.id)}-grid">${g.modulos.map(tarjetaModuloMenu).join('')}
+    </div>
+  </section>`).join('');
 
   return `
 <style>
-/* ── Tarjeta de indicador: compacta, accionable, con área táctil completa ── */
-.ds-kpi {
-  display:flex; align-items:center; gap:12px; width:100%;
-  padding:12px 14px; border-radius:16px; text-align:left;
-  background:var(--ds-surface); border:1px solid var(--ds-border);
-  cursor:pointer; transition:border-color 180ms var(--ds-ease), box-shadow 180ms var(--ds-ease), transform 180ms var(--ds-ease);
-}
-.ds-kpi:hover { border-color:var(--color-primary); box-shadow:0 4px 14px rgba(0,6,102,0.10); transform:translateY(-2px); }
-.ds-kpi:active { transform:translateY(0); }
-.ds-kpi-ico { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.ds-kpi-val { font-size:26px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
-.ds-kpi-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; margin-top:4px; color:var(--ds-fg-muted); }
-.ds-kpi-share { margin-left:auto; font-size:11px; font-weight:700; color:var(--ds-fg-muted); font-variant-numeric:tabular-nums; }
-/* La tarjeta marcada como crítica se distingue por borde Y por icono (color-not-only) */
-.ds-kpi.is-critical { border-left:4px solid #dc2626; }
-/* En pantallas estrechas el porcentaje sube a la esquina para que la etiqueta
-   ("EN PROCESO", "ALTO RIESGO") no se parta en dos líneas */
-@media (max-width:479px) {
-  .ds-kpi { position:relative; gap:10px; padding:12px; }
-  .ds-kpi-share { position:absolute; top:10px; right:12px; margin-left:0; }
-  .ds-kpi-lbl { letter-spacing:0.04em; }
-}
-
-/* ── Panel ── */
-.ds-panel { background:var(--ds-surface); border:1px solid var(--ds-border); border-radius:18px; }
-.ds-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px 10px; }
-.ds-panel-title { font-size:13px; font-weight:800; color:var(--ds-fg); display:flex; align-items:center; gap:7px; }
-
-/* ── Barra apilada: toda la distribución de un módulo en una sola línea ── */
-.ds-stack { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--ds-surface-sunken); }
-.ds-stack > span { height:100%; transition:width 700ms var(--ds-ease); }
-.ds-legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
-.ds-legend button { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--ds-fg-muted); background:none; border:0; cursor:pointer; padding:2px 0; }
-.ds-legend button:hover { color:var(--color-primary); }
-.ds-legend i { width:8px; height:8px; border-radius:3px; display:inline-block; flex-shrink:0; }
-.ds-legend b { font-variant-numeric:tabular-nums; color:var(--ds-fg); }
-
-/* ── Escala de severidad: un token por tema, nunca hex en línea ──
-   En claro el "crítico" es casi negro; en oscuro debe ACLARARSE, no invertirse
-   (regla color-dark-mode). Sin esto, la alerta crítica desaparecía en oscuro. */
+/* ── Acentos por módulo: un par fg/bg por tema, nunca hex en las tarjetas ── */
 :root {
-  --sev-crit-fg:#111827; --sev-crit-bg:rgba(17,24,39,0.07);   --sev-crit-bd:rgba(17,24,39,0.22);
-  --sev-high-fg:#b91c1c; --sev-high-bg:rgba(220,38,38,0.08);  --sev-high-bd:rgba(220,38,38,0.25);
-  --sev-med-fg:#b45309;  --sev-med-bg:rgba(217,119,6,0.09);   --sev-med-bd:rgba(217,119,6,0.25);
-  --sev-ok-fg:#047857;   --sev-ok-bg:rgba(16,185,129,0.10);   --sev-ok-bd:rgba(16,185,129,0.25);
+  --acc-blue-fg:#2f5aae;   --acc-blue-bg:#e7eefa;
+  --acc-red-fg:#b42318;    --acc-red-bg:#fdeceb;
+  --acc-amber-fg:#8a5300;  --acc-amber-bg:#fdf0d9;
+  --acc-orange-fg:#b54708; --acc-orange-bg:#fdeee3;
+  --acc-violet-fg:#6d3fc9; --acc-violet-bg:#f1ebfd;
+  --acc-cyan-fg:#0e6f85;   --acc-cyan-bg:#e2f5f9;
+  --acc-pink-fg:#b0246a;   --acc-pink-bg:#fce8f2;
+  --acc-green-fg:#1f7a52;  --acc-green-bg:#e6f5ee;
+  --acc-indigo-fg:#3c3fb0; --acc-indigo-bg:#ebebfb;
+  --acc-slate-fg:#4f5c78;  --acc-slate-bg:#eef1f7;
+  --acc-navy-fg:#162138;   --acc-navy-bg:#e3e7f0;
+  --mnu-hero-a:#162138;    --mnu-hero-b:#26396a;
+  --mnu-hero-fg:#ffffff;   --mnu-hero-muted:#c3cde2;
+  --mnu-hero-glass:rgba(255,255,255,0.08); --mnu-hero-line:rgba(255,255,255,0.14);
+  --mnu-yellow:#ffd53f;    --mnu-on-yellow:#162138;
+  --mnu-ok:#5fd39b;        --mnu-warn:#ffc25c;
 }
 [data-theme="dark"] {
-  --sev-crit-fg:#e5e7eb; --sev-crit-bg:rgba(229,231,235,0.10); --sev-crit-bd:rgba(229,231,235,0.24);
-  --sev-high-fg:#fca5a5; --sev-high-bg:rgba(248,113,113,0.13); --sev-high-bd:rgba(248,113,113,0.30);
-  --sev-med-fg:#fcd34d;  --sev-med-bg:rgba(252,211,77,0.13);   --sev-med-bd:rgba(252,211,77,0.30);
-  --sev-ok-fg:#6ee7b7;   --sev-ok-bg:rgba(110,231,183,0.12);   --sev-ok-bd:rgba(110,231,183,0.28);
+  --acc-blue-fg:#8db2ff;   --acc-blue-bg:rgba(141,178,255,.14);
+  --acc-red-fg:#ff8f86;    --acc-red-bg:rgba(255,143,134,.14);
+  --acc-amber-fg:#ffc25c;  --acc-amber-bg:rgba(255,194,92,.14);
+  --acc-orange-fg:#ffa36b; --acc-orange-bg:rgba(255,163,107,.14);
+  --acc-violet-fg:#b9a0ff; --acc-violet-bg:rgba(185,160,255,.15);
+  --acc-cyan-fg:#6fd6ea;   --acc-cyan-bg:rgba(111,214,234,.14);
+  --acc-pink-fg:#ff8cc6;   --acc-pink-bg:rgba(255,140,198,.14);
+  --acc-green-fg:#5fd39b;  --acc-green-bg:rgba(95,211,155,.14);
+  --acc-indigo-fg:#a5a8ff; --acc-indigo-bg:rgba(165,168,255,.15);
+  --acc-slate-fg:#aeb9d0;  --acc-slate-bg:rgba(174,185,208,.13);
+  --acc-navy-fg:#eef2fa;   --acc-navy-bg:rgba(238,242,250,.12);
+  --mnu-hero-a:#1a2745;    --mnu-hero-b:#24396a;
 }
 
-/* ── Alerta accionable ── */
-.ds-alert {
-  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-  padding:11px 14px; border-radius:12px; border:1px solid transparent;
-  cursor:pointer; transition:transform 150ms var(--ds-ease), box-shadow 150ms var(--ds-ease);
+/* ── Cabecera ── */
+.mnu-hero {
+  position:relative; overflow:hidden; color:var(--mnu-hero-fg);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255,213,63,0.16) 0, transparent 45%),
+    linear-gradient(135deg, var(--mnu-hero-a) 0%, var(--mnu-hero-b) 100%);
+  border-radius:20px; padding:14px 18px 18px; margin-bottom:20px;
+  box-shadow:0 10px 30px rgba(22,33,56,0.22);
 }
-.ds-alert:hover { transform:translateX(3px); box-shadow:0 2px 10px rgba(0,0,0,0.07); }
-.ds-alert.sev-crit { background:var(--sev-crit-bg); border-color:var(--sev-crit-bd); color:var(--sev-crit-fg); }
-.ds-alert.sev-high { background:var(--sev-high-bg); border-color:var(--sev-high-bd); color:var(--sev-high-fg); }
-.ds-alert.sev-med  { background:var(--sev-med-bg);  border-color:var(--sev-med-bd);  color:var(--sev-med-fg); }
-.ds-alert.sev-ok   { background:var(--sev-ok-bg);   border-color:var(--sev-ok-bd);   color:var(--sev-ok-fg); }
-.ds-alert.sev-neutral { background:var(--ds-surface-sunken); color:var(--ds-fg); }
-.ds-alert .ds-sev-chip {
-  font-size:9px; font-weight:900; padding:2px 7px; border-radius:999px;
-  border:1px solid currentColor; flex-shrink:0; text-transform:uppercase; letter-spacing:0.04em;
+/* Franja de seguridad amarilla/marina al pie: identidad «Industrial seguro» */
+.mnu-hero::after {
+  content:""; position:absolute; left:0; right:0; bottom:0; height:6px;
+  background:repeating-linear-gradient(-45deg, var(--mnu-yellow) 0 12px, var(--mnu-hero-a) 12px 24px);
 }
-.ds-alert-n { font-size:19px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; flex-shrink:0; min-width:30px; }
-.ds-alert-tx { font-size:12px; font-weight:600; line-height:1.35; flex:1; }
+/* Figura decorativa de fondo */
+.mnu-hero-deco {
+  position:absolute; right:-14px; top:-10px; font-size:150px !important; line-height:1;
+  color:rgba(255,255,255,0.05); pointer-events:none; user-select:none;
+}
+.mnu-hero-top { position:relative; display:flex; align-items:flex-start; gap:14px; }
+.mnu-avatar {
+  width:52px; height:52px; border-radius:16px; flex-shrink:0;
+  background:var(--mnu-yellow); color:var(--mnu-on-yellow);
+  display:flex; align-items:center; justify-content:center;
+  font-size:19px; font-weight:900; letter-spacing:0.02em;
+  box-shadow:0 0 0 4px rgba(255,213,63,0.22);
+}
+.mnu-eyebrow {
+  display:flex; align-items:center; gap:6px; flex-wrap:nowrap; min-width:0;
+  font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.09em; color:var(--mnu-hero-muted);
+}
+.mnu-eyebrow .material-symbols-outlined { font-size:15px; flex-shrink:0; }
+.mnu-empresa { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mnu-role {
+  display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; flex-shrink:0;
+  background:var(--mnu-hero-glass); border:1px solid var(--mnu-hero-line); color:var(--mnu-hero-fg);
+  letter-spacing:0.05em;
+}
+.mnu-role .material-symbols-outlined { font-size:13px; }
+.mnu-hello { margin-top:5px; font-size:22px; font-weight:700; line-height:1.2; letter-spacing:-0.01em; color:var(--mnu-hero-muted); }
+.mnu-hello b { display:block; font-weight:900; color:var(--mnu-hero-fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mnu-date { margin-top:6px; display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--mnu-hero-muted); }
+.mnu-date .material-symbols-outlined { font-size:15px; }
 
-/* ── Acceso a módulo ── */
-.ds-mod {
-  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-  padding:14px; border-radius:16px; background:var(--ds-surface);
-  border:1px solid var(--ds-border); cursor:pointer;
-  transition:border-color 180ms var(--ds-ease), transform 180ms var(--ds-ease);
+.mnu-stats { position:relative; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; margin-top:12px; max-width:560px; }
+.mnu-stat { background:var(--mnu-hero-glass); border:1px solid var(--mnu-hero-line); border-radius:14px; padding:7px 12px; min-width:0; }
+.mnu-stat-v { display:flex; align-items:center; gap:6px; height:24px; font-size:20px; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; }
+.mnu-stat-v.is-text { font-size:14px; font-weight:800; }
+.mnu-stat-l { margin-top:3px; font-size:11px; font-weight:700; color:var(--mnu-hero-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mnu-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; background:var(--mnu-ok); box-shadow:0 0 0 3px rgba(95,211,155,0.22); }
+.mnu-dot.is-warn { background:var(--mnu-warn); box-shadow:0 0 0 3px rgba(255,194,92,0.22); }
+
+.mnu-updated { display:inline; font-size:11px; font-weight:600; color:var(--mnu-hero-muted); }
+.mnu-updated:empty { display:none; }
+.mnu-updated::before { content:"·"; margin:0 6px 0 2px; }
+/* Actualizar: arriba a la derecha, en el hueco que deja el texto */
+.mnu-refresh {
+  position:relative; z-index:1; flex-shrink:0; align-self:flex-start;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px; height:40px; padding:0 14px; border-radius:12px; border:0;
+  background:var(--mnu-yellow); color:var(--mnu-on-yellow); font-size:12px; font-weight:800; cursor:pointer;
+  transition:transform 150ms var(--ds-ease), box-shadow 150ms var(--ds-ease);
 }
-.ds-mod:hover { border-color:var(--color-primary); transform:translateY(-2px); }
+.mnu-refresh:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(255,213,63,0.35); }
+.mnu-refresh .material-symbols-outlined { font-size:17px; }
+
+/* ── Grupos ── */
+.mnu-group { margin-bottom:20px; }
+.mnu-group[hidden] { display:none; }
+.mnu-group-head { display:flex; align-items:center; gap:8px; margin:0 2px 10px; }
+.mnu-group-head .material-symbols-outlined { font-size:18px; color:var(--ds-fg); }
+.mnu-group-head h3 { font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:0.09em; color:var(--ds-fg); white-space:nowrap; }
+.mnu-group-n {
+  min-width:22px; height:20px; padding:0 6px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center;
+  background:var(--ds-surface-sunken); border:1px solid var(--ds-border); font-size:11px; font-weight:800; color:var(--ds-fg-muted);
+}
+.mnu-group-line { flex:1; height:1px; background:var(--ds-border); }
+
+.mnu-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; }
+
+/* ── Tarjeta de módulo ── */
+.mnu-card {
+  position:relative; overflow:hidden; display:flex; align-items:center; gap:14px; width:100%; text-align:left;
+  padding:16px 14px 16px 18px; border-radius:18px; cursor:pointer;
+  background:var(--ds-surface); border:1px solid var(--ds-border); box-shadow:var(--ds-shadow);
+  transition:transform 200ms var(--ds-ease), box-shadow 200ms var(--ds-ease), border-color 200ms var(--ds-ease);
+  animation:mnu-in 420ms var(--ds-ease) both;
+}
+/* Barra de acento: identidad de color del módulo */
+.mnu-card::before {
+  content:""; position:absolute; left:0; top:14px; bottom:14px; width:4px; border-radius:0 4px 4px 0;
+  background:var(--acc-fg); transition:top 200ms var(--ds-ease), bottom 200ms var(--ds-ease);
+}
+/* Halo de color en la esquina */
+.mnu-card::after {
+  content:""; position:absolute; right:-30px; top:-30px; width:90px; height:90px; border-radius:50%;
+  background:var(--acc-bg); opacity:0.75; pointer-events:none; transition:transform 300ms var(--ds-ease);
+}
+.mnu-card:hover { transform:translateY(-3px); box-shadow:var(--ds-shadow-lg); border-color:var(--acc-fg); }
+.mnu-card:hover::before { top:0; bottom:0; }
+.mnu-card:hover::after { transform:scale(1.35); }
+.mnu-card:active { transform:translateY(0) scale(0.99); }
+.mnu-card:focus-visible { outline:3px solid var(--acc-fg); outline-offset:2px; }
+
+.mnu-ico {
+  position:relative; z-index:1; width:48px; height:48px; border-radius:14px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--acc-bg); color:var(--acc-fg);
+  transition:transform 200ms var(--ds-ease);
+}
+.mnu-ico .material-symbols-outlined { font-size:25px; }
+.mnu-card:hover .mnu-ico { transform:rotate(-6deg) scale(1.05); }
+
+.mnu-txt { position:relative; z-index:1; min-width:0; flex:1; }
+.mnu-t { display:block; font-size:15px; font-weight:800; color:var(--ds-fg); line-height:1.2; }
+.mnu-s { display:block; margin-top:3px; font-size:12px; font-weight:500; color:var(--ds-fg-muted); line-height:1.3; }
+.mnu-go {
+  position:relative; z-index:1; flex-shrink:0; font-size:20px !important; color:var(--ds-fg-muted);
+  transition:transform 200ms var(--ds-ease), color 200ms var(--ds-ease);
+}
+.mnu-card:hover .mnu-go { transform:translateX(4px); color:var(--acc-fg); }
+
+@keyframes mnu-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+.mnu-grid > .mnu-card:nth-child(2) { animation-delay:40ms; }
+.mnu-grid > .mnu-card:nth-child(3) { animation-delay:80ms; }
+.mnu-grid > .mnu-card:nth-child(4) { animation-delay:120ms; }
+.mnu-grid > .mnu-card:nth-child(n+5) { animation-delay:160ms; }
+@media (prefers-reduced-motion: reduce) {
+  .mnu-card, .mnu-card::before, .mnu-card::after, .mnu-ico, .mnu-go { animation:none; transition:none; }
+}
+
+/* ── Móvil: dos columnas con tarjeta vertical, el título no se corta ── */
+@media (max-width:639px) {
+  .mnu-hero { padding:14px 14px 20px; border-radius:18px; margin-bottom:16px; }
+  .mnu-hero-top { gap:12px; }
+  .mnu-hello { margin-top:2px; }
+  .mnu-date { margin-top:3px; }
+  .mnu-updated { display:none; }   /* en móvil la hora cede su línea; el giro del botón confirma */
+  .mnu-stats { margin-top:10px; gap:6px; }
+  .mnu-stat-l { margin-top:1px; }
+  .mnu-hello { font-size:17px; }
+  .mnu-avatar { width:46px; height:46px; border-radius:14px; font-size:17px; }
+  .mnu-stat { padding:8px 10px; border-radius:12px; }
+  .mnu-stat-v { font-size:17px; height:20px; }
+  /* En móvil solo el icono: el nombre del usuario conserva el ancho */
+  .mnu-refresh { width:44px; height:44px; padding:0; }
+  .mnu-refresh .mnu-refresh-tx { display:none; }
+  .mnu-refresh .material-symbols-outlined { font-size:21px; }
+  .mnu-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  .mnu-card { flex-direction:column; align-items:flex-start; gap:10px; padding:14px 12px 16px 14px; min-height:128px; }
+  .mnu-card::before { top:auto; bottom:0; left:14px; right:auto; width:28px; height:4px; border-radius:4px 4px 0 0; transition:width 200ms var(--ds-ease); }
+  .mnu-card:hover::before { top:auto; width:calc(100% - 28px); }
+  .mnu-ico { width:44px; height:44px; }
+  .mnu-go { position:absolute; top:14px; right:12px; font-size:18px !important; }
+  .mnu-t { font-size:14px; }
+  /* Tarjeta impar al final: fila completa en horizontal, sin media fila vacía */
+  .mnu-card.is-solo { grid-column:1 / -1; flex-direction:row; align-items:center; min-height:0; }
+  .mnu-card.is-solo .mnu-go { position:relative; top:auto; right:auto; }
+}
 </style>
 
 <div class="max-w-[1400px] mx-auto">
 
-  <!-- ═══ 1. CONTEXTO — una franja, no un banner ═══ -->
-  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-    <div class="min-w-0">
-      <h2 class="text-lg sm:text-xl font-bold text-on-surface leading-tight truncate">
-        ${greeting}, ${userName}
-      </h2>
-      <p class="text-[11px] text-on-surface-variant first-letter:uppercase">${dateStr} · ${userRol}</p>
-    </div>
-    <div class="flex items-center gap-2 shrink-0">
-      <span id="dash-updated" class="text-[10px] font-semibold text-on-surface-variant"></span>
-      <button type="button" onclick="loadDashboardData(true)"
-        class="flex items-center gap-1.5 h-9 px-3 rounded-lg border border-outline-variant bg-surface-container-lowest text-[11px] font-bold text-primary hover:bg-surface-container transition-colors"
-        aria-label="Actualizar indicadores del panel">
-        <span class="material-symbols-outlined text-[15px]" id="dash-refresh-ico" aria-hidden="true">refresh</span>
-        Actualizar
+  <!-- ═══ 1. CABECERA — quién, cuándo y estado del dispositivo ═══ -->
+  <section class="mnu-hero" aria-label="Resumen de la sesión">
+    <span class="material-symbols-outlined mnu-hero-deco" aria-hidden="true">engineering</span>
+    <div class="mnu-hero-top">
+      <div class="mnu-avatar" aria-hidden="true">${esc(iniciales)}</div>
+      <div class="min-w-0 flex-1">
+        <p class="mnu-eyebrow">
+          ${empresa ? `<span class="material-symbols-outlined" aria-hidden="true">apartment</span><span class="mnu-empresa">${esc(empresa)}</span>` : ''}
+          <span class="mnu-role"><span class="material-symbols-outlined" aria-hidden="true">verified_user</span>${esc(userRol)}</span>
+        </p>
+        <h2 class="mnu-hello">${esc(greeting)},<b>${esc(userName)}</b></h2>
+        <p class="mnu-date">
+          <span class="material-symbols-outlined" aria-hidden="true">${saludoIco}</span>
+          <span class="first-letter:uppercase">${esc(dateStr)}</span>
+          <span id="dash-updated" class="mnu-updated"></span>
+        </p>
+      </div>
+      <button type="button" class="mnu-refresh" onclick="loadDashboardData(true)" aria-label="Actualizar indicadores del panel" title="Actualizar">
+        <span class="material-symbols-outlined" id="dash-refresh-ico" aria-hidden="true">refresh</span>
+        <span class="mnu-refresh-tx">Actualizar</span>
       </button>
     </div>
-  </div>
 
-  <!-- ═══ 2. ACCESOS — navegación principal del sistema ═══ -->
-  <section aria-labelledby="dash-modules-title">
-    <h3 class="text-[11px] font-black text-on-surface-variant uppercase tracking-[0.1em] mb-2 px-1" id="dash-modules-title">Ir a un módulo</h3>
-    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-      <button type="button" class="ds-mod" onclick="showView('03_Inspecciones')">
-        <span class="w-9 h-9 rounded-xl bg-primary-fixed text-on-primary-fixed flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">fact_check</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Inspecciones</span>
-          <span class="block text-[10px] text-on-surface-variant">Gestión en campo</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('05_Incidentes')">
-        <span class="w-9 h-9 rounded-xl bg-red-100 text-red-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">personal_injury</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Incidentes</span>
-          <span class="block text-[10px] text-on-surface-variant">Registro y seguimiento</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('06_Capacitaciones')">
-        <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">school</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Capacitaciones</span>
-          <span class="block text-[10px] text-on-surface-variant">Formación y asistencia</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('07_IPERC')">
-        <span class="w-9 h-9 rounded-xl bg-violet-100 text-violet-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">grid_view</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Matriz IPERC</span>
-          <span class="block text-[10px] text-on-surface-variant">Riesgos y controles</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('08_PETAR')">
-        <span class="w-9 h-9 rounded-xl bg-orange-100 text-orange-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">assignment_turned_in</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Permisos PETAR</span>
-          <span class="block text-[10px] text-on-surface-variant">Trabajo de alto riesgo</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('09_EPP')">
-        <span class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">shield</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Entrega de EPP</span>
-          <span class="block text-[10px] text-on-surface-variant">Equipos de protección</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('10_Charlas')">
-        <span class="w-9 h-9 rounded-xl bg-pink-100 text-pink-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">campaign</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Charlas 5 minutos</span>
-          <span class="block text-[10px] text-on-surface-variant">Comunicación diaria</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('04_Actos_Condiciones')">
-        <span class="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">report_problem</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Actos y Cond.</span>
-          <span class="block text-[10px] text-on-surface-variant">Sub-estándar</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('02_Reportes')">
-        <span class="w-9 h-9 rounded-xl bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">insert_chart</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Reportes</span>
-          <span class="block text-[10px] text-on-surface-variant">Análisis</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('01_Usuarios')">
-        <span class="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">manage_accounts</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Usuarios</span>
-          <span class="block text-[10px] text-on-surface-variant">Personal</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('00_Admin')">
-        <span class="w-9 h-9 rounded-xl bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">admin_panel_settings</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">SuperAdmin</span>
-          <span class="block text-[10px] text-on-surface-variant">Auditoría</span>
-        </span>
-      </button>
-      <button type="button" class="ds-mod" onclick="showView('04_Configuraciones')">
-        <span class="w-9 h-9 rounded-xl bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[19px]" aria-hidden="true">settings</span>
-        </span>
-        <span class="min-w-0">
-          <span class="block text-[12px] font-bold text-on-surface leading-tight truncate">Configuración</span>
-          <span class="block text-[10px] text-on-surface-variant">Ajustes</span>
-        </span>
-      </button>
+    <div class="mnu-stats">
+      <div class="mnu-stat">
+        <div class="mnu-stat-v" id="dash-stat-modulos">—</div>
+        <div class="mnu-stat-l">Módulos</div>
+      </div>
+      <div class="mnu-stat">
+        <div class="mnu-stat-v" id="dash-stat-cola">—</div>
+        <div class="mnu-stat-l">Por subir</div>
+      </div>
+      <div class="mnu-stat">
+        <div class="mnu-stat-v is-text"><span class="mnu-dot" id="dash-stat-red-dot" aria-hidden="true"></span><span id="dash-stat-red">—</span></div>
+        <div class="mnu-stat-l">Conexión</div>
+      </div>
     </div>
   </section>
+
+  <!-- ═══ 2. ACCESOS — navegación principal, agrupada por tarea ═══ -->
+  ${grupos}
 
 </div>
   `;
@@ -603,10 +835,8 @@ function renderMenu() {
 /**
  * Puebla el panel con los datos operativos.
  *
- * NOTA TÉCNICA: antes esta lógica vivía dentro del string de renderMenu(), y
- * los <script> insertados con innerHTML NO se ejecutan — por eso el panel
- * mostraba "—" de forma permanente. Ahora es una función real que showView()
- * invoca después de inyectar el HTML.
+ * NOTA TÉCNICA: los <script> insertados con innerHTML NO se ejecutan, por eso
+ * esta es una función real que showView() invoca después de inyectar el HTML.
  *
  * @param {boolean} manual - true si la disparó el usuario (muestra realimentación)
  */
@@ -617,12 +847,66 @@ function loadDashboardData(manual) {
     setTimeout(() => ico.classList.remove('animate-spin'), 700);
   }
 
+  actualizarGruposMenu();
+
+  // Conexión del dispositivo
+  const online = navigator.onLine;
+  const red = document.getElementById('dash-stat-red');
+  const dot = document.getElementById('dash-stat-red-dot');
+  if (red) red.textContent = online ? 'En línea' : 'Sin red';
+  if (dot) dot.classList.toggle('is-warn', !online);
+
+  // Registros en la cola offline pendientes de subir
+  const cola = document.getElementById('dash-stat-cola');
+  if (cola) {
+    if (typeof readAllPendings === 'function') {
+      Promise.resolve().then(readAllPendings)
+        .then(items => { cola.textContent = String((items || []).length); })
+        .catch(() => { cola.textContent = '—'; });
+    } else {
+      cola.textContent = '0';
+    }
+  }
+
   // Sello de frescura del panel.
   const stamp = document.getElementById('dash-updated');
   if (stamp) {
     const h = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
     stamp.textContent = 'Actualizado ' + h;
   }
+}
+
+/**
+ * Credencial offline (solo Supabase): permite reentrar sin red al último
+ * usuario que inició sesión ONLINE en este equipo. Se guarda PBKDF2 con sal
+ * (ver PWA_SKILLS.derivarCredencial), nunca la contraseña ni un hash rápido.
+ */
+async function guardarCredencialOffline(dni, pass) {
+  try {
+    const c = await PWA_SKILLS.derivarCredencial(pass);
+    localStorage.setItem('pwa_offline_cred', JSON.stringify({ v: 2, dni: String(dni), salt: c.salt, iter: c.iter, hash: c.hash }));
+  } catch (e) {
+    // Sin WebCrypto (contexto no seguro) no hay reingreso offline
+    localStorage.removeItem('pwa_offline_cred');
+  }
+}
+
+async function credencialOfflineValida(dni, pass) {
+  const raw = localStorage.getItem('pwa_offline_cred');
+  if (!raw) return false;
+  let c = null;
+  try { c = JSON.parse(raw); } catch (e) { c = null; }
+  if (c && c.v === 2) {
+    if (String(c.dni) !== String(dni)) return false;
+    const d = await PWA_SKILLS.derivarCredencial(pass, c.salt, c.iter);
+    return d.hash === c.hash;
+  }
+  // Formato anterior "dni:sha256(pass)": se acepta una vez y se migra
+  if (raw === dni + ':' + await PWA_SKILLS.hashSHA256(pass)) {
+    await guardarCredencialOffline(dni, pass);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -639,34 +923,61 @@ async function handleLogin() {
     return;
   }
 
-  const hash = await PWA_SKILLS.hashSHA256(pass);
-  // Sheets compara un hash guardado en la hoja; Supabase Auth hashea server-side
-  // con bcrypt y espera la contraseña tal cual (viaja por HTTPS, igual de segura).
-  const credencial = (AppState.DB_PROVIDER === 'supabase') ? pass : hash;
+  const esSupabase = AppState.DB_PROVIDER === 'supabase';
+  const esDemo = !!window.__MOTOR_DEMO__;   // solo LOCAL_PREVIEW (generate_preview.js)
+  // Los dos backends reciben la contraseña tal cual (viaja por HTTPS) y la
+  // derivan en el servidor: bcrypt en Supabase Auth, HMAC con sal en Code.gs.
 
-  const onLoginSuccess = (u) => {
+  const onLoginSuccess = (u, tokenPrevio) => {
     AppState.updateSession({
       DNI: u.DNI || dni,
-      Token: hash,
+      // Supabase: la sesión real es el JWT y Token solo marca "hay sesión".
+      // Apps Script: Token es el token de sesión que emitió el servidor.
+      // Nunca deriva de la contraseña (antes era su SHA-256 en localStorage).
+      Token: tokenPrevio || u.SessionToken ||
+             (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
       Status: u.Status || 'Activo',
       Nombre: u.Nombre_Completo || '',
       Email: u.Email || '',
       Rol: u.Rol || 'Trabajador',
       EmpresaId: u.EmpresaId || null,
       EmpresaNombre: u.EmpresaNombre || '',
+      EmpresaModulos: u.EmpresaModulos || null,
+      EmpresaConfig: u.EmpresaConfig || null,
       SupabaseJWT: u.SupabaseJWT || null,
       SupabaseRefreshToken: u.SupabaseRefreshToken || null
     });
+    if (typeof applyAppSettings === 'function') applyAppSettings();
     const timeoutMin = parseInt((typeof getAppSettings === 'function' ? getAppSettings().Session_Timeout : null) || '480');
     localStorage.setItem('pwa_session_expiry', String(Date.now() + timeoutMin * 60 * 1000));
     showView('Menu');
+    // Registros que quedaron en cola cuando expiró la sesión anterior
+    if (typeof programarSync === 'function') programarSync({ origen: 'login' });
+    // Primera vez de esta cuenta: verificar datos + autorizar la firma digital
+    if (typeof CONSENTIMIENTO !== 'undefined') setTimeout(() => CONSENTIMIENTO.revisarAlIniciar(), 900);
   };
 
   const tryOfflineLogin = async () => {
+    // Sin red solo puede reentrar el último usuario que inició sesión ONLINE
+    // en este dispositivo, con la misma contraseña (se guarda su derivación
+    // PBKDF2 al entrar). Sus datos y su sesión siguen en el almacenamiento local.
+    if (!esDemo) {
+      if (navigator.onLine) return false;
+      const haySesion = esSupabase ? !!AppState.User.SupabaseRefreshToken : !!AppState.User.Token;
+      if (!haySesion || !(await credencialOfflineValida(dni, pass))) return false;
+      onLoginSuccess({
+        DNI: AppState.User.DNI, Nombre_Completo: AppState.User.Nombre, Email: AppState.User.Email,
+        Rol: AppState.User.Rol, Status: AppState.User.Status,
+        EmpresaId: AppState.User.EmpresaId, EmpresaNombre: AppState.User.EmpresaNombre,
+        EmpresaModulos: AppState.User.EmpresaModulos, EmpresaConfig: AppState.User.EmpresaConfig,
+        SupabaseJWT: AppState.User.SupabaseJWT, SupabaseRefreshToken: AppState.User.SupabaseRefreshToken
+      }, AppState.User.Token);
+      PWA_SKILLS.toast('Modo sin conexión: tus registros se subirán al recuperar la red.', 'info', 4000);
+      return true;
+    }
     if (typeof authenticateOffline === 'function') {
-      const offlineUser = await authenticateOffline(dni, hash);
+      const offlineUser = await authenticateOffline(dni, await PWA_SKILLS.hashSHA256(pass));
       if (offlineUser) {
-        console.log('✅ Login offline exitoso para:', dni);
         onLoginSuccess(offlineUser);
         return true;
       }
@@ -674,32 +985,49 @@ async function handleLogin() {
     return false;
   };
 
-  // Usar DataService (soporta Sheets y Supabase de forma transparente)
   try {
-    const parsed = await DataService.auth(dni, credencial);
+    const parsed = await DataService.auth(dni, pass);
     if (parsed.status === 'CESADO') {
       PWA_SKILLS.toast('Acceso revocado. Contacte al administrador.', 'error', 5000);
       return;
     }
     if (parsed.status === 'OK' && parsed.userData) {
       onLoginSuccess(parsed.userData);
+      if (!esDemo) guardarCredencialOffline(parsed.userData.DNI || dni, pass);
       return;
     }
+    // Sin red, tryOfflineLogin permite reentrar a la última cuenta de este equipo
     const ok = await tryOfflineLogin();
-    if (!ok) PWA_SKILLS.toast(parsed.msg || 'Credenciales inválidas.', 'error');
+    if (!ok) PWA_SKILLS.toast(parsed.msg || 'Credenciales inválidas.', 'error', 5000);
   } catch (err) {
     console.warn('Servidor no disponible, intentando login offline:', err);
     const ok = await tryOfflineLogin();
-    if (!ok) PWA_SKILLS.toast('Sin conexión. Verifica tus credenciales demo.', 'error');
+    if (!ok) PWA_SKILLS.toast(esDemo
+      ? 'Sin conexión. Verifica tus credenciales demo.'
+      : 'Sin conexión. Solo puedes entrar sin red con la última cuenta usada en este equipo.', 'error');
   }
 }
 
 /**
  * Lógica de Logout (Voluntario)
  */
-function handleLogout() {
+async function handleLogout() {
+  // Antes de salir se intenta subir la cola; si algo queda pendiente se
+  // pregunta, porque cerrar sesión borra los datos locales del dispositivo.
+  let pendientes = [];
+  try {
+    if (navigator.onLine && typeof triggerSyncToCloud === 'function') await triggerSyncToCloud();
+    if (typeof readAllPendings === 'function' && typeof localDB !== 'undefined' && localDB) pendientes = await readAllPendings();
+  } catch (e) { pendientes = []; }
+  if (pendientes.length && !confirm('Hay ' + pendientes.length + ' registro(s) sin sincronizar en este dispositivo. ' +
+      'Si cierras sesión ahora se perderán. ¿Cerrar sesión de todas formas?')) {
+    PWA_SKILLS.toast('Conéctate a internet para subir los registros pendientes antes de salir.', 'warning', 5000);
+    return;
+  }
   PWA_SKILLS.toast('Sesión cerrada. ¡Hasta pronto!', 'info', 2000);
-  setTimeout(() => AppState.clearSession(), 600);
+  // Revoca el refresh_token en el servidor antes de borrar la sesión local
+  try { if (typeof DataService !== 'undefined') await DataService.logout(); } catch (e) {}
+  setTimeout(() => AppState.clearSession(true), 600);
 }
 
 // Iniciar aplicación al cargar
@@ -737,7 +1065,7 @@ function openActiveUserProfile() {
   setTimeout(() => changeInternalView('01_Usuarios', 'Detalle', dni), 60);
 }
 
-const DRAWER_WORK_MODULES = [
+const DRAWER_WORK_MODULES_FIJOS = [
   { id: '03_Inspecciones',      label: 'Inspecciones' },
   { id: '02_Reportes',          label: 'Reportes' },
   { id: '04_Actos_Condiciones', label: 'Actos y condiciones' },
@@ -759,6 +1087,48 @@ function drawerSummaryDate(value) {
   return match ? new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : null;
 }
 
+/**
+ * Condiciones "pendiente" y "vencido" de un modulo, deducidas de su
+ * subconfig. Son las que se mandan a la base de datos: el resumen del menu
+ * ya NO se calcula descargando las tablas enteras (con miles de registros
+ * eso eran diez lecturas completas por apertura y, en Supabase, un tope
+ * silencioso de 1 000 filas que daba cifras falsas).
+ *
+ *   - estado  -> el primer campo Enum llamado Estado / Status / Situacion
+ *   - abierto -> sus acceptedValues menos los que significan "ya termino"
+ *   - vencido -> pendiente + la primera fecha de plazo/vencimiento < hoy
+ *
+ * Devuelve null si el modulo no declara un estado: sin estado no hay
+ * pendientes que contar (igual que antes).
+ */
+const DRAWER_CERRADO_RX = /(cerrad|complet|finaliz|atendid|archivad|anulad|cancelad|entregad|aprobad|ejecutad|vigente)/i;
+
+function drawerCondicionesModulo(moduleId) {
+  if (typeof MOTOR_RENDER === 'undefined' || !MOTOR_RENDER.variables) return null;
+  let vars;
+  try { vars = MOTOR_RENDER.variables(moduleId) || {}; } catch (e) { return null; }
+  const campos = Object.keys(vars);
+
+  const campoEstado = campos.find(k => /(^|_)(estado|status|situacion)(_|$)/i.test(k) &&
+                                       Array.isArray(vars[k].acceptedValues) && vars[k].acceptedValues.length);
+  if (!campoEstado) return null;
+  const abiertos = vars[campoEstado].acceptedValues.filter(v => !DRAWER_CERRADO_RX.test(String(v)));
+  if (!abiertos.length) return null;
+
+  const pend = {};
+  pend[campoEstado] = { in: abiertos };
+
+  const campoPlazo = campos.find(k => /(plazo|vencimiento)/i.test(k) ||
+                                      /fecha.*(limite|venc|compromiso|programad)/i.test(k));
+  let venc = null;
+  if (campoPlazo) {
+    venc = {};
+    venc[campoEstado] = { in: abiertos };
+    venc[campoPlazo] = { lt: '@hoy' };
+  }
+  return { pend: pend, venc: venc, campoEstado: campoEstado, campoPlazo: campoPlazo || '' };
+}
+
 function drawerSummaryIsPending(record) {
   const stateKeys = Object.keys(record).filter(key => /(^|_)(estado|status|situacion)(_|$)/i.test(key));
   if (!stateKeys.length) return false;
@@ -778,9 +1148,14 @@ function renderDrawerWorkSummary(items, isAdmin) {
   if (!body || !scope) return;
 
   scope.textContent = isAdmin ? 'Todos los registros' : 'Solo tus pendientes';
-  const active = items.filter(item => item.pending > 0);
+  const medidos = items.filter(item => !item.sinDato);
+  const active = medidos.filter(item => item.pending > 0);
   if (!active.length) {
-    body.innerHTML = '<p class="drawer-work-empty">No hay pendientes registrados para tu alcance.</p>';
+    // Decir "no hay pendientes" cuando en realidad no se pudo contar es
+    // tranquilizar con un dato que no existe.
+    body.innerHTML = medidos.length
+      ? '<p class="drawer-work-empty">No hay pendientes registrados para tu alcance.</p>'
+      : '<p class="drawer-work-empty">No se pudieron calcular los pendientes. Reintenta cuando haya conexión.</p>';
     return;
   }
 
@@ -832,6 +1207,21 @@ function drawerWorkActiveRowMatches(row) {
 }
 
 function renderDrawerWorkFilterNotice(filterKind, visible, total) {
+  // Con el motor no se cuenta sobre lo pintado: el pie del Resumen ya dice
+  // "Mostrando N de M", asi que el aviso solo explica QUE se esta mirando.
+  if (visible === undefined) {
+    const viejo = document.getElementById('drawer-work-filter-notice');
+    if (viejo) viejo.remove();
+    const tabla = document.querySelector('#main-container table');
+    if (!tabla || !tabla.parentElement || !tabla.parentElement.parentElement) return;
+    const n = document.createElement('div');
+    n.id = 'drawer-work-filter-notice';
+    n.className = 'mb-3 flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] font-semibold text-primary';
+    n.innerHTML = '<span>Mostrando solo los ' + (filterKind === 'vencidos' ? 'vencidos' : 'pendientes') + '.</span>' +
+      '<button type="button" class="underline" onclick="clearDrawerWorkFilter()">Ver todos</button>';
+    tabla.parentElement.parentElement.insertBefore(n, tabla.parentElement);
+    return;
+  }
   const oldNotice = document.getElementById('drawer-work-filter-notice');
   if (oldNotice) oldNotice.remove();
 
@@ -863,7 +1253,7 @@ function applyDrawerWorkFilter(moduleId, filterKind) {
     document.querySelector('#main-container [id$="result-count"]');
   if (countEl) {
     countEl.textContent = visible === rows.length ? rows.length + ' registros' : visible + ' de ' + rows.length;
-    countEl.style.color = visible < rows.length ? 'var(--color-primary,#000666)' : '';
+    countEl.style.color = visible < rows.length ? 'var(--color-primary,#162138)' : '';
   }
   renderDrawerWorkFilterNotice(filterKind, visible, rows.length);
 }
@@ -874,32 +1264,44 @@ function applyActiveDrawerWorkFilter() {
 }
 
 function clearDrawerWorkFilter() {
+  const anterior = drawerWorkActiveFilter;
   drawerWorkActiveFilter = null;
   const notice = document.getElementById('drawer-work-filter-notice');
   if (notice) notice.remove();
+  if (anterior && anterior.cond && typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER.recargar) {
+    MOTOR_RENDER.recargar(anterior.moduleId, { cond: null, condEtiqueta: '' });
+    return;
+  }
   if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.applyFilters();
 }
 
+/**
+ * Abre el modulo mostrando SUS pendientes (o vencidos). La misma condicion
+ * que conto el numero viaja a la base de datos, asi que la lista trae los
+ * registros pendientes por antiguos que sean, no solo los de la pagina ya
+ * cargada.
+ */
 function openDrawerWorkModule(moduleId, filterKind) {
+  const kind = filterKind === 'vencidos' ? 'vencidos' : 'pendientes';
   const item = (drawerWorkSummaryCache.data || []).find(summary => summary.id === moduleId);
-  const sourceIds = item
-    ? (filterKind === 'vencidos' ? item.overdueIds : item.pendingIds)
-    : [];
-  drawerWorkActiveFilter = {
-    moduleId: moduleId,
-    kind: filterKind === 'vencidos' ? 'vencidos' : 'pendientes',
-    uuids: (sourceIds || []).map(value => String(value || '').trim().toLowerCase()).filter(Boolean)
-  };
+  const cond = item && item.cond ? (kind === 'vencidos' ? item.cond.venc : item.cond.pend) : null;
+  drawerWorkActiveFilter = { moduleId: moduleId, kind: kind, cond: cond };
 
   const drawer = document.getElementById('nav-drawer');
   if (drawer && drawer.classList.contains('drawer-open')) toggleNavDrawer();
   showView(moduleId, { keepDrawerWorkFilter: true });
 
-  // Primera aplicación para tablas ya pintadas y reintentos de respaldo para
-  // cargas asíncronas. El renderizador común vuelve a aplicarlo al terminar.
-  [80, 240, 600, 1200, 2500, 5000].forEach(delay => {
-    setTimeout(applyActiveDrawerWorkFilter, delay);
-  });
+  if (cond && typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER.recargar) {
+    const etiqueta = kind === 'vencidos' ? 'Vencidos' : 'Pendientes';
+    setTimeout(function () {
+      MOTOR_RENDER.recargar(moduleId, { cond: cond, condEtiqueta: etiqueta, filtros: {}, busqueda: '' });
+      if (MOTOR_RENDER.marcarKpiActivo) MOTOR_RENDER.marcarKpiActivo(moduleId, -1);
+      renderDrawerWorkFilterNotice(kind);
+    }, 350);
+  } else {
+    // Vista escrita a mano (sin motor): se mantiene el filtrado del DOM
+    [80, 240, 600, 1200].forEach(d => setTimeout(applyActiveDrawerWorkFilter, d));
+  }
 }
 
 async function loadDrawerWorkSummary(force) {
@@ -919,28 +1321,26 @@ async function loadDrawerWorkSummary(force) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const items = await Promise.all(DRAWER_WORK_MODULES.map(async module => {
+  const items = await Promise.all(modulosDeTrabajo().map(async module => {
     try {
       if (typeof PERMISOS !== 'undefined' && !PERMISOS.moduloVisible(module.id)) return null;
-      const response = await DataService.read(module.id);
-      const parsed = typeof response === 'string' ? JSON.parse(response) : response;
-      const rows = Array.isArray(parsed && parsed.payload) ? parsed.payload : [];
-      const scopedRows = isAdmin || typeof PERMISOS === 'undefined'
-        ? rows
-        : PERMISOS.filtrarDatos(module.id, rows);
-      const pendingRows = scopedRows.filter(drawerSummaryIsPending);
-      const overdueRows = pendingRows.filter(row => drawerSummaryIsOverdue(row, today));
-      return {
-        id: module.id,
-        label: module.label,
-        pending: pendingRows.length,
-        overdue: overdueRows.length,
-        pendingIds: pendingRows.map(row => row.UUID).filter(Boolean),
-        overdueIds: overdueRows.map(row => row.UUID).filter(Boolean)
-      };
+      const cond = drawerCondicionesModulo(module.id);
+      if (!cond) return null;
+
+      // Dos conteos en UNA peticion. El alcance por rol lo aplica el
+      // servidor (RLS / registrosVisibles_), igual que en los KPIs.
+      const consultas = [{ metrica: 'count', cond: cond.pend }];
+      if (cond.venc) consultas.push({ metrica: 'count', cond: cond.venc });
+      const res = await DataService.aggregateBatch(module.id, consultas);
+      // El contrato de aggregateBatch devuelve los numeros en `valores`
+      const vals = (res && res.status === 'OK' && Array.isArray(res.valores) && res.valores.length) ? res.valores : null;
+      if (!vals) return { id: module.id, label: module.label, sinDato: true };
+      const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+      return { id: module.id, label: module.label,
+               pending: num(vals[0]), overdue: cond.venc ? num(vals[1]) : 0, cond: cond };
     } catch (error) {
       console.warn('No se pudo resumir ' + module.id, error);
-      return null;
+      return { id: module.id, label: module.label, sinDato: true };
     }
   }));
 
@@ -982,6 +1382,8 @@ function toggleNavDrawer() {
     if (avatarEl && AppState.User.Nombre) {
       avatarEl.textContent = AppState.User.Nombre.charAt(0).toUpperCase();
     }
+    agregarEnlacesDrawerModulosNuevos();
+    if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
     const roleLabel = document.getElementById('drawer-role-label');
     if (roleLabel && AppState.User.Rol) {
       roleLabel.textContent = (typeof PERMISOS !== 'undefined') ? PERMISOS.etiqueta() : AppState.User.Rol;
@@ -1040,8 +1442,9 @@ function updateDrawerActiveLink(viewID) {
   document.querySelectorAll('.drawer-nav-link[aria-current]').forEach(el => el.removeAttribute('aria-current'));
 
   const activeId = map[viewID];
-  if (activeId) {
-    const el = document.getElementById(activeId);
+  {
+    const el = activeId ? document.getElementById(activeId)
+      : document.querySelector('.drawer-nav-link[data-modulo="' + CSS.escape(String(viewID)) + '"]');
     if (el) {
       el.classList.add('active');
       el.setAttribute('aria-current', 'page');  // nav-state-active

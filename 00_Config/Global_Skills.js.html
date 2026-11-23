@@ -74,52 +74,103 @@ const PWA_SKILLS = {
   },
 
     /**
-     * Skill 12: Renderizador de Media Premium (Drive + Local)
+     * Skill 12: Renderizador de media (Supabase Storage + URL + local)
+     *
+     * Acepta lo que guarde el campo: rutas de Storage
+     * ("<empresa>/<modulo>/<uuid>/Foto_0.jpg", lo normal en producción),
+     * URLs http(s) o dataURLs (registros aún en la cola offline), separados
+     * por coma. Las rutas se firman en lote (URL temporal de 1 h) porque los
+     * buckets son privados. Imágenes → miniatura que se abre en grande;
+     * otros archivos (PDF, Word, Excel…) → tarjeta con enlace de descarga.
      */
     renderDriveMedia: function(fieldValue, fieldId, containerId) {
        const container = document.getElementById(containerId);
        if (!container) return;
 
-       if (!fieldValue) {
-          container.innerHTML = `<div class="flex flex-col items-center justify-center p-8 opacity-40"><span class="material-symbols-outlined text-4xl mb-2">image_not_supported</span><p class="text-[10px] font-bold uppercase tracking-tighter">Sin Media Registrada</p></div>`;
-          return;
-       }
+       const vacio = '<div class="col-span-full w-full text-center flex flex-col items-center justify-center p-3 sm:p-6 opacity-40"><span class="material-symbols-outlined text-3xl mb-1" aria-hidden="true">image_not_supported</span><p class="text-[12px] font-bold uppercase tracking-tighter">Sin archivos registrados</p></div>';
+       const valores = (typeof partirListaMedia === 'function')
+          ? partirListaMedia(fieldValue)
+          : String(fieldValue || '').split(',').map(s => s.trim()).filter(Boolean);
+       if (!valores.length) { container.innerHTML = vacio; return; }
 
-       // Sanitizador: solo permite src con protocolo http/https o data:image/
-       const sanitizeSrc = (src) => {
+       // Solo se pinta lo que es http(s), data:image o blob: nunca javascript:
+       const seguro = (src) => {
           const t = String(src || '').trim();
-          if (t.startsWith('https://') || t.startsWith('http://') || t.startsWith('data:image/')) return t;
-          console.warn('[SECURITY] URL de media bloqueada:', t.substring(0, 60));
+          if (/^(https?:\/\/|data:image\/|blob:)/i.test(t)) return t;
+          if (t) console.warn('[SECURITY] URL de media bloqueada:', t.substring(0, 60));
           return '';
        };
+       const esImagen = (original, url) =>
+          /^data:image\//i.test(url) ||
+          /\.(jpe?g|png|webp|gif|heic)(\?|$)/i.test(String(original).split('?')[0]) ||
+          (!/\.[a-z0-9]{2,5}(\?|$)/i.test(String(original).split('?')[0]) && /^https?:/i.test(url));
+       const nombreDe = (original) => decodeURIComponent(String(original).split('?')[0].split('/').pop() || 'archivo');
 
-       const sources = fieldValue.includes(",") ? fieldValue.split(",").map(s => s.trim()) : [fieldValue];
+       // Esqueleto mientras se firman las rutas (evita salto de diseño)
+       container.setAttribute('aria-busy', 'true');
+       container.innerHTML = '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">' +
+          valores.map(() => '<div class="aspect-video rounded-xl bg-surface-variant animate-pulse"></div>').join('') + '</div>';
 
-       const grid = document.createElement('div');
-       grid.className = 'grid grid-cols-2 md:grid-cols-4 gap-4 w-full';
+       const pintar = (urls) => {
+          const grid = document.createElement('div');
+          grid.className = 'grid grid-cols-2 md:grid-cols-4 gap-4 w-full';
 
-       sources.forEach(rawSrc => {
-          const safeSrc = sanitizeSrc(rawSrc);
-          const card = document.createElement('div');
-          card.className = 'group relative aspect-video rounded-xl overflow-hidden border border-outline-variant bg-white shadow-sm hover:shadow-md transition-all cursor-zoom-in';
-          const img = document.createElement('img');
-          img.className = 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110';
-          if (safeSrc) {
-             img.src = safeSrc;
-             img.onerror = function() { this.src = 'https://placehold.co/400?text=Error+Carga'; };
-          } else {
-             img.src = 'https://placehold.co/400?text=URL+Bloqueada';
-          }
-          const overlay = document.createElement('div');
-          overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2';
-          overlay.innerHTML = '<span class="text-[8px] text-white font-black uppercase tracking-widest">Ver en Grande</span>';
-          card.appendChild(img);
-          card.appendChild(overlay);
-          grid.appendChild(card);
-       });
+          valores.forEach((original, i) => {
+             const url = seguro(urls[i]);
+             const card = document.createElement('a');
+             card.className = 'group relative aspect-video rounded-xl overflow-hidden border border-outline-variant bg-surface shadow-sm hover:shadow-md transition-all flex items-center justify-center';
 
-       container.innerHTML = '';
-       container.appendChild(grid);
+             if (!url) {
+                card.setAttribute('role', 'img');
+                card.setAttribute('aria-label', 'Archivo no disponible');
+                card.innerHTML = '<div class="flex flex-col items-center gap-1 text-secondary p-2 text-center"><span class="material-symbols-outlined text-3xl" aria-hidden="true">broken_image</span><span class="text-[12px] font-bold">No disponible</span></div>';
+                grid.appendChild(card);
+                return;
+             }
+
+             card.href = url;
+             card.target = '_blank';
+             card.rel = 'noopener';
+
+             if (esImagen(original, url)) {
+                card.classList.add('cursor-zoom-in');
+                card.setAttribute('aria-label', 'Ver en grande');
+                const img = document.createElement('img');
+                img.className = 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110';
+                img.loading = 'lazy';
+                img.alt = (fieldId || 'Imagen').replace(/_/g, ' ') + ' ' + (i + 1);
+                img.src = url;
+                img.onerror = function() {
+                   card.innerHTML = '<div class="flex flex-col items-center gap-1 text-secondary"><span class="material-symbols-outlined text-3xl" aria-hidden="true">broken_image</span><span class="text-[12px] font-bold">Error de carga</span></div>';
+                };
+                // Las firmas digitales son PNG con fondo transparente
+                if (/firma|signature/i.test(fieldId || '')) img.className = 'w-full h-full object-contain p-2 bg-white';
+                const overlay = document.createElement('div');
+                overlay.className = 'absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2';
+                overlay.innerHTML = '<span class="text-[12px] text-white font-black uppercase tracking-widest">Ver en grande</span>';
+                card.appendChild(img);
+                card.appendChild(overlay);
+             } else {
+                const nombre = nombreDe(original);
+                const ext = (nombre.split('.').pop() || '').toUpperCase();
+                card.setAttribute('aria-label', 'Descargar ' + nombre);
+                card.innerHTML = '<div class="flex flex-col items-center gap-1 p-3 text-center min-w-0 w-full">' +
+                   '<span class="material-symbols-outlined text-3xl text-primary" aria-hidden="true">' + (ext === 'PDF' ? 'picture_as_pdf' : 'description') + '</span>' +
+                   '<span class="text-[12px] font-bold text-on-surface truncate w-full"></span>' +
+                   '<span class="text-[12px] text-secondary">Descargar</span></div>';
+                card.querySelector('.truncate').textContent = nombre;
+             }
+             grid.appendChild(card);
+          });
+
+          container.innerHTML = '';
+          container.appendChild(grid);
+          container.removeAttribute('aria-busy');
+       };
+
+       const resolver = (typeof DataService !== 'undefined' && DataService.resolveMedia)
+          ? DataService.resolveMedia(valores) : Promise.resolve(valores);
+       resolver.then(pintar).catch(() => pintar(valores.map(() => '')));
     },
 
   // -----------------------------------------------------------------------
@@ -169,7 +220,7 @@ const PWA_SKILLS = {
     canvas.height = canvas.offsetHeight || 200;
 
     const ctx = canvas.getContext('2d');
-    ctx.strokeStyle = "#000666";
+    ctx.strokeStyle = "#162138";
     ctx.lineWidth = 3;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -229,6 +280,29 @@ const PWA_SKILLS = {
     const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  },
+
+  /**
+   * Credencial para reentrar SIN red (modo Supabase): PBKDF2-SHA256 con sal
+   * aleatoria y 210 000 iteraciones (recomendación OWASP). Antes se guardaba
+   * un SHA-256 simple sin sal en localStorage: quien copiara el almacenamiento
+   * del equipo adivinaba la contraseña en minutos. Ahora cada intento le
+   * cuesta ~200 000 veces más.
+   * @param {string} password
+   * @param {string} [saltB64]  sal guardada (sin ella se genera una nueva)
+   * @param {number} [iter]
+   * @returns {Promise<{salt:string, iter:number, hash:string}>}
+   */
+  PBKDF2_ITER: 210000,
+  derivarCredencial: async function(password, saltB64, iter) {
+    const b64 = buf => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+    const salt = saltB64
+      ? Uint8Array.from(atob(saltB64), c => c.charCodeAt(0))
+      : crypto.getRandomValues(new Uint8Array(16));
+    const it = iter || PWA_SKILLS.PBKDF2_ITER;
+    const clave = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: it }, clave, 256);
+    return { salt: b64(salt), iter: it, hash: b64(bits) };
   },
 
   // -----------------------------------------------------------------------
@@ -301,6 +375,9 @@ const PWA_SKILLS = {
         );
       }
 
+      // Lista de otro módulo: siempre con buscador, por pocas opciones que
+      // tenga hoy (ver «SKILL 28» al final de este archivo).
+      select.setAttribute('data-buscador', '');
       select.innerHTML = '<option value="">Seleccione...</option>';
       filteredData.forEach(row => {
         const opt = document.createElement('option');
@@ -346,14 +423,54 @@ const PWA_SKILLS = {
    * @param {Array} data - El arreglo de objetos filtrados.
    * @param {string} fileName - Nombre sugerido del archivo.
    */
+  /**
+   * CSV a partir de los DATOS (no del DOM). Lo usa la exportacion de un
+   * Resumen paginado: raspar la tabla solo daria la pagina visible.
+   * @param {Array<Object>} datos  filas ya con las columnas que se quieren
+   * @param {string} nombre
+   */
+  exportDatosToCSV: function(datos, nombre) {
+    if (!datos || !datos.length) { this.toast('No hay datos para exportar.', 'error'); return; }
+    const cols = Object.keys(datos[0]);
+    const cita = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const lineas = [cols.map(cita).join(',')]
+      .concat(datos.map(r => cols.map(c => cita(r[c])).join(',')));
+    // BOM: sin el, Excel en Windows abre las tildes mal
+    const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (nombre || 'Reporte') + '_' + this.getPeruTime(false).replace(/-/g, '') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    this.toast(datos.length + ' registros exportados.', 'success');
+  },
+
+  /**
+   * Hoja de cálculo a partir de los datos, con el ancho de cada columna
+   * ajustado a su contenido. Sin esto Excel deja todas a 8 caracteres: un
+   * nombre completo o un correo quedan cortados y parece que falta el dato.
+   */
+  _hojaXLSX: function(datos) {
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const cols = Object.keys(datos[0] || {});
+    ws['!cols'] = cols.map(c => {
+      let ancho = String(c).length;
+      datos.forEach(f => { const n = String(f[c] == null ? '' : f[c]).length; if (n > ancho) ancho = n; });
+      return { wch: Math.min(Math.max(ancho + 2, 8), 48) };
+    });
+    return ws;
+  },
+
   exportToExcel: function(data, fileName = "Reporte_Exportado") {
     if(!data || data.length === 0) return alert("❌ No hay datos para exportar.");
-    
+
     // Crear el Libro (Workbook)
     const wb = XLSX.utils.book_new();
-    // Convertir JSON a Hoja (Worksheet)
-    const ws = XLSX.utils.json_to_sheet(data);
-    
+    // Convertir JSON a Hoja (Worksheet), con los anchos de columna ya puestos
+    const ws = this._hojaXLSX(data);
+
     // Añadir Hoja al Libro
     XLSX.utils.book_append_sheet(wb, ws, "Base_Datos");
     
@@ -362,6 +479,224 @@ const PWA_SKILLS = {
     XLSX.writeFile(wb, `${fileName}_${timestamp}.xlsx`);
     
     console.log(`📊 Exportación .xlsx completada: ${data.length} registros.`);
+  },
+
+  /**
+   * Igual que exportToExcel pero con UNA HOJA POR GRUPO. Pensado para que el
+   * SuperAdmin mande a cada empresa cliente un solo archivo con su personal
+   * separado por pestañas.
+   * @param {Object} grupos  { "Empresa A": [fila, fila], "Empresa B": [...] }
+   * @param {string} fileName
+   */
+  exportToExcelPorHojas: function(grupos, fileName = 'Personal_Por_Empresa') {
+    const claves = Object.keys(grupos || {}).filter(k => (grupos[k] || []).length);
+    if (!claves.length) { this.toast('No hay datos para exportar.', 'warning'); return; }
+
+    const wb = XLSX.utils.book_new();
+    const usados = {};
+    claves.sort((a, b) => a.localeCompare(b, 'es')).forEach(clave => {
+      // Excel: máximo 31 caracteres y sin : \ / ? * [ ]  — y nombres únicos
+      let hoja = String(clave || 'Sin empresa').replace(/[:\\\/\?\*\[\]]/g, '-').slice(0, 31) || 'Sin empresa';
+      if (usados[hoja]) { hoja = hoja.slice(0, 28) + '_' + (++usados[hoja]); } else { usados[hoja] = 1; }
+      XLSX.utils.book_append_sheet(wb, this._hojaXLSX(grupos[clave]), hoja);
+    });
+
+    const timestamp = this.getPeruTime(false).replace(/-/g, '');
+    XLSX.writeFile(wb, `${fileName}_${timestamp}.xlsx`);
+    this.toast(`Exportado: ${claves.length} empresa(s) en hojas separadas.`, 'success', 3500);
+  },
+
+  // -----------------------------------------------------------------------
+  // SKILL 1.C: ENVÍO DE CREDENCIALES POR WHATSAPP
+  // -----------------------------------------------------------------------
+  // La app no manda correos de invitación (el personal de campo casi nunca
+  // tiene email real: api/usuarios.js les asigna uno técnico @sin-correo.invalid).
+  // El alta se comunica por WhatsApp, que es lo que todos tienen.
+
+  /** Normaliza un teléfono al formato que exige wa.me (solo dígitos, con país). */
+  telefonoWhatsApp: function(tel) {
+    let d = String(tel || '').replace(/[^\d]/g, '');
+    if (!d) return '';
+    d = d.replace(/^0+/, '');
+    // 9 dígitos que empiezan con 9 = celular peruano sin código de país
+    if (d.length === 9 && d.charAt(0) === '9') d = '51' + d;
+    return d.length >= 10 ? d : '';
+  },
+
+  /** URL de WhatsApp con el texto ya cargado. Sin teléfono, deja elegir contacto. */
+  linkWhatsApp: function(tel, texto) {
+    const num = this.telefonoWhatsApp(tel);
+    return 'https://wa.me/' + num + '?text=' + encodeURIComponent(String(texto || ''));
+  },
+
+  abrirWhatsApp: function(tel, texto) {
+    window.open(this.linkWhatsApp(tel, texto), '_blank', 'noopener,noreferrer');
+  },
+
+  /** Copia al portapapeles con respaldo para navegadores sin permiso. */
+  copiarTexto: async function(texto) {
+    try {
+      await navigator.clipboard.writeText(String(texto || ''));
+      this.toast('Mensaje copiado.', 'success', 2500);
+      return true;
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = String(texto || '');
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+      document.body.removeChild(ta);
+      this.toast(ok ? 'Mensaje copiado.' : 'No se pudo copiar: selecciona el texto a mano.', ok ? 'success' : 'warning', 3500);
+      return ok;
+    }
+  },
+
+  /**
+   * Arma el mensaje de bienvenida con los datos de acceso.
+   * @param {Object} d { nombre, dni, password, rol, empresa, url, nuevo }
+   */
+  mensajeCredenciales: function(d) {
+    d = d || {};
+    const sop  = (typeof AppState !== 'undefined' && AppState.Soporte) || {};
+    const url  = d.url || (location.origin + location.pathname).replace(/\/index\.html$/i, '/');
+    const nom  = String(d.nombre || '').trim();
+    const pila = [];
+
+    if (d.nuevo === false) {
+      pila.push('🔐 *Tu contraseña fue restablecida*', '');
+      pila.push('Hola ' + (nom || 'colega') + ', se generó una contraseña nueva para tu acceso a la app de Seguridad y Salud en el Trabajo.');
+    } else {
+      pila.push('👷 *¡Bienvenido(a) al sistema SSOMA!*', '');
+      pila.push('Hola ' + (nom || 'colega') + ', ya tienes acceso a la app de Seguridad y Salud en el Trabajo' +
+                (d.empresa ? ' de *' + d.empresa + '*' : '') + '.');
+    }
+
+    pila.push('', '🔗 *Enlace de la app:*', url, '');
+    pila.push('👤 *Usuario (tu DNI):* ' + (d.dni || '—'));
+    pila.push('🔑 *Contraseña temporal:* ' + (d.password || '—'));
+    if (d.rol) pila.push('🎖️ *Perfil asignado:* ' + d.rol);
+    pila.push('');
+    pila.push('📲 *Cómo ingresar:*');
+    pila.push('1. Abre el enlace en Chrome desde tu celular.');
+    pila.push('2. Ingresa tu DNI y la contraseña de arriba.');
+    pila.push('3. Instálala: menú ⋮ → "Agregar a pantalla de inicio". Así funciona hasta sin señal.');
+    pila.push('');
+    pila.push('⚠️ *Importante:* cambia tu contraseña al entrar.');
+    pila.push('Menú ☰ → "Ver mi perfil" → *Cambiar mi contraseña*.');
+    pila.push('No compartas tu clave: todo lo que registres queda firmado con tu nombre.');
+    if (sop.WhatsApp) {
+      pila.push('');
+      pila.push('❓ Si la olvidas, escribe a ' + (sop.Etiqueta || ('+' + sop.WhatsApp)) + '.');
+    }
+    return pila.join('\n');
+  },
+
+  /**
+   * Muestra el mensaje listo para enviar por WhatsApp, con el número del
+   * colaborador. No se guarda nada: la contraseña solo existe en esta pantalla.
+   * @param {Object} d { nombre, dni, password, rol, empresa, telefono, nuevo }
+   */
+  compartirCredenciales: function(d) {
+    d = d || {};
+    const texto = this.mensajeCredenciales(d);
+    const prev = document.getElementById('cred-share-modal');
+    if (prev) prev.remove();
+
+    const titulo = d.nuevo === false ? 'Contraseña restablecida' : 'Cuenta creada';
+    const wrap = document.createElement('div');
+    wrap.id = 'cred-share-modal';
+    wrap.className = 'fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-modal', 'true');
+    wrap.setAttribute('aria-label', titulo + ': enviar datos de acceso');
+    wrap.innerHTML = `
+      <div class="absolute inset-0 bg-black/55 backdrop-blur-sm" data-cerrar></div>
+      <div class="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl border border-outline-variant shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200">
+
+        <div class="flex items-start gap-3 p-5 pb-3 border-b border-outline-variant">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">how_to_reg</span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h3 class="text-sm font-black text-on-surface leading-tight">${esc(titulo)}</h3>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">Envíale los datos de acceso a ${esc(d.nombre || 'el colaborador')} por WhatsApp.</p>
+          </div>
+          <button type="button" data-cerrar class="w-8 h-8 rounded-full hover:bg-surface-container text-secondary flex items-center justify-center shrink-0" aria-label="Cerrar">
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        <div class="p-5 pt-4 overflow-y-auto space-y-4">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="cred-tel" class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Celular (WhatsApp)</label>
+              <input id="cred-tel" type="tel" inputmode="numeric" maxlength="15" value="${esc(d.telefono || '')}"
+                     placeholder="9XXXXXXXX"
+                     class="w-full h-11 px-3 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+              <p class="text-[10px] text-on-surface-variant mt-1">Perú: 9 dígitos. Vacío = eliges el contacto en WhatsApp.</p>
+            </div>
+            <div>
+              <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Contraseña enviada</label>
+              <div class="h-11 px-3 rounded-xl border border-dashed border-outline-variant bg-surface-container-low flex items-center">
+                <span class="text-sm font-black text-on-surface tabular-nums truncate">${esc(d.password || '—')}</span>
+              </div>
+              <p class="text-[10px] text-amber-700 mt-1 font-semibold">No se vuelve a mostrar.</p>
+            </div>
+          </div>
+
+          <div>
+            <label for="cred-texto" class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Mensaje (puedes editarlo)</label>
+            <textarea id="cred-texto" rows="12"
+                      class="w-full p-3 rounded-xl border border-outline-variant bg-surface-container-lowest text-[12px] leading-relaxed focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-y">${esc(texto)}</textarea>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-outline-variant flex flex-col sm:flex-row gap-2">
+          <button type="button" data-copiar class="h-11 px-4 rounded-xl border border-outline-variant text-xs font-bold text-on-surface hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">content_copy</span>Copiar
+          </button>
+          <button type="button" data-enviar class="flex-1 h-11 px-4 rounded-xl bg-primary text-on-primary text-xs font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
+            <span class="material-symbols-outlined text-[17px]" aria-hidden="true">send</span>Enviar por WhatsApp
+          </button>
+        </div>
+      </div>`;
+
+    const cerrar = () => { wrap.remove(); document.removeEventListener('keydown', onEsc); };
+    const onEsc = e => { if (e.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', onEsc);
+    wrap.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrar));
+    wrap.querySelector('[data-copiar]').addEventListener('click', () => {
+      this.copiarTexto(wrap.querySelector('#cred-texto').value);
+    });
+    wrap.querySelector('[data-enviar]').addEventListener('click', () => {
+      const tel = wrap.querySelector('#cred-tel').value;
+      if (tel.trim() && !this.telefonoWhatsApp(tel)) {
+        this.toast('Número no válido. Son 9 dígitos (celular Perú) o el número con código de país.', 'warning', 4000);
+        return;
+      }
+      this.abrirWhatsApp(tel, wrap.querySelector('#cred-texto').value);
+      cerrar();
+    });
+
+    document.body.appendChild(wrap);
+    setTimeout(() => { const t = wrap.querySelector('#cred-tel'); if (t && !t.value) t.focus(); }, 80);
+  },
+
+  /** Abre WhatsApp con el proveedor del servicio (contraseña olvidada, etc.). */
+  escribirASoporte: function(motivo, datos) {
+    const sop = (typeof AppState !== 'undefined' && AppState.Soporte) || {};
+    if (!sop.WhatsApp) { this.toast('No hay un contacto de soporte configurado.', 'warning'); return; }
+    const u = (typeof AppState !== 'undefined' && AppState.User) || {};
+    const d = datos || {};
+    const quien = d.dni || (u.DNI && u.DNI !== 'null' ? u.DNI : '');
+    const nombre = d.nombre || (u.Nombre && u.Nombre !== 'Invitado' ? u.Nombre : '');
+    const pila = ['Hola, escribo desde la app SSOMA.'];
+    pila.push(motivo || 'Necesito ayuda con mi acceso.');
+    if (nombre) pila.push('Nombre: ' + nombre);
+    if (quien)  pila.push('DNI: ' + quien);
+    if (u.EmpresaNombre) pila.push('Empresa: ' + u.EmpresaNombre);
+    this.abrirWhatsApp(sop.WhatsApp, pila.join('\n'));
   },
 
   // -----------------------------------------------------------------------
@@ -406,7 +741,7 @@ const PWA_SKILLS = {
           return '<option value="' + esc(v) + '"' +
                  (String(val) === String(v) ? ' selected' : '') + '>' + esc(t) + '</option>';
         }).join('');
-        control = '<select name="' + f.name + '" class="' + clase + '">' +
+        control = '<select name="' + f.name + '"' + (f.buscador ? ' data-buscador' : '') + ' class="' + clase + '">' +
                   '<option value="">' + esc(f.placeholder || '—') + '</option>' + ops + '</select>';
 
       } else if (f.type === 'display') {
@@ -419,7 +754,23 @@ const PWA_SKILLS = {
         control = '<textarea name="' + f.name + '" rows="2" class="w-full p-3 rounded-lg border border-outline-variant bg-white text-xs focus:ring-1 focus:ring-primary outline-none resize-none">' + esc(val) + '</textarea>';
 
       } else {
-        control = '<input type="' + (f.type || 'text') + '" name="' + f.name + '" value="' + esc(val) + '" ' +
+        // DNI: máximo 8 caracteres (ver attrsDNI en Global_Config)
+        const tipo = f.type || 'text';
+        const dni = (tipo === 'text' && typeof attrsDNI === 'function') ? attrsDNI(f.name, f.label) : '';
+        // Regla 28: cada casilla acepta solo lo suyo. Una cantidad no admite
+        // letras ni negativos, y en el móvil abre el teclado numérico.
+        let extra = '';
+        const pon = (k, v) => { if (v !== undefined && v !== null && v !== '') extra += ' ' + k + '="' + esc(v) + '"'; };
+        if (tipo === 'number') {
+          pon('min',  f.min !== undefined ? f.min : 0);
+          pon('max',  f.max);
+          pon('step', f.step !== undefined ? f.step : 1);
+          pon('inputmode', String(f.step !== undefined ? f.step : 1).indexOf('.') === -1 ? 'numeric' : 'decimal');
+        } else if (tipo === 'email') { pon('inputmode', 'email'); pon('autocapitalize', 'off'); }
+        else if (tipo === 'tel')     { pon('inputmode', 'tel'); pon('pattern', f.pattern || '[0-9+()\s-]{6,20}'); }
+        else                         { pon('maxlength', f.maxLength); }
+        if (f.pattern && tipo !== 'tel') pon('pattern', f.pattern);
+        control = '<input type="' + tipo + '" name="' + f.name + '" value="' + esc(val) + '"' + dni + extra + ' ' +
                   (f.placeholder ? 'placeholder="' + esc(f.placeholder) + '" ' : '') + 'class="' + clase + '">';
       }
 
@@ -442,34 +793,56 @@ const PWA_SKILLS = {
   /**
    * Skill #15: Motor de Sincronización Global Contextual
    */
-  triggerGlobalSync: function() {
-      if (!AppState.activeModule) {
-          console.warn("No hay módulo activo para sincronizar.");
-          return;
-      }
-
-      // Animamos el botón para dar feedback al usuario
+  triggerGlobalSync: async function() {
+      // Sube la cola offline (incluidos los registros bloqueados por rechazo)
+      // y vuelve a pintar el Resumen del módulo activo con datos del servidor.
+      // Antes llamaba a window.syncModuleData, que no existía: no hacía nada.
       const btn = document.getElementById('ui-global-sync-btn');
-      if (btn) btn.classList.add('animate-spin');
+      if (btn && btn.dataset.ocupado) return;
+      if (btn) { btn.dataset.ocupado = '1'; btn.classList.add('animate-spin'); }
 
-      console.log(`Iniciando Sincronización Global para: ${AppState.activeModule}`);
+      try {
+          if (!navigator.onLine) {
+              PWA_SKILLS.toast('Sin conexión. Los registros guardados se subirán solos al volver la red.', 'warning', 4000);
+              return;
+          }
+          const r = (typeof triggerSyncToCloud === 'function')
+              ? await triggerSyncToCloud({ forzar: true, origen: 'manual' })
+              : { subidos: 0, pendientes: 0, bloqueados: 0 };
 
-      // Llamamos a la función de sincronización específica del módulo
-      if (typeof window.syncModuleData === 'function') {
-          window.syncModuleData(AppState.activeModule);
+          // Refresco del listado aunque no hubiera nada en cola (datos de otros usuarios)
+          const mod = AppState.activeModule;
+          if (mod && typeof recargarResumenActivo === 'function') recargarResumenActivo([mod]);
+
+          if (r.motivo === 'sin-sesion') {
+              PWA_SKILLS.toast('Tu sesión expiró. Vuelve a iniciar sesión para subir los registros pendientes.', 'warning', 5000);
+          } else if (r.pendientes) {
+              PWA_SKILLS.toast((r.subidos ? r.subidos + ' subido(s). ' : '') +
+                  'Quedan ' + r.pendientes + ' registro(s) sin subir' +
+                  (r.bloqueados ? ' (' + r.bloqueados + ' rechazado(s) por el servidor)' : '') + '.', 'warning', 5000);
+          } else {
+              PWA_SKILLS.toast(r.subidos ? r.subidos + ' registro(s) subido(s). Todo sincronizado.' : 'Todo sincronizado.', 'success', 2500);
+          }
+      } catch (e) {
+          console.error('Error al sincronizar:', e);
+          PWA_SKILLS.toast('No se pudo sincronizar. Se reintentará automáticamente.', 'error', 4000);
+      } finally {
+          if (btn) { btn.classList.remove('animate-spin'); delete btn.dataset.ocupado; }
       }
-      
-      // Detenemos la animación tras 1s (O cuando la data cargue)
-      setTimeout(() => {
-          if (btn) btn.classList.remove('animate-spin');
-      }, 1000);
   },
 
   // -----------------------------------------------------------------------
   // SKILL 13: BARRA DE BÚSQUEDA REUTILIZABLE (Regla 17)
   // -----------------------------------------------------------------------
   renderSearchBar: function(containerId, placeholder) {
-    const container = document.getElementById(containerId);
+    // El hueco se busca DENTRO de #main-container. El id esta duplicado: cada
+    // vista de Resumen trae el suyo, y las copias del registro de modulos
+    // (#module-registry, oculto) tambien. getElementById devuelve una sola de
+    // ellas y no garantiza cual, asi que la barra podia acabar montada en una
+    // vista oculta: entonces renderDynamicFilters no encontraba el panel y el
+    // modulo se quedaba SIN filtros, sin ningun error visible.
+    const container = document.querySelector('#main-container #' + ((window.CSS && CSS.escape)
+      ? CSS.escape(containerId) : containerId)) || document.getElementById(containerId);
     if (!container) return;
     container.innerHTML = `
       <div data-filter-bar class="mb-4 rounded-xl border border-outline-variant shadow-sm overflow-hidden bg-surface-container-lowest">
@@ -478,7 +851,7 @@ const PWA_SKILLS = {
           <label for="ui-search-input" class="sr-only-ds">Buscar registros</label>
           <input id="ui-search-input" onkeyup="PWA_SKILLS.applyFilters()" type="search"
             class="filter-compact-control flex-1 min-w-0 bg-transparent border-none text-[12px] text-on-surface placeholder:text-outline-variant focus:ring-0 focus:outline-none py-1"
-            placeholder="${placeholder || 'Buscar...'}"/>
+            placeholder="${esc(placeholder || 'Buscar...')}"/>
           <div class="w-px h-5 bg-outline-variant/60 mx-1 shrink-0"></div>
           <button data-filter-btn onclick="PWA_SKILLS.toggleFilterPanel(this)"
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-primary hover:bg-primary/10 transition-colors whitespace-nowrap relative">
@@ -538,7 +911,7 @@ const PWA_SKILLS = {
            if (icon) icon.innerText = 'expand_more';
        } else {
            panel.classList.add('filter-open');
-           panel.style.maxHeight = '600px';
+           panel.style.maxHeight = '1200px';
            panel.style.opacity = '1';
            panel.style.pointerEvents = 'auto';
            if (icon) icon.innerText = 'expand_less';
@@ -550,6 +923,71 @@ const PWA_SKILLS = {
     * Inyecta los controles dinámicos dentro del panel #ui-filter-panel
     * y actualiza el badge de cantidad en el botón toggle.
    */
+  /** Subconfig de un módulo (SUBCONFIG_03_INSPECCIONES a partir de 03_Inspecciones). */
+  _subconfigDe: function(moduleID) {
+    const norm = String(moduleID).toUpperCase().replace(/\s/g, '_').replace(/[^A-Z0-9_]/g, '');
+    return window['SUBCONFIG_' + norm] || window[moduleID] || window['SUBCONFIG_' + moduleID] || null;
+  },
+
+  /** Las filas que ya se cargaron de un módulo (memoria del motor o caché local). */
+  _filasConocidas: function(moduleID) {
+    let filas = null;
+    try {
+      if (typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER._datos) filas = MOTOR_RENDER._datos[moduleID];
+    } catch (e) {}
+    if (!Array.isArray(filas) || !filas.length) {
+      if (moduleID === '01_Usuarios' && Array.isArray(window._usrData) && window._usrData.length) filas = window._usrData;
+    }
+    if (!Array.isArray(filas) || !filas.length) {
+      filas = (typeof MOTOR_CACHE !== 'undefined') ? MOTOR_CACHE.leerSync(moduleID) : [];
+    }
+    return Array.isArray(filas) ? filas : [];
+  },
+
+  /**
+   * Opciones de un filtro Enum. Un Enum ABIERTO (allowOtherValues) o sin lista
+   * —Empresa, por ejemplo— no tiene sus valores en el subconfig: viven en los
+   * registros. Sin esto el desplegable sale con "Todos" y nada que elegir.
+   */
+  _opcionesFiltro: function(moduleID, key, field, filas) {
+    const base = (field.acceptedValues || []).map(v => String(v == null ? '' : v).trim()).filter(Boolean);
+    if (base.length && !field.allowOtherValues) return base;   // lista cerrada: orden declarado
+    const vistos = {};
+    base.forEach(v => { vistos[v.toLowerCase()] = true; });
+    const extra = {};
+    (Array.isArray(filas) ? filas : this._filasConocidas(moduleID)).forEach(r => {
+      const v = String((r && r[key] != null) ? r[key] : '').trim();
+      const k = v.toLowerCase();
+      if (v && !vistos[k] && !extra[k]) extra[k] = v;
+    });
+    return base.concat(Object.keys(extra).sort().map(k => extra[k]));
+  },
+
+  /**
+   * Repuebla los filtros Enum abiertos cuando llegan datos frescos, sin perder
+   * lo que el usuario ya tenía elegido. La llaman los Resumen tras pintar.
+   */
+  actualizarOpcionesFiltro: function(moduleID, filas) {
+    const config = this._subconfigDe(moduleID);
+    if (!config || !config.Variables) return;
+    const escId = (v) => (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/[^\w-]/g, '\$&');
+    Object.keys(config.Variables).forEach(key => {
+      const field = config.Variables[key];
+      if (!field.isFilter || field.type !== 'Enum') return;
+      if ((field.acceptedValues || []).length && !field.allowOtherValues) return;
+      const sel = document.querySelector('#main-container #filter-' + escId(key));
+      if (!sel) return;
+      const opciones = this._opcionesFiltro(moduleID, key, field, filas);
+      const actuales = Array.prototype.slice.call(sel.options, 1).map(o => o.value);
+      if (actuales.length === opciones.length && actuales.every((v, i) => v === opciones[i])) return;
+      const elegido = sel.value;
+      sel.innerHTML = '<option value="">Todos</option>' +
+                      opciones.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+      sel.value = elegido;
+      if (sel.value !== elegido) sel.value = '';   // el valor elegido ya no existe
+    });
+  },
+
    renderDynamicFilters: function(moduleID) {
     const panel = document.querySelector('#main-container #ui-filter-panel');
     const badge = document.querySelector('#main-container #ui-filter-badge');
@@ -576,45 +1014,49 @@ const PWA_SKILLS = {
     const filterFields = Object.keys(config.Variables).filter(key => config.Variables[key].isFilter);
     filterCount = filterFields.length;
     
-    // Actualizar el badge del botón
-    if (badge) {
-        badge.textContent = filterCount > 0 ? filterCount : '';
-        badge.style.display = filterCount > 0 ? 'flex' : 'none';
-    }
+    // La insignia cuenta los filtros APLICADOS, no los disponibles: un "7"
+    // permanente junto a "Filtros" hacia creer que la lista estaba filtrada
+    // cuando se estaban viendo todos los registros.
+    this.actualizarBadgeFiltros();
 
-    // Contenedor interno del panel — grid 2 cols en móvil, más en pantallas grandes
+    // Contenedor interno del panel. Columnas de ancho mínimo 140px que se
+    // reacomodan solas según el ancho real del panel (no del viewport): antes
+    // se forzaban 3–4 columnas fijas y en paneles estrechos las etiquetas se
+    // partían en dos líneas y los selects quedaban cortados ("Todo", "mn").
     const grid = document.createElement('div');
-    grid.className = 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 p-3';
+    grid.className = 'grid gap-x-3 gap-y-3 p-3 sm:p-4';
+    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(140px, 100%), 1fr))';
 
     filterFields.forEach(key => {
         const field = config.Variables[key];
         const div = document.createElement('div');
-        div.className = 'flex flex-col gap-0.5';
+        div.className = 'flex flex-col gap-1 min-w-0';
 
         const labelText = (field.label || key).replace(/_/g, ' ');
+        const fid = 'filter-' + key;
+        // Etiqueta en una sola línea; si no cabe, se recorta y el texto completo queda en el title
+        const etiqueta = `<label for="${esc(fid)}" title="${esc(labelText)}" class="block truncate text-[10px] font-black uppercase tracking-wide text-on-surface-variant px-0.5">${esc(labelText)}</label>`;
 
         if (field.type === 'Enum') {
-            div.innerHTML = `
-                <label class="text-[9px] font-black uppercase tracking-wider text-on-surface-variant px-0.5">${labelText}</label>
-                <div class="filter-compact-field relative flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9">
-                    <span class="material-symbols-outlined text-primary text-[14px] ml-2 shrink-0">filter_alt</span>
-                    <select id="filter-${key}" onchange="PWA_SKILLS.applyFilters()"
-                        class="filter-compact-control bg-transparent border-none text-[10px] font-semibold text-on-surface w-full h-full pl-1.5 pr-5 focus:ring-0 appearance-none cursor-pointer">
+            div.innerHTML = `${etiqueta}
+                <div class="filter-compact-field relative flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9 min-w-0">
+                    <select id="${esc(fid)}" onchange="PWA_SKILLS.applyFilters()"
+                        class="filter-compact-control bg-transparent border-none text-[11px] font-semibold text-on-surface w-full min-w-0 h-full pl-2.5 pr-7 focus:ring-0 appearance-none cursor-pointer truncate">
                         <option value="">Todos</option>
-                        ${field.acceptedValues.map(v => `<option value="${v}">${v}</option>`).join('')}
+                        ${this._opcionesFiltro(moduleID, key, field).map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
                     </select>
-                    <span class="material-symbols-outlined text-[12px] text-outline absolute right-1.5 pointer-events-none">expand_more</span>
+                    <span class="material-symbols-outlined text-[16px] text-outline absolute right-2 pointer-events-none" aria-hidden="true">expand_more</span>
                 </div>`;
         } else {
-            const inputType = field.type === 'Date' ? 'date' : 'text';
-            div.innerHTML = `
-                <label class="text-[9px] font-black uppercase tracking-wider text-on-surface-variant px-0.5">${labelText}</label>
-                <div class="filter-compact-field flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9 px-2 gap-1">
-                    <span class="material-symbols-outlined text-outline text-[14px] shrink-0">search</span>
-                    <input type="${inputType}" id="filter-${key}"
+            const esFecha = field.type === 'Date';
+            // Las fechas no llevan lupa: el selector nativo necesita todo el ancho
+            div.innerHTML = `${etiqueta}
+                <div class="filter-compact-field flex items-center bg-surface rounded-lg border border-outline-variant/60 hover:border-primary/50 focus-within:border-primary transition-colors h-9 px-2.5 gap-1.5 min-w-0">
+                    ${esFecha ? '' : '<span class="material-symbols-outlined text-outline text-[15px] shrink-0" aria-hidden="true">search</span>'}
+                    <input type="${esFecha ? 'date' : 'text'}" id="${esc(fid)}"
                         onkeyup="PWA_SKILLS.applyFilters()" onchange="PWA_SKILLS.applyFilters()"
-                        placeholder="${labelText}..."
-                        class="filter-compact-control bg-transparent border-none text-[10px] font-medium text-on-surface placeholder:text-outline-variant w-full h-full focus:ring-0">
+                        ${esFecha ? '' : 'placeholder="Escribe..."'}
+                        class="filter-compact-control bg-transparent border-none p-0 text-[11px] font-medium text-on-surface placeholder:text-outline-variant w-full min-w-0 h-full focus:ring-0">
                 </div>`;
         }
 
@@ -623,7 +1065,7 @@ const PWA_SKILLS = {
 
     // Fila de acciones del panel
     const actions = document.createElement('div');
-    actions.className = 'flex items-center justify-between border-t border-outline-variant/60 px-3 py-2 bg-surface-container-low';
+    actions.className = 'flex items-center justify-between gap-3 border-t border-outline-variant/60 px-3 sm:px-4 py-2.5 bg-surface-container-low';
     actions.innerHTML = `
         <button onclick="PWA_SKILLS.clearFilters()" class="text-[10px] font-bold text-secondary hover:text-error transition-colors flex items-center gap-1">
             <span class="material-symbols-outlined text-[13px]">filter_alt_off</span>
@@ -642,8 +1084,69 @@ const PWA_SKILLS = {
   /**
    * Skill #17/19: Aplicación de Filtros Ejecutiva
    */
+  /**
+   * Lee el panel y la caja de busqueda.
+   * @returns {{filtros:Object, busqueda:string}}
+   */
+  _criteriosDelPanel: function() {
+    const searchInput = document.querySelector('#main-container #ui-search-input');
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    const inputs = panel ? panel.querySelectorAll('input, select') : [];
+    const filtros = {};
+    inputs.forEach(input => {
+      if (input.value) filtros[input.id.replace('filter-', '')] = input.value;
+    });
+    return { filtros, busqueda: (searchInput && searchInput.value) || '' };
+  },
+
+  /**
+   * true si el modulo activo pagina contra el servidor. En ese caso filtrar
+   * ocultando filas del DOM esta MAL: solo filtraria la pagina cargada, y una
+   * inspeccion vencida de hace meses -que no esta en pantalla- quedaria fuera
+   * del resultado sin que nadie lo note. El filtro tiene que ir a la base.
+   */
+  _filtraEnServidor: function(modulo) {
+    return typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER._pag &&
+           Object.prototype.hasOwnProperty.call(MOTOR_RENDER._pag, modulo);
+  },
+
+  _filtroPendiente: null,
+
+  /**
+   * Pinta en el boton "Filtros" cuantos criterios hay puestos (incluida la
+   * busqueda libre). Sin ninguno, la insignia se esconde.
+   */
+  actualizarBadgeFiltros: function() {
+    const badge = document.querySelector('#main-container #ui-filter-badge');
+    if (!badge) return;
+    const panel = document.querySelector('#main-container #ui-filter-panel');
+    const controles = panel ? Array.from(panel.querySelectorAll('input, select')) : [];
+    let n = controles.filter(c => !c.classList.contains('sb-input') && String(c.value || '').trim() !== '').length;
+    const buscar = document.querySelector('#main-container #ui-search-input');
+    if (buscar && String(buscar.value || '').trim() !== '') n++;
+    badge.textContent = n > 0 ? String(n) : '';
+    badge.style.display = n > 0 ? 'flex' : 'none';
+    badge.setAttribute('aria-label', n ? n + ' filtro(s) aplicado(s)' : '');
+  },
+
   applyFilters: function() {
     if (!AppState.activeModule) return;
+    this.actualizarBadgeFiltros();
+
+    // Camino nuevo: el filtro viaja a la base de datos.
+    if (this._filtraEnServidor(AppState.activeModule)) {
+      const modulo = AppState.activeModule;
+      const { filtros, busqueda } = this._criteriosDelPanel();
+      // Se escribe letra a letra: sin esperar, cada tecla seria una consulta.
+      clearTimeout(this._filtroPendiente);
+      this._filtroPendiente = setTimeout(() => {
+        // Un filtro del usuario manda sobre el KPI que estuviera aplicado:
+        // mezclarlos daria un resultado que no corresponde a ningun control.
+        MOTOR_RENDER.recargar(modulo, { filtros, busqueda, cond: null, condEtiqueta: '' });
+        MOTOR_RENDER.marcarKpiActivo(modulo, -1);
+      }, 280);
+      return;
+    }
 
     const searchInput = document.querySelector('#main-container #ui-search-input');
     const panel = document.querySelector('#main-container #ui-filter-panel');
@@ -679,7 +1182,7 @@ const PWA_SKILLS = {
     const countEl = document.querySelector('#main-container #ui-result-count');
     if (countEl) {
       countEl.textContent = vis === dataRows.length ? `${dataRows.length} registros` : `${vis} de ${dataRows.length}`;
-      countEl.style.color = vis < dataRows.length ? 'var(--color-primary,#000666)' : '';
+      countEl.style.color = vis < dataRows.length ? 'var(--color-primary,#162138)' : '';
     }
   },
 
@@ -693,6 +1196,13 @@ const PWA_SKILLS = {
     if (panel) {
       panel.querySelectorAll('input').forEach(i => i.value = '');
       panel.querySelectorAll('select').forEach(s => s.selectedIndex = 0);
+    }
+    this.actualizarBadgeFiltros();
+    if (AppState.activeModule && this._filtraEnServidor(AppState.activeModule)) {
+      clearTimeout(this._filtroPendiente);
+      MOTOR_RENDER.recargar(AppState.activeModule, { filtros: {}, busqueda: '', cond: null, condEtiqueta: '' });
+      MOTOR_RENDER.marcarKpiActivo(AppState.activeModule, -1);
+      return;
     }
     const tableBody = document.querySelector('#main-container table tbody');
     if (tableBody) {
@@ -722,7 +1232,7 @@ const PWA_SKILLS = {
     el.className = 'pwa-toast ' + type;
     el.innerHTML =
       '<span class="material-symbols-outlined" style="font-size:17px;color:' + colorMap[type] + ';font-variation-settings:\'FILL\' 1;flex-shrink:0">' + iconMap[type] + '</span>' +
-      '<span style="flex:1;line-height:1.35">' + message + '</span>' +
+      '<span style="flex:1;line-height:1.35">' + esc(message) + '</span>' +
       '<button onclick="this.parentElement.remove()" style="background:none;border:none;color:inherit;opacity:0.5;cursor:pointer;padding:0;line-height:1;flex-shrink:0">' +
       '<span class="material-symbols-outlined" style="font-size:15px">close</span></button>';
 
@@ -739,7 +1249,16 @@ const PWA_SKILLS = {
   // -----------------------------------------------------------------------
   _sortState: {},
 
-  initSortableTable: function(tbodyId) {
+  /**
+   * @param {string} tbodyId
+   * @param {{onOrdenar?:function(number,string):boolean}} [opts]
+   *   onOrdenar(indiceColumna, 'asc'|'desc') -> true si lo asume quien llama.
+   *   Lo usa el Resumen paginado: ordenar solo las filas cargadas daria un
+   *   orden que parece global y no lo es, asi que el orden se pide a la base
+   *   de datos y la tabla se repinta desde la primera pagina.
+   */
+  initSortableTable: function(tbodyId, opts) {
+    opts = opts || {};
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     const table = tbody.closest('table');
@@ -768,9 +1287,13 @@ const PWA_SKILLS = {
       const doSort = () => {
         const key = tbodyId + '_' + idx;
         const curr = this._sortState[key] || 'none';
-        const next = curr === 'none' ? 'asc' : curr === 'asc' ? 'desc' : 'none';
+        // Con orden del servidor no hay estado "sin ordenar": la tabla siempre
+        // llega ordenada por algo, asi que el ciclo es solo asc <-> desc.
+        const next = opts.onOrdenar
+          ? (curr === 'asc' ? 'desc' : 'asc')
+          : (curr === 'none' ? 'asc' : curr === 'asc' ? 'desc' : 'none');
         this._sortState[key] = next;
-        this._sortTableByCol(tbody, idx, next);
+        if (!(opts.onOrdenar && opts.onOrdenar(idx, next))) this._sortTableByCol(tbody, idx, next);
         ths.forEach((th2, i2) => {
           const ico2 = th2.querySelector('.sort-icon');
           if (i2 === idx && next !== 'none') {
@@ -782,7 +1305,7 @@ const PWA_SKILLS = {
           if (i2 === idx && next !== 'none') {
             ico2.innerText = next === 'asc' ? 'arrow_upward' : 'arrow_downward';
             ico2.style.opacity = '1';
-            ico2.style.color = 'var(--color-primary,#000666)';
+            ico2.style.color = 'var(--color-primary,#162138)';
           } else {
             ico2.innerText = 'unfold_more';
             ico2.style.opacity = '0.25';
@@ -827,7 +1350,7 @@ const PWA_SKILLS = {
     const all = rows.length;
     const vis = rows.filter(r => r.style.display !== 'none').length;
     el.textContent = vis === all ? `${all} registros` : `${vis} de ${all}`;
-    el.style.color = vis < all ? 'var(--color-primary,#000666)' : '';
+    el.style.color = vis < all ? 'var(--color-primary,#162138)' : '';
     // Si la navegación provino del resumen de trabajo, el render asíncrono
     // acaba de reemplazar las filas. Reaplica el filtro persistente ahora.
     if (typeof applyActiveDrawerWorkFilter === 'function') {
@@ -925,6 +1448,55 @@ const PWA_SKILLS = {
   // =======================================================================
 
   /**
+   * SKILL 25: CAMPOS OBLIGATORIOS CON ASTERISCO
+   * Regla de diseño: todo valor obligatorio lleva un asterisco rojo en su etiqueta.
+   * Marca como obligatorios, dentro de `root` (la vista de Edición):
+   *   · los ids listados en `data-obligatorios="id1 id2 …"` del propio root,
+   *   · todo control con `required`, `aria-required="true"` o `data-obligatorio`.
+   * Además unifica los asteriscos escritos a mano ("Área *") con el estilo
+   * estándar `.req-star`. Es idempotente: se puede llamar varias veces.
+   * @param {HTMLElement} root - vista de Edición (o document)
+   */
+  marcarObligatorios: function(root) {
+    root = root || document;
+    if (!root.querySelectorAll) return;
+    const STAR = '<span class="req-star" aria-hidden="true">*</span>';
+    const esc_id = (v) => (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/[^\w-]/g, '\\$&');
+
+    const controles = [];
+    const lista = (root.dataset && root.dataset.obligatorios) ? root.dataset.obligatorios.split(/\s+/).filter(Boolean) : [];
+    lista.forEach(id => { const c = root.querySelector('#' + esc_id(id)); if (c) controles.push(c); });
+    root.querySelectorAll('[required], [aria-required="true"], [data-obligatorio]').forEach(c => {
+      if (controles.indexOf(c) < 0) controles.push(c);
+    });
+
+    // Etiqueta de un control: label[for], o la <label> hermana más cercana hacia arriba
+    const labelDe = (c) => {
+      if (c.id) { const l = root.querySelector('label[for="' + esc_id(c.id) + '"]'); if (l) return l; }
+      let n = c.parentElement;
+      for (let i = 0; i < 3 && n && n !== root; i++, n = n.parentElement) {
+        const l = Array.prototype.find.call(n.children, el => el.tagName === 'LABEL');
+        if (l) return l;
+      }
+      return null;
+    };
+    // Convierte un "*" escrito a mano en el estándar; con `forzar` lo añade si falta
+    const marcar = (lab, forzar) => {
+      if (!lab || lab.querySelector('.req-star')) return;
+      const ult = lab.lastChild;
+      if (ult && ult.nodeType === 3 && /\s*\*\s*$/.test(ult.nodeValue)) {
+        ult.nodeValue = ult.nodeValue.replace(/\s*\*\s*$/, '');
+        lab.insertAdjacentHTML('beforeend', STAR);
+      } else if (forzar && !/\*\s*$/.test(lab.textContent)) {
+        lab.insertAdjacentHTML('beforeend', STAR);
+      }
+    };
+
+    controles.forEach(c => { c.setAttribute('aria-required', 'true'); marcar(labelDe(c), true); });
+    root.querySelectorAll('label').forEach(l => marcar(l, false));
+  },
+
+  /**
    * SKILL 24: TABLA RESPONSIVA (tabla en escritorio → tarjetas en móvil)
    * Regla `horizontal-scroll` (severidad ALTA): en <640px una tabla de 7-8
    * columnas obliga a desplazamiento lateral y esconde datos. Aquí cada fila
@@ -956,6 +1528,122 @@ const PWA_SKILLS = {
         if (actionLabels.includes(label.toLowerCase())) cell.classList.add('pwa-cell-actions');
       });
     });
+
+    this._cardThumbs(tbody);
+  },
+
+  // -----------------------------------------------------------------------
+  // MINIATURA DE TARJETA (todas las tarjetas móviles de Resumen)
+  // -----------------------------------------------------------------------
+  // Cuadrado a la izquierda de cada tarjeta con la imagen de UNA columna del
+  // módulo; si el registro no tiene foto, el icono del módulo.
+  //   Subconfig → Config_Modular.Card_Image: "Campo"  (o ["Campo1","Campo2"]: el primero con valor)
+  //               Config_Modular.Card_Icon:  "material_symbol"   (opcional)
+  // Sin Card_Image se usa el primer campo Image / Image_Collection del módulo.
+  // El registro de cada fila se busca por data-uuid (o data-dni) en la copia
+  // que todo Resumen guarda en localStorage (refdata_<módulo>).
+  _thumbCache: {},          // valor guardado → URL lista (las firmadas caducan en 1 h)
+  _THUMB_TTL: 50 * 60 * 1000,
+
+  _cardThumbConfig: function(modulo) {
+    const cfg = (typeof PERMISOS !== 'undefined' && PERMISOS._subconfig) ? PERMISOS._subconfig(modulo) : null;
+    const cm = (cfg && cfg.Config_Modular) || {};
+    let campos = cm.Card_Image;   // declarado (aunque sea "") manda sobre la detección automática
+    if (!("Card_Image" in cm) && cfg && cfg.Variables) {
+      const vars = cfg.Variables;
+      campos = Object.keys(vars).find(k => vars[k] && (vars[k].type === 'Image' || vars[k].type === 'Face_Photo')) ||
+               Object.keys(vars).find(k => vars[k] && vars[k].type === 'Image_Collection') || '';
+    }
+    campos = [].concat(campos || []).filter(Boolean);
+    // Icono: el del subconfig, si no el del módulo en el menú lateral
+    let icono = cm.Card_Icon || (cfg && cfg.Icon) || '';
+    if (!icono) {
+      const link = document.querySelector(`.drawer-nav-link[onclick*="'${CSS.escape(modulo)}'"] .material-symbols-outlined`);
+      icono = link ? link.textContent.trim() : '';
+    }
+    return { campos, icono: icono || 'description' };
+  },
+
+  _cardThumbs: function(tbody) {
+    const modulo = (typeof AppState !== 'undefined' && AppState.activeModule) || '';
+    if (!modulo) return;
+    const filas = Array.from(tbody.querySelectorAll('tr')).filter(r => !r.hasAttribute('data-ds-ui'));
+    if (!filas.length) return;
+    const { campos, icono } = this._cardThumbConfig(modulo);
+
+    // Lectura sincrona: esto corre en el mismo turno que el pintado de la
+    // tabla, asi que no puede esperar a IndexedDB (ver MOTOR_CACHE.leerSync).
+    let datos = (typeof MOTOR_CACHE !== 'undefined') ? MOTOR_CACHE.leerSync(modulo) : [];
+    if (!datos.length) {
+      try { datos = JSON.parse(localStorage.getItem('refdata_' + modulo) || '[]') || []; } catch (e) { datos = []; }
+    }
+    const porClave = {};
+    datos.forEach(r => {
+      if (!r) return;
+      if (r.UUID) porClave['u:' + r.UUID] = r;
+      if (r.DNI)  porClave['d:' + r.DNI]  = r;
+    });
+
+    const pendientes = [];   // { img, valor }
+    filas.forEach(row => {
+      row.classList.add('pwa-card-thumb-row');
+      const celda = row.cells[0];
+      if (!celda) return;
+      let thumb = celda.querySelector(':scope > .pwa-card-thumb');
+      if (!thumb) {
+        thumb = document.createElement('div');   // div: hay reglas que ocultan los span de la 1.ª celda
+        thumb.className = 'pwa-card-thumb';
+        thumb.setAttribute('aria-hidden', 'true');
+        thumb.innerHTML = `<span class="material-symbols-outlined">${esc(icono)}</span>`;
+        celda.insertBefore(thumb, celda.firstChild);
+      }
+      const reg = porClave['u:' + (row.dataset.uuid || '')] || porClave['d:' + (row.dataset.dni || '')];
+      if (!reg || !campos.length) return;
+      // Primer archivo de imagen de la primera columna con valor
+      let valor = '';
+      for (const c of campos) {
+        const lista = (typeof partirListaMedia === 'function') ? partirListaMedia(reg[c]) : String(reg[c] || '').split(',');
+        valor = lista.find(v => /^data:image\//i.test(v) || !/\.(pdf|docx?|xlsx?|csv|pptx?|txt|zip)(\?|$)/i.test(v)) || '';
+        if (valor) break;
+      }
+      if (!valor || thumb.dataset.src === valor) return;
+      thumb.dataset.src = valor;
+      let img = thumb.querySelector('img');
+      if (!img) {
+        img = document.createElement('img');
+        img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+        // Si la imagen no carga, queda el icono
+        img.onerror = () => { img.remove(); thumb.classList.remove('has-img'); };
+        img.onload  = () => thumb.classList.add('has-img');
+        thumb.appendChild(img);
+      }
+      pendientes.push({ img, valor });
+    });
+    if (!pendientes.length) return;
+
+    // Lo que ya es una URL utilizable se pinta directo; el resto (rutas de
+    // Storage / referencias de Drive) se firma en un solo lote.
+    const ahora = Date.now();
+    const directo = v => /^(data:image\/|blob:)/i.test(v);
+    const porResolver = [];
+    pendientes.forEach(p => {
+      const c = this._thumbCache[p.valor];
+      if (directo(p.valor)) p.img.src = p.valor;
+      else if (c && ahora - c.t < this._THUMB_TTL) p.img.src = c.url;
+      else if (porResolver.indexOf(p.valor) === -1) porResolver.push(p.valor);
+    });
+    if (!porResolver.length || typeof DataService === 'undefined' || !DataService.resolveMedia) return;
+    DataService.resolveMedia(porResolver).then(urls => {
+      porResolver.forEach((v, i) => { if (urls && urls[i]) this._thumbCache[v] = { url: urls[i], t: Date.now() }; });
+      pendientes.forEach(p => {
+        const c = this._thumbCache[p.valor];
+        if (c && p.img.isConnected && !directo(p.valor)) p.img.src = c.url;
+        else if (!c && p.img.isConnected && !p.img.src) p.img.remove();
+      });
+    }).catch(() => {
+      // Sin red: quedan los iconos
+      pendientes.forEach(p => { if (p.img.isConnected && !p.img.src) p.img.remove(); });
+    });
   },
 
   /**
@@ -977,7 +1665,7 @@ const PWA_SKILLS = {
     for (let r = 0; r < n; r++) {
       html += '<tr data-ds-ui="skeleton" class="ds-skeleton-row" aria-hidden="true">';
       for (let c = 0; c < cols; c++) {
-        html += `<td><div class="ds-skeleton-bar" style="width:${widths[(r + c) % widths.length]}"></div></td>`;
+        html += `<td><div class="ds-skeleton-bar" style="width:${esc(widths[(r + c) % widths.length])}"></div></td>`;
       }
       html += '</tr>';
     }
@@ -1000,20 +1688,22 @@ const PWA_SKILLS = {
     const table = tbody.closest('table');
     const cols = table ? Math.max(1, table.querySelectorAll('thead th').length) : 1;
     const o = opts || {};
+    // OJO: `action` ya es HTML con sus partes escapadas una por una. No se
+    // vuelve a escapar al insertarlo (eso imprimia el <button> como texto).
     const action = (o.actionLabel && o.onAction)
-      ? `<button type="button" class="ds-empty-action" onclick="${o.onAction}">
-           <span class="material-symbols-outlined text-[16px]" aria-hidden="true">${o.actionIcon || 'refresh'}</span>${o.actionLabel}
+      ? `<button type="button" class="ds-empty-action" onclick="${esc(o.onAction)}">
+           <span class="material-symbols-outlined text-[16px]" aria-hidden="true">${esc(o.actionIcon || 'refresh')}</span>${esc(o.actionLabel)}
          </button>`
       : '';
 
     if (table) table.removeAttribute('aria-busy');
     tbody.innerHTML = `
       <tr data-ds-ui="empty">
-        <td colspan="${cols}" style="padding:0;border:0;">
+        <td colspan="${esc(cols)}" style="padding:0;border:0;">
           <div class="ds-empty" role="status">
-            <span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">${o.icon || 'inbox'}</span>
-            <h4>${o.title || 'Sin registros'}</h4>
-            <p>${o.message || 'Todavía no hay información para mostrar.'}</p>
+            <span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">${esc(o.icon || 'inbox')}</span>
+            <h4>${esc(o.title || 'Sin registros')}</h4>
+            <p>${esc(o.message || 'Todavía no hay información para mostrar.')}</p>
             ${action}
           </div>
         </td>
@@ -1029,6 +1719,50 @@ const PWA_SKILLS = {
     const table = tbody.closest('table');
     if (table) table.removeAttribute('aria-busy');
     tbody.querySelectorAll('tr[data-ds-ui="skeleton"]').forEach(r => r.remove());
+  },
+
+  /**
+   * SKILL 28: DIAGNÓSTICO DE LA BASE DE DATOS — ejecuta
+   * DataService.verificarConexion() (Supabase o Apps Script, el que esté
+   * activo) y pinta la lista de comprobaciones en el contenedor.
+   * @returns {Promise<object|null>} el resultado del diagnóstico
+   */
+  renderDiagnosticoBD: async function(containerId) {
+    const cont = document.querySelector('#main-container #' + containerId) || document.getElementById(containerId);
+    if (!cont || typeof DataService === 'undefined') return null;
+    cont.setAttribute('aria-busy', 'true');
+    cont.innerHTML = '<div class="space-y-2" role="status" aria-label="Verificando conexión">' +
+      [1, 2, 3, 4].map(() => '<div class="h-10 rounded-xl bg-surface-variant animate-pulse"></div>').join('') + '</div>';
+
+    const r = await DataService.verificarConexion();
+    const conf = {
+      ok:    { ico: 'check_circle', cls: 'text-emerald-700', fondo: 'bg-emerald-50 border-emerald-200' },
+      warn:  { ico: 'warning',      cls: 'text-amber-700',   fondo: 'bg-amber-50 border-amber-200' },
+      error: { ico: 'cancel',       cls: 'text-red-700',     fondo: 'bg-red-50 border-red-200' }
+    };
+    const n = e => r.checks.filter(c => c.estado === e).length;
+    const estadoGeneral = n('error') ? 'error' : (n('warn') ? 'warn' : 'ok');
+    const titulo = { ok: 'Conexión correcta', warn: 'Conecta, con avisos', error: 'Hay problemas de conexión' }[estadoGeneral];
+    const g = conf[estadoGeneral];
+
+    cont.innerHTML =
+      '<div class="flex items-start gap-3 p-3 rounded-xl border ' + g.fondo + ' mb-3">' +
+        '<span class="material-symbols-outlined text-[24px] ' + g.cls + ' shrink-0" aria-hidden="true">' + g.ico + '</span>' +
+        '<div class="min-w-0"><p class="text-[13px] font-black ' + g.cls + '">' + esc(titulo) + '</p>' +
+        '<p class="text-[12px] text-on-surface-variant">' + esc(r.etiqueta) + ' · ' + n('ok') + ' correctas, ' +
+          n('warn') + ' avisos, ' + n('error') + ' errores · ' + esc(new Date(r.fecha).toLocaleTimeString('es-PE')) + '</p></div>' +
+      '</div>' +
+      '<ul class="space-y-1.5">' + r.checks.map(c => {
+        const k = conf[c.estado] || conf.warn;
+        return '<li class="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant">' +
+          '<span class="material-symbols-outlined text-[18px] ' + k.cls + ' shrink-0 mt-px" aria-hidden="true">' + k.ico + '</span>' +
+          '<span class="sr-only">' + esc({ ok: 'Correcto', warn: 'Aviso', error: 'Error' }[c.estado] || '') + ': </span>' +
+          '<div class="min-w-0 flex-1"><p class="text-[12px] font-bold text-on-surface">' + esc(c.nombre) + '</p>' +
+          (c.detalle ? '<p class="text-[12px] text-on-surface-variant break-words">' + esc(c.detalle) + '</p>' : '') +
+          '</div></li>';
+      }).join('') + '</ul>';
+    cont.removeAttribute('aria-busy');
+    return r;
   },
 
   /**
@@ -1053,11 +1787,11 @@ const PWA_SKILLS = {
     row = document.createElement('tr');
     row.setAttribute('data-ds-ui', 'no-results');
     row.innerHTML = `
-      <td colspan="${cols}" style="padding:0;border:0;">
+      <td colspan="${esc(cols)}" style="padding:0;border:0;">
         <div class="ds-empty" role="status">
           <span class="material-symbols-outlined ds-empty-icon" aria-hidden="true">search_off</span>
           <h4>Sin coincidencias</h4>
-          <p>${term ? `Ningún registro coincide con «${term}» y los filtros activos.` : 'Ningún registro coincide con los filtros activos.'}</p>
+          <p>${term ? `Ningún registro coincide con «${esc(term)}» y los filtros activos.` : 'Ningún registro coincide con los filtros activos.'}</p>
           <button type="button" class="ds-empty-action" onclick="PWA_SKILLS.clearFilters()">
             <span class="material-symbols-outlined text-[16px]" aria-hidden="true">filter_alt_off</span>Limpiar filtros
           </button>
@@ -1066,4 +1800,345 @@ const PWA_SKILLS = {
     tbody.appendChild(row);
   }
 };
+
+/* ─── Cuadrículas de datos en las vistas Detalle (.det-grid, 2 columnas) ───
+   Evita el hueco a la derecha: un campo que quedaría solo en su fila (el último
+   impar, o el que precede a uno de ancho completo) pasa a ocupar las 2 columnas.
+   Se recalcula sola cuando el módulo inyecta los campos con innerHTML. */
+(function () {
+  function ajustarDetGrid(g) {
+    const items = Array.from(g.children).filter(el => !el.hidden);
+    let col = 0;
+    for (let i = 0; i < items.length; i++) {
+      const el = items[i];
+      if (el.classList.contains('col-span-2')) { col = 0; continue; }
+      const sig = items[i + 1];
+      if (col === 0 && (!sig || sig.classList.contains('col-span-2'))) {
+        el.classList.add('col-span-2');   // queda solo en la fila: ocupa el ancho completo
+      } else {
+        col = 1 - col;
+      }
+    }
+  }
+  let pendiente = false;
+  function programar() {
+    if (pendiente) return;
+    pendiente = true;
+    requestAnimationFrame(function () {
+      pendiente = false;
+      document.querySelectorAll('.det-grid').forEach(ajustarDetGrid);
+    });
+  }
+  function iniciar() {
+    programar();
+    new MutationObserver(function (muts) {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.matches('.det-grid') || n.closest('.det-grid') || n.querySelector('.det-grid')) { programar(); return; }
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();
+
+/* =======================================================================
+   SKILL 28: LISTAS LARGAS QUE SE ESCRIBEN (buscador en los desplegables)
+   -----------------------------------------------------------------------
+   Regla de diseño: toda lista con más de 8 opciones se filtra al escribir.
+   Un desplegable de cuarenta personas obliga a recorrerlo con el pulgar
+   para encontrar un nombre que la persona ya sabe; teclear tres letras
+   basta.
+
+   Se monta SOBRE el <select> real, que sigue en el formulario con su
+   name, su value y su `required`: la cola offline, el Detalle, el PDF y
+   todo el código que hace `select.value` siguen funcionando igual aunque
+   este componente falle. Lo aplica un observador global, así que alcanza
+   a los campos que genera MOTOR_RENDER, a los de las filas hijas, a los
+   del panel de filtros y a las vistas escritas a mano (01_Usuarios,
+   00_Admin, Configuraciones) sin tocar ningún módulo.
+
+   Para dejar un desplegable sin buscador: data-sin-buscador en el select.
+   ======================================================================= */
+(function () {
+  var MIN_OPCIONES = 8;      // 8 o menos: un select normal es más rápido
+  var seq = 0;
+
+  function norm(v) {
+    var s = String(v == null ? '' : v).toLowerCase();
+    return s.normalize ? s.normalize('NFD').replace(/[̀-ͯ]/g, '') : s;
+  }
+  function escHtml(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function reales(sel) {
+    return Array.prototype.filter.call(sel.options, function (o) { return o.value !== ''; });
+  }
+  function idSeguro(v) { return (window.CSS && CSS.escape) ? CSS.escape(v) : String(v).replace(/[^\w-]/g, '\\$&'); }
+
+  function estilos() {
+    if (document.getElementById('sb-estilos')) return;
+    var st = document.createElement('style');
+    st.id = 'sb-estilos';
+    st.textContent = [
+      '.sb-wrap{position:relative;display:block;width:100%}',
+      '.sb-nativo{position:absolute!important;left:0;top:0;width:1px;height:1px;opacity:0;padding:0;margin:0;border:0;pointer-events:none}',
+      '.sb-input{padding-right:34px!important;text-overflow:ellipsis}',
+      '.sb-flecha{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ds-fg-muted);font-size:18px;line-height:1}',
+      '.sb-lista{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 4px);max-height:min(50vh,17rem);overflow-y:auto;-webkit-overflow-scrolling:touch;',
+      ' margin:0;padding:4px;list-style:none;background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:12px;box-shadow:var(--ds-shadow-lg)}',
+      '.sb-lista[hidden]{display:none}',
+      '.sb-op{min-height:44px;display:flex;align-items:center;padding:8px 12px;border-radius:8px;cursor:pointer;',
+      ' font-size:13px;line-height:1.3;color:var(--ds-fg)}',
+      '.sb-op[aria-selected="true"]{font-weight:700}',
+      '.sb-op.sb-act,.sb-op:hover{background:var(--ds-surface-sunken)}',
+      '.sb-vacio{padding:10px 12px;font-size:12px;color:var(--ds-fg-muted)}',
+      /* el panel de filtros recorta su contenido mientras esta cerrado:
+         abierto tiene que dejar salir la lista del buscador */
+      '#ui-filter-panel.filter-open{overflow:visible}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  /**
+   * ¿Esta lista lleva buscador siempre, sin esperar al umbral?
+   * Sí cuando sus opciones vienen de otro módulo: el personal de una obra
+   * empieza con ocho nombres y acaba con doscientos, y el campo no puede
+   * cambiar de comportamiento a mitad del año. `data-ref` lo pone
+   * MOTOR_RENDER en todo campo REF; `data-buscador` lo pone
+   * loadRelationalOptions y cualquiera que lo quiera forzar a mano.
+   */
+  function siempreBuscable(sel) {
+    return sel.hasAttribute('data-ref') || sel.hasAttribute('data-buscador');
+  }
+
+  /** Monta el buscador sobre un select. Devuelve true si lo montó. */
+  function montar(sel) {
+    if (!sel || sel.dataset.sbMontado || sel.multiple || sel.disabled) return false;
+    if (sel.hasAttribute('data-sin-buscador')) return false;
+    if (sel.closest('#module-registry')) return false;            // plantillas ocultas
+    // Una lista que crece (REF) lleva buscador desde la segunda opción; una
+    // lista cerrada del subconfig, solo cuando pasa del umbral.
+    var minimo = siempreBuscable(sel) ? 2 : MIN_OPCIONES + 1;
+    if (reales(sel).length < minimo) return false;
+    estilos();
+
+    var clases = sel.className;
+    sel.dataset.sbMontado = '1';
+    sel.classList.add('sb-nativo');
+    sel.tabIndex = -1;
+
+    var id = 'sb' + (++seq);
+    var wrap = document.createElement('div');
+    wrap.className = 'sb-wrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = clases + ' sb-input';
+    input.id = id + '-in';
+    input.autocomplete = 'off';
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', id + '-lista');
+    input.placeholder = 'Escribe para buscar…';
+
+    var etiqueta = sel.id ? document.querySelector('label[for="' + idSeguro(sel.id) + '"]') : null;
+    if (etiqueta) input.setAttribute('aria-labelledby', etiqueta.id || (etiqueta.id = id + '-lab'));
+    else if (sel.getAttribute('aria-label')) input.setAttribute('aria-label', sel.getAttribute('aria-label'));
+    else input.setAttribute('aria-label', 'Buscar opción');
+
+    // Un control obligatorio no puede ser invisible: el navegador intentaría
+    // mostrar su aviso sobre el select escondido y no se vería nada. La
+    // exigencia pasa al campo visible; la validación del motor no depende de
+    // este atributo, sino de `required` en el subconfig.
+    if (sel.required) {
+      sel.required = false;
+      input.required = true;
+      input.setAttribute('aria-required', 'true');
+    }
+
+    var flecha = document.createElement('span');
+    flecha.className = 'material-symbols-outlined sb-flecha';
+    flecha.setAttribute('aria-hidden', 'true');
+    flecha.textContent = 'expand_more';
+
+    var lista = document.createElement('ul');
+    lista.className = 'sb-lista';
+    lista.id = id + '-lista';
+    lista.setAttribute('role', 'listbox');
+    lista.hidden = true;
+
+    wrap.appendChild(input);
+    wrap.appendChild(flecha);
+    wrap.appendChild(lista);
+
+    var act = -1;   // opción resaltada dentro de lo pintado
+
+    function textoActual() {
+      var o = sel.options[sel.selectedIndex];
+      return (o && o.value !== '') ? o.textContent : '';
+    }
+    function sincronizar() { if (document.activeElement !== input) input.value = textoActual(); }
+
+    function items() { return lista.querySelectorAll('.sb-op'); }
+
+    function resaltar(i, desplazar) {
+      var els = items();
+      if (!els.length) { act = -1; return; }
+      act = Math.max(0, Math.min(els.length - 1, i));
+      Array.prototype.forEach.call(els, function (el, n) { el.classList.toggle('sb-act', n === act); });
+      input.setAttribute('aria-activedescendant', els[act].id);
+      if (desplazar !== false && els[act].scrollIntoView) els[act].scrollIntoView({ block: 'nearest' });
+    }
+
+    function pintar(q) {
+      var t = norm(q);
+      var ops = reales(sel).filter(function (o) {
+        return !t || norm(o.textContent).indexOf(t) >= 0 || norm(o.value).indexOf(t) >= 0;
+      });
+      if (!ops.length) {
+        lista.innerHTML = '<li class="sb-vacio">Sin coincidencias</li>';
+        act = -1;
+        input.removeAttribute('aria-activedescendant');
+        return;
+      }
+      lista.innerHTML = ops.map(function (o, i) {
+        var n = Array.prototype.indexOf.call(sel.options, o);
+        return '<li role="option" class="sb-op" id="' + id + '-o' + i + '" data-n="' + n + '"' +
+               ' aria-selected="' + (sel.selectedIndex === n ? 'true' : 'false') + '">' +
+               escHtml(o.textContent) + '</li>';
+      }).join('');
+      var elegido = -1;
+      ops.forEach(function (o, i) { if (Array.prototype.indexOf.call(sel.options, o) === sel.selectedIndex) elegido = i; });
+      resaltar(elegido >= 0 ? elegido : 0, false);
+    }
+
+    function abrir() {
+      if (!lista.hidden) return;
+      pintar('');
+      lista.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+    function cerrar(restaurar) {
+      lista.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      if (restaurar !== false) input.value = textoActual();
+    }
+    function elegir(n) {
+      if (sel.selectedIndex !== n) {
+        sel.selectedIndex = n;
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      input.value = textoActual();
+      cerrar(false);
+    }
+
+    input.addEventListener('focus', function () { sincronizar(); input.select(); abrir(); });
+    input.addEventListener('click', abrir);
+    input.addEventListener('input', function () {
+      if (lista.hidden) { lista.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+      pintar(input.value);
+    });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (lista.hidden) { abrir(); return; }
+        resaltar(act + (e.key === 'ArrowDown' ? 1 : -1));
+      } else if (e.key === 'Enter') {
+        var els = items();
+        if (!lista.hidden && act >= 0 && els[act]) { e.preventDefault(); elegir(parseInt(els[act].dataset.n, 10)); }
+      } else if (e.key === 'Escape') {
+        if (!lista.hidden) { e.preventDefault(); e.stopPropagation(); cerrar(true); }
+      } else if (e.key === 'Tab') {
+        cerrar(true);
+      }
+    });
+    lista.addEventListener('mousedown', function (e) {
+      var op = e.target.closest ? e.target.closest('.sb-op') : null;
+      if (!op) return;
+      e.preventDefault();              // no perder el foco antes de elegir
+      elegir(parseInt(op.dataset.n, 10));
+    });
+    input.addEventListener('blur', function () {
+      setTimeout(function () {
+        if (wrap.contains(document.activeElement)) return;
+        // Texto vacío = sin selección. Un texto a medio escribir nunca se
+        // guarda: el campo vuelve al último valor elegido.
+        if (!input.value.trim() && sel.value !== '') {
+          sel.value = '';
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        cerrar(true);
+      }, 120);
+    });
+    // Pulsar la etiqueta enfoca el select oculto: se traslada al buscador
+    sel.addEventListener('focus', function () { input.focus(); });
+
+    // El select sigue siendo el control de verdad: nunca se redefine su
+    // `value` ni se toca su prototipo. Cuando otro código lo asigna al
+    // precargar la Edición, el texto del buscador se pone al día por tres
+    // caminos: el evento change, el repaso del observador (corre en el
+    // siguiente fotograma, después de la precarga) y el foco del campo.
+    sel.addEventListener('change', sincronizar);
+
+    sel._sbSync = sincronizar;
+    sincronizar();
+    return true;
+  }
+
+  /** Recorre root y monta (o resincroniza) el buscador donde corresponde. */
+  function mejorarSelects(root) {
+    root = root || document;
+    if (!root.querySelectorAll) return 0;
+    var n = 0;
+    root.querySelectorAll('select').forEach(function (sel) {
+      if (sel.dataset.sbMontado) {
+        if (sel._sbSync) sel._sbSync();     // las opciones pueden llegar después
+      } else if (montar(sel)) n++;
+    });
+    return n;
+  }
+
+  // PWA_SKILLS se declara con const: es un enlace global, no una propiedad
+  // de window, así que se comprueba con typeof y no con window.PWA_SKILLS.
+  try {
+    if (typeof PWA_SKILLS !== 'undefined' && PWA_SKILLS) {
+      PWA_SKILLS.selectBuscable = montar;
+      PWA_SKILLS.mejorarSelects = mejorarSelects;
+    }
+  } catch (e) { /* sin PWA_SKILLS: el observador sigue funcionando igual */ }
+
+  // Observador global: alcanza a los campos del motor, a las filas hijas, a
+  // los filtros y a las vistas escritas a mano, sin tocar ningún módulo.
+  var pendiente = false;
+  function programar() {
+    if (pendiente) return;
+    pendiente = true;
+    requestAnimationFrame(function () { pendiente = false; mejorarSelects(document); });
+  }
+  function iniciar() {
+    programar();
+    // Cualquier cambio del DOM vuelve a pasar el repaso: así se monta el
+    // buscador en lo que acaba de pintarse y, de paso, se pone al día el
+    // texto de los que ya estaban (la Edición asigna `select.value` después
+    // de crear los campos, sin disparar ningún evento). El repaso va
+    // agrupado en un fotograma y solo recorre los <select>.
+    new MutationObserver(programar)
+      .observe(document.body, { childList: true, subtree: true });
+    // Última red: al volver a la pestaña y al enfocar un campo del formulario
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) programar(); });
+  }
+  if (document.body) iniciar(); else document.addEventListener('DOMContentLoaded', iniciar);
+})();
+
 </script>

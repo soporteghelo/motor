@@ -12,8 +12,11 @@
 // ⚠️ CONFIGURACIÓN DEL MOTOR OFFLINE ⚠️
 // -------------------------------------------------------------------------
 const OFFLINE_DB_NAME = "Enterprise_PWA_DB";
-const OFFLINE_DB_VERSION = 1;
+// v2: se anade el almacen de copias de modulo (MOTOR_CACHE). Subir la version
+// dispara onupgradeneeded sin tocar la cola, que es otro almacen.
+const OFFLINE_DB_VERSION = 2;
 const OFFLINE_STORE_NAME = "Pending_Transactions_Queue";
+const CACHE_STORE_NAME = "Modulo_Cache";
 
 
 // -------------------------------------------------------------------------
@@ -29,6 +32,14 @@ function initOfflineDB() {
             // Estructura de Cola: autoIncrement true para ejecutar LIFO/FIFO Exacto.
             if (!db.objectStoreNames.contains(OFFLINE_STORE_NAME)) {
                 db.createObjectStore(OFFLINE_STORE_NAME, { keyPath: "localQueueId", autoIncrement: true });
+            }
+            // Copia de consulta por modulo. Antes vivia en localStorage, que
+            // tiene ~5 MB por origen para TODA la app: con diez modulos y
+            // miles de registros se llenaba, y el error se perdia en un
+            // catch vacio, asi que el modo sin conexion dejaba de guardar sin
+            // que nadie se enterara.
+            if (!db.objectStoreNames.contains(CACHE_STORE_NAME)) {
+                db.createObjectStore(CACHE_STORE_NAME, { keyPath: "modulo" });
             }
         };
 
@@ -74,8 +85,10 @@ async function pushToQueue(moduleName, action, payloadObj, childDataArray = null
     return new Promise((resolve) => {
         store.add(paquete);
         transaction.oncomplete = () => {
-            // Informamos visualmente mediante la variable TopBar indexada en Index.html
-            if(window.updateSyncUI) updateSyncUI("Pendientes Offline (1+)", true);
+            actualizarIndicadorSync();
+            // Con red, el registro sube en el acto (antes esperaba a recargar
+            // la app o a un corte de red). Sin red lo recoge el evento 'online'.
+            programarSync({ origen: 'guardado' });
             resolve(paquete.payload.UUID);
         };
     });
@@ -85,73 +98,230 @@ async function pushToQueue(moduleName, action, payloadObj, childDataArray = null
 // -------------------------------------------------------------------------
 // 3. SINCRONIZADOR A NUBE (THE BATCH PUSH)
 // -------------------------------------------------------------------------
+// Cuándo se sube la cola:
+//   · justo después de cada guardado (si hay red)
+//   · al volver la red (evento 'online'), al abrir la app y al iniciar sesión
+//   · cada SYNC_REINTENTO_MS mientras queden pendientes y la app esté visible
+//     (cubre el wifi "conectado" sin salida real a internet)
+//   · al volver a la app (visibilitychange) y con el botón del Header
+//
+// Errores: un fallo de red / sesión / servidor caído es TRANSITORIO y no
+// cuenta. Un rechazo del servidor (RLS, dato inválido) sí cuenta; tras
+// SYNC_MAX_RECHAZOS el registro queda "bloqueado": sigue guardado en el
+// dispositivo (nunca se descarta evidencia) pero el reintento automático lo
+// salta y se avisa al usuario. El botón de sincronizar lo vuelve a intentar.
+const SYNC_MAX_RECHAZOS = 5;
+const SYNC_REINTENTO_MS = 90000;
+let _syncEnCurso = null;        // promesa de la sincronización activa
+let _syncRepetir = null;        // opciones de una llamada que llegó durante otra
+let _syncTimeout = null;
+
+/** Solo se sube con una sesión real: sin JWT, RLS rechazaría todo y se contarían rechazos falsos. */
+function sesionListaParaSync() {
+    // AppState es un `const` global: NO cuelga de window, se consulta con typeof
+    const u = (typeof AppState !== 'undefined' && AppState.User) || {};
+    if (!u.Token) return false;
+    if (AppState.DB_PROVIDER === 'supabase' && !u.SupabaseJWT) return false;
+    return true;
+}
+
+/** Agenda una sincronización en breve (agrupa llamadas seguidas en una sola). */
+function programarSync(opciones) {
+    clearTimeout(_syncTimeout);
+    _syncTimeout = setTimeout(() => triggerSyncToCloud(opciones), 400);
+}
+
 /**
- * Agrupa los pendientes por módulo y los sincroniza en batches.
- * Usa DataService para soportar tanto Sheets como Supabase.
+ * Sube la cola agrupada por módulo y en lotes.
+ * @param {{forzar?:boolean, origen?:string}} opciones
+ *   forzar → reintenta también los bloqueados (botón manual)
+ * @returns {Promise<{subidos:number, pendientes:number, bloqueados:number, motivo?:string}>}
  */
-async function triggerSyncToCloud() {
-    if(!navigator.onLine) return;
-
-    const allPendings = await readAllPendings();
-    if(allPendings.length === 0) {
-       if(window.updateSyncUI) updateSyncUI("Online", false);
-       return;
+function triggerSyncToCloud(opciones) {
+    opciones = (opciones && typeof opciones === 'object' && !(opciones instanceof Event)) ? opciones : {};
+    if (_syncEnCurso) {
+        // No se lanzan dos subidas a la vez (duplicaría escrituras); se repite al terminar.
+        _syncRepetir = Object.assign({}, _syncRepetir || {}, opciones,
+            { forzar: !!(opciones.forzar || (_syncRepetir && _syncRepetir.forzar)) });
+        return _syncEnCurso;
     }
+    _syncEnCurso = _sincronizarCola(opciones).finally(() => {
+        _syncEnCurso = null;
+        if (_syncRepetir) { const o = _syncRepetir; _syncRepetir = null; triggerSyncToCloud(o); }
+    });
+    return _syncEnCurso;
+}
 
-    console.log(`📡 Sync de ${allPendings.length} transacciones pendientes...`);
+async function _sincronizarCola(opciones) {
+    const resumen = { subidos: 0, pendientes: 0, bloqueados: 0 };
+    if (!localDB) { try { await initOfflineDB(); } catch (e) { return Object.assign(resumen, { motivo: 'sin-db' }); } }
 
-    // Agrupar por módulo (fix: antes se asumía que todo el batch era del mismo módulo)
+    const todos = await readAllPendings();
+    if (!navigator.onLine)       { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-red' }); }
+    if (!sesionListaParaSync())  { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-sesion' }); }
+
+    const aSubir = opciones.forzar ? todos : todos.filter(it => !it.bloqueado);
+    if (aSubir.length === 0) { await actualizarIndicadorSync(); return finalizarResumen(resumen); }
+
+    console.log(`📡 Sync de ${aSubir.length} transacciones pendientes...`);
+    if (window.updateSyncUI) updateSyncUI('Sincronizando…', false);
+
     const byModule = {};
-    allPendings.forEach(item => {
+    aSubir.forEach(item => {
       const mod = item.module || 'UNKNOWN';
-      if (!byModule[mod]) byModule[mod] = [];
-      byModule[mod].push(item);
+      (byModule[mod] = byModule[mod] || []).push(item);
     });
 
     const BATCH_SIZE = AppState?.Settings?.MaxBatchSize || 50;
+    const modulosConCambios = [];
+    const nuevosBloqueados = [];
 
     for (const [moduleName, items] of Object.entries(byModule)) {
       for (let i = 0; i < items.length; i += BATCH_SIZE) {
         const batch = items.slice(i, i + BATCH_SIZE);
-
+        let result;
         try {
-          const result = await DataService.syncQueue(moduleName, batch);
-
-          if (result.status === 'OK' || result.status === 'PARTIAL') {
-            clearQueueAfterSync(batch);
-            console.log(`✅ Módulo ${moduleName}: ${result.success}/${result.processed} sincronizados.`);
-          } else if (result.status === 'FORCE_LOGOUT') {
-            AppState.clearSession();
-            return;
-          } else {
-            console.error(`❌ Batch rechazado [${moduleName}]:`, result.msg);
-          }
+          result = await DataService.syncQueue(moduleName, batch);
         } catch (err) {
-          console.error(`❌ Error de red sync [${moduleName}]:`, err);
+          // Excepción = no llegó al servidor (red / Apps Script caído): transitorio
+          console.warn(`⚠️ Sync sin conexión [${moduleName}]:`, err);
+          continue;
+        }
+
+        if (result && result.status === 'FORCE_LOGOUT') {
+          AppState.clearSession();   // no borra la cola: se sube al volver a entrar
+          return finalizarResumen(resumen);
+        }
+
+        const okIds = (result && Array.isArray(result.okIds)) ? result.okIds
+          : (result && result.status === 'OK') ? batch.map(it => it.localQueueId) : [];
+        const hechos = batch.filter(it => okIds.indexOf(it.localQueueId) !== -1);
+        if (hechos.length) {
+          await clearQueueAfterSync(hechos);
+          resumen.subidos += hechos.length;
+          modulosConCambios.push(moduleName);
+          // Ya viajaron: se les quita el distintivo "Por subir" de la copia
+          // local, aunque su Resumen no esté abierto para repintarse.
+          if (typeof MOTOR_CACHE !== 'undefined' && MOTOR_CACHE.marcarSubidos) {
+            try { await MOTOR_CACHE.marcarSubidos(moduleName, hechos.map(it => it.payload && it.payload.UUID)); } catch (e) {}
+          }
+        }
+
+        // Fallos por registro (Supabase los detalla; Sheets responde por lote)
+        const fallos = {};
+        if (result && Array.isArray(result.fallos)) {
+          result.fallos.forEach(f => { fallos[f.id] = f; });
+        } else if (result && result.status !== 'OK') {
+          const transitorio = result.status === 'INVALID_TOKEN';
+          batch.forEach(it => { if (okIds.indexOf(it.localQueueId) === -1) fallos[it.localQueueId] = { msg: result.msg, transitorio }; });
+        }
+
+        const rechazados = batch.filter(it => fallos[it.localQueueId]);
+        if (rechazados.length) {
+          await registrarFallos(rechazados, fallos, nuevosBloqueados);
+          console.error(`❌ [${moduleName}] ${rechazados.length} registro(s) no se guardaron:`, result && result.msg);
         }
       }
     }
 
-    const remaining = await readAllPendings();
-    if (remaining.length === 0 && window.updateSyncUI) updateSyncUI("Sincronizado", false);
+    if (nuevosBloqueados.length) avisarBloqueados(nuevosBloqueados);
+    if (modulosConCambios.length) recargarResumenActivo(modulosConCambios);
+    if (resumen.subidos && opciones.origen !== 'guardado' && !opciones.forzar && typeof PWA_SKILLS !== 'undefined') {
+      PWA_SKILLS.toast(resumen.subidos + ' registro(s) guardado(s) sin conexión ya se subieron.', 'success', 3500);
+    }
+
+    await actualizarIndicadorSync();
+    return finalizarResumen(resumen);
+}
+
+async function finalizarResumen(resumen) {
+    const restantes = localDB ? await readAllPendings() : [];
+    resumen.bloqueados = restantes.filter(it => it.bloqueado).length;
+    resumen.pendientes = restantes.length;
+    return resumen;
+}
+
+/** Suma el intento fallido a cada registro; los rechazos reales acumulan hasta bloquearlo. */
+function registrarFallos(items, fallos, nuevosBloqueados) {
+    return new Promise((resolve) => {
+        const tx = localDB.transaction([OFFLINE_STORE_NAME], 'readwrite');
+        const store = tx.objectStore(OFFLINE_STORE_NAME);
+        items.forEach(it => {
+            const f = fallos[it.localQueueId] || {};
+            it.ultimoError = String(f.msg || 'Error desconocido');
+            it.ultimoIntento = new Date().toISOString();
+            if (!f.transitorio) {
+                it.rechazos = (it.rechazos || 0) + 1;
+                if (it.rechazos >= SYNC_MAX_RECHAZOS && !it.bloqueado) {
+                    it.bloqueado = true;
+                    nuevosBloqueados.push(it);
+                }
+            }
+            store.put(it);
+        });
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+    });
+}
+
+function avisarBloqueados(items) {
+    if (typeof PWA_SKILLS === 'undefined') return;
+    const it = items[0];
+    const mod = String(it.module || '').replace(/^\d+_/, '').replace(/_/g, ' ');
+    const extra = items.length > 1 ? ' (y ' + (items.length - 1) + ' más)' : '';
+    PWA_SKILLS.toast('El servidor rechazó un registro de ' + mod + extra + ': ' + it.ultimoError +
+        '. Sigue guardado en este dispositivo; corrige el problema y pulsa sincronizar.', 'error', 9000);
+}
+
+/** Si el Resumen del módulo que acaba de subir está a la vista, se vuelve a pintar con los datos nuevos. */
+function recargarResumenActivo(modulos) {
+    const mod = typeof AppState !== 'undefined' && AppState.activeModule;
+    if (!mod || modulos.indexOf(mod) === -1) return;
+    const vista = document.querySelector(`#main-container [id*="${mod.toLowerCase()}"][id*="resumen"]`);
+    const fn = window['loadResumen_' + mod];
+    if (!vista || vista.style.display === 'none' || typeof fn !== 'function') return;
+    fn();
+    if (typeof enhanceActiveTable === 'function') setTimeout(enhanceActiveTable, 160);
+}
+
+/** Indicador del Header con el número real de pendientes. */
+async function actualizarIndicadorSync() {
+    if (!window.updateSyncUI) return;
+    let items = [];
+    try { if (localDB) items = await readAllPendings(); } catch (e) {}
+    const bloqueados = items.filter(it => it.bloqueado).length;
+    const pendientes = items.length - bloqueados;
+    if (!navigator.onLine) {
+        updateSyncUI(items.length ? `Sin conexión · ${items.length} pendiente(s)` : 'Sin conexión', true);
+    } else if (bloqueados) {
+        updateSyncUI(`${bloqueados} con error` + (pendientes ? ` · ${pendientes} pendiente(s)` : ''), true);
+    } else if (pendientes) {
+        updateSyncUI(`${pendientes} pendiente(s)`, true);
+    } else {
+        updateSyncUI('Sincronizado', false);
+    }
 }
 
 function readAllPendings() {
     return new Promise((resolve) => {
         const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readonly");
         const sr = transaction.objectStore(OFFLINE_STORE_NAME).getAll();
-        sr.onsuccess = () => resolve(sr.result);
+        sr.onsuccess = () => resolve(sr.result || []);
+        sr.onerror = () => resolve([]);
     });
 }
 
 function clearQueueAfterSync(itemsArray) {
-    const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readwrite");
-    const store = transaction.objectStore(OFFLINE_STORE_NAME);
-    itemsArray.forEach(i => store.delete(i.localQueueId));
-    transaction.oncomplete = () => {
-       console.log("☁️ Data Offline Purificada Hacia La Nube Exitosamente.");
-       if(window.updateSyncUI) updateSyncUI("Sincronizado", false);
-    };
+    return new Promise((resolve) => {
+        const transaction = localDB.transaction([OFFLINE_STORE_NAME], "readwrite");
+        const store = transaction.objectStore(OFFLINE_STORE_NAME);
+        itemsArray.forEach(i => store.delete(i.localQueueId));
+        transaction.oncomplete = () => {
+           console.log("☁️ Data Offline Purificada Hacia La Nube Exitosamente.");
+           resolve();
+        };
+        transaction.onerror = () => resolve();
+    });
 }
 
 
@@ -167,14 +337,26 @@ function pseudoGenerateUUID() {
 
 // Inicializamos base general a la carga del html
 window.addEventListener("load", () => {
-   initOfflineDB().then(()=> { 
-      // Ocurre validacion Inicial (Silent Fetch)
-      triggerSyncToCloud();
-   });
+   // Sin .catch(), un navegador que niega IndexedDB (ventana privada,
+   // almacenamiento bloqueado) dejaba una promesa rechazada sin atender.
+   initOfflineDB().then(()=> {
+      // Sube lo que quedó pendiente de la última vez
+      triggerSyncToCloud({ origen: 'inicio' });
+   }).catch(() => { /* ya se avisó al usuario desde initApp */ });
 });
 
-window.addEventListener('online',  triggerSyncToCloud);
-window.addEventListener('offline', () => { if(window.updateSyncUI) updateSyncUI("Red Caída Offline", true); });
+window.addEventListener('online',  () => programarSync({ origen: 'red' }));
+window.addEventListener('offline', () => { actualizarIndicadorSync(); });
+
+// Reintento periódico: el evento 'online' no basta si el primer intento
+// falla (wifi sin salida real, servidor caído). Solo con la app a la vista.
+setInterval(() => {
+   if (document.visibilityState === 'visible' && navigator.onLine) triggerSyncToCloud({ origen: 'reintento' });
+}, SYNC_REINTENTO_MS);
+
+document.addEventListener('visibilitychange', () => {
+   if (document.visibilityState === 'visible') programarSync({ origen: 'retorno' });
+});
 
 
 // -------------------------------------------------------------------------
@@ -226,4 +408,170 @@ document.addEventListener('visibilitychange', () => {
 
 if (document.visibilityState === 'visible') startDeltaSync();
 
+
+
+// =========================================================================
+// MOTOR_CACHE - copia local de consulta, por modulo
+// =========================================================================
+// Para que un Resumen tenga algo que mostrar sin conexion. NO es la cola de
+// escritura (eso es pushToQueue): aqui solo hay lectura.
+//
+// Tres niveles, de mas rapido a mas duradero:
+//   1. memoria   lo que se consulta durante la sesion (lecturas sincronas)
+//   2. IndexedDB la copia que sobrevive al cierre del navegador, sin el
+//                tope de 5 MB de localStorage
+//   3. localStorage  solo un RESUMEN recortado (TOPE_SINCRONO filas), para que
+//                el primer pintado tras abrir la app en frio tenga datos antes
+//                de que IndexedDB responda. Al estar acotado, no desborda.
+//
+// Las claves 'refdata_<modulo>' de localStorage se mantienen con ese nombre a
+// proposito: varias vistas antiguas las leen de forma sincrona.
+const MOTOR_CACHE = {
+  _mem: {},
+  TOPE_SINCRONO: 200,
+
+  _db() {
+    return new Promise((resolve, reject) => {
+      if (typeof localDB !== 'undefined' && localDB) return resolve(localDB);
+      if (typeof initOfflineDB !== 'function') return reject(new Error('sin IndexedDB'));
+      initOfflineDB().then(() => resolve(localDB)).catch(reject);
+    });
+  },
+
+  /**
+   * Guarda (o anade) las filas de un modulo.
+   * @param {boolean} reemplazar true = esta es la primera pagina y sustituye
+   *   la copia; false = es una pagina siguiente y se acumula.
+   */
+  async guardar(modulo, filas, reemplazar) {
+    if (!Array.isArray(filas)) return;
+    const previas = reemplazar ? [] : (this._mem[modulo] || []);
+    // Sin duplicados: "cargar mas" vuelve a traer filas si alguien inserto
+    // algo entre dos paginas.
+    const vistos = {}, todas = [];
+    previas.concat(filas).forEach(r => {
+      const k = r && (r.UUID || r.DNI);
+      if (k && vistos[k]) return;
+      if (k) vistos[k] = true;
+      todas.push(r);
+    });
+    this._mem[modulo] = todas;
+
+    // Resumen recortado para las lecturas sincronas del primer pintado.
+    try {
+      localStorage.setItem('refdata_' + modulo, JSON.stringify(todas.slice(0, this.TOPE_SINCRONO)));
+    } catch (e) {
+      // Cuota llena: se descarta el atajo, no la copia buena (IndexedDB).
+      try { localStorage.removeItem('refdata_' + modulo); } catch (e2) {}
+    }
+
+    try {
+      const db = await this._db();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction([CACHE_STORE_NAME], 'readwrite');
+        tx.objectStore(CACHE_STORE_NAME).put({ modulo, filas: todas, fecha: Date.now() });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) {
+      // Sin IndexedDB (ventana privada, navegador antiguo) la copia duradera
+      // no existe, pero la app funciona: queda la de memoria y el resumen
+      // recortado. Se avisa una sola vez, no en cada pagina.
+      if (!this._avisado) {
+        this._avisado = true;
+        console.warn('[MOTOR_CACHE] sin almacenamiento duradero: la copia sin conexión ' +
+                     'se limitará a esta sesión. ' + ((e && e.message) || ''));
+      }
+    }
+  },
+
+  /**
+   * Mete (o reemplaza) UNA fila al principio de la copia local.
+   * Es lo que hace que un registro guardado sin conexión se vea en el acto
+   * en su Resumen: antes solo entraba en la cola y la lista seguía diciendo
+   * "sin registros", así que la persona volvía a escribirlo.
+   */
+  async anteponer(modulo, fila) {
+    if (!fila) return;
+    const clave = fila.UUID || fila.DNI;
+    let previas = [];
+    try { previas = (await this.leer(modulo)) || []; } catch (e) { previas = this._mem[modulo] || []; }
+    const resto = previas.filter(r => String(r && (r.UUID || r.DNI)) !== String(clave));
+    await this.guardar(modulo, [fila].concat(resto), true);
+  },
+
+  /** Quita el distintivo "por subir" de los registros que ya se subieron. */
+  async marcarSubidos(modulo, uuids) {
+    const set = {};
+    (uuids || []).forEach(u => { if (u) set[String(u)] = true; });
+    if (!Object.keys(set).length) return;
+    let filas = [];
+    try { filas = (await this.leer(modulo)) || []; } catch (e) { filas = this._mem[modulo] || []; }
+    let cambio = false;
+    const limpias = filas.map(r => {
+      if (r && r._pendiente && set[String(r.UUID)]) { cambio = true; const c = Object.assign({}, r); delete c._pendiente; return c; }
+      return r;
+    });
+    if (cambio) await this.guardar(modulo, limpias, true);
+  },
+
+  _avisado: false,
+
+  /** Copia completa del modulo (memoria -> IndexedDB -> resumen recortado). */
+  async leer(modulo) {
+    if (this._mem[modulo]) return this._mem[modulo];
+    try {
+      const db = await this._db();
+      const filas = await new Promise((resolve, reject) => {
+        const tx = db.transaction([CACHE_STORE_NAME], 'readonly');
+        const pet = tx.objectStore(CACHE_STORE_NAME).get(modulo);
+        pet.onsuccess = () => resolve((pet.result && pet.result.filas) || null);
+        pet.onerror = () => reject(pet.error);
+      });
+      if (filas) { this._mem[modulo] = filas; return filas; }
+    } catch (e) { /* se cae al resumen recortado */ }
+    return this.leerSync(modulo);
+  },
+
+  /**
+   * Lectura SINCRONA: solo memoria o el resumen recortado. La usan las vistas
+   * que pintan en el mismo turno (miniaturas de tarjeta, PDF, detalle) y no
+   * pueden esperar a IndexedDB. Puede devolver menos filas que leer().
+   */
+  leerSync(modulo) {
+    if (this._mem[modulo]) return this._mem[modulo];
+    try { return JSON.parse(localStorage.getItem('refdata_' + modulo)) || []; } catch (e) { return []; }
+  },
+
+  /** Deja la copia del modulo lista en memoria (al abrirlo). */
+  precargar(modulo) { return this.leer(modulo).catch(() => []); },
+
+  async borrar(modulo) {
+    delete this._mem[modulo];
+    try { localStorage.removeItem('refdata_' + modulo); } catch (e) {}
+    try {
+      const db = await this._db();
+      await new Promise(resolve => {
+        const tx = db.transaction([CACHE_STORE_NAME], 'readwrite');
+        tx.objectStore(CACHE_STORE_NAME).delete(modulo);
+        tx.oncomplete = resolve; tx.onerror = resolve;
+      });
+    } catch (e) {}
+  },
+
+  /** Cuanto ocupa la copia, por modulo (lo muestra el panel de Configuracion). */
+  async inventario() {
+    try {
+      const db = await this._db();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction([CACHE_STORE_NAME], 'readonly');
+        const pet = tx.objectStore(CACHE_STORE_NAME).getAll();
+        pet.onsuccess = () => resolve((pet.result || []).map(r => ({
+          modulo: r.modulo, filas: (r.filas || []).length, fecha: r.fecha
+        })));
+        pet.onerror = () => reject(pet.error);
+      });
+    } catch (e) { return []; }
+  }
+};
 </script>

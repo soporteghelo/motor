@@ -1,0 +1,39 @@
+{
+  "name": "motor-pwa-ssoma",
+  "version": "1.5.0",
+  "private": true,
+  "description": "PWA SSOMA multi-empresa: frontend estático + Supabase (datos y archivos) + función de cuentas en Vercel",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node build_web.js",
+    "preview": "node generate_preview.js && node server.js",
+    "sql": "node tools/gen_supabase.js",
+    "test:rls": "node tools/gen_supabase.js && node tools/test_rls.mjs",
+    "icons": "node tools/gen_icons.js",
+    "appscript": "node tools/gen_appscript.js",
+    "test:appscript": "node tools/gen_appscript.js && node tools/test_appscript.js",
+    "test:render": "node build_web.js && node tools/test_render.mjs",
+    "test:rostro": "node build_web.js && node tools/test_rostro.mjs",
+    "test": "npm run test:rls && npm run test:appscript && npm run test:seed && npm run test:empresas && npm run test:render && npm run test:rostro && npm run test:consentimiento && npm run test:permisos && npm run test:ota",
+    "test:permisos": "node tools/test_permisos.js .",
+    "test:seed": "node tools/gen_appscript.js && node tools/test_seed.js",
+    "test:empresas": "node tools/gen_appscript.js && node tools/test_empresas.js",
+    "test:consentimiento": "node build_web.js && node tools/test_consentimiento.mjs",
+    "cap:sync": "npm run build && cap sync android",
+    "apk": "npm run cap:sync && node tools/apk_build.js",
+    "ota:publish": "node tools/ota_publish.js",
+    "ota:dry": "npm run build && node tools/ota_publish.js --dry-run",
+    "deploy": "npm run build && node tools/ota_publish.js",
+    "test:ota": "node build_web.js && node tools/test_ota.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capgo/capacitor-updater": "^8.54.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  }
+}

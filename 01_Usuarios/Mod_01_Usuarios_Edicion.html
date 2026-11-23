@@ -42,6 +42,26 @@
              </div>
              <input type="file" id="usr-file-input" class="hidden" accept="image/*" onchange="previewUserImage(this)">
              <p class="text-[10px] text-secondary font-bold uppercase text-center">Foto de Perfil<br>(Máx 2MB)</p>
+
+             <!-- Captura facial: encuadra el rostro y dispara sola (Face_Capture.js) -->
+             <div class="w-full mt-4 space-y-3">
+                <div class="flex gap-2">
+                   <button type="button" id="usr-face-abrir" onclick="abrirCapturaRostro()"
+                      class="flex-1 min-h-[44px] px-3 rounded-xl bg-primary text-on-primary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5">
+                      <span class="material-symbols-outlined text-[16px]" aria-hidden="true">face</span>Tomar foto
+                   </button>
+                   <button type="button" id="usr-face-cerrar" onclick="cerrarCapturaRostro()" style="display:none;"
+                      class="flex-1 min-h-[44px] px-3 rounded-xl border border-outline text-[10px] font-black uppercase tracking-widest text-secondary flex items-center justify-center gap-1.5">
+                      <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>Cerrar cámara
+                   </button>
+                   <button type="button" onclick="document.getElementById('usr-file-input').click()"
+                      aria-label="Subir una foto desde el dispositivo"
+                      class="min-h-[44px] w-11 rounded-xl border border-outline text-secondary flex items-center justify-center">
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">upload</span>
+                   </button>
+                </div>
+                <div id="usr-face-host"></div>
+             </div>
           </div>
 
           <div class="bg-surface-container-low rounded-2xl p-6 border border-outline-variant border-dashed">
@@ -69,7 +89,7 @@
                 <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
                    <div class="col-span-2 md:col-span-1">
                       <label class="block text-xs font-bold text-on-surface-variant mb-2">Nombre Completo *</label>
-                      <input type="text" name="Nombre_Completo" required autocomplete="name" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+                      <input type="text" name="Nombre_Completo" required maxlength="80" autocomplete="name" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
                    </div>
                    <div class="col-span-2 md:col-span-1">
                       <label class="block text-xs font-bold text-on-surface-variant mb-2">Email Corporativo *</label>
@@ -81,7 +101,7 @@
                 <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
                    <div>
                       <label class="block text-xs font-bold text-on-surface-variant mb-2">DNI / Usuario *</label>
-                      <input type="text" name="DNI" id="usr-input-dni" required inputmode="numeric" autocomplete="username" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none font-bold">
+                      <input type="text" name="DNI" id="usr-input-dni" required maxlength="8" minlength="6" inputmode="numeric" pattern="[0-9A-Za-z]{6,8}" title="Entre 6 y 8 caracteres, sin espacios ni signos" autocomplete="username" class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none font-bold">
                    </div>
                    <div>
                       <label id="usr-pass-label" class="block text-xs font-bold text-on-surface-variant mb-2">Contraseña Temporal *</label>
@@ -106,6 +126,16 @@
                          <option>Cesado</option>
                       </select>
                    </div>
+                   <!-- Empresa contratista: además de etiquetar la ficha, delimita qué
+                        ve la persona. El selector lo puebla poblarEmpresas(). -->
+                   <div class="col-span-2">
+                      <label for="usr-empresa" class="block text-xs font-bold text-secondary mb-2 uppercase tracking-tighter">Empresa contratista</label>
+                      <div class="flex gap-3">
+                         <select id="usr-empresa" class="flex-1 min-w-0 h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-bold focus:ring-0 disabled:opacity-60"></select>
+                         <input type="text" id="usr-empresa-otra" placeholder="Nombre de la empresa" maxlength="60" class="flex-1 min-w-0 h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+                      </div>
+                      <p id="usr-empresa-nota" class="mt-1.5 text-[11px] text-secondary"></p>
+                   </div>
                 </div>
              </form>
           </div>
@@ -122,7 +152,69 @@
    * El registro se busca en la caché que ya publicó el Resumen (window._usrData
    * o el respaldo en localStorage) — no hay una lectura individual por DNI.
    */
+  /**
+   * Puebla el selector de empresa contratista: los valores fijos del subconfig
+   * MÁS las empresas que ya figuran en otras fichas (así la lista crece sola y
+   * no se escribe la misma empresa de cinco formas), y "Otra…" para una nueva.
+   *
+   * Quien no es SuperAdmin y ya tiene empresa no la elige: el servidor fuerza
+   * la suya (Code.gs → accCrearUsuario_), así que el selector queda fijo en
+   * ella para no ofrecer algo que luego se ignora.
+   */
+  function poblarEmpresas(valorActual) {
+    const sel  = document.getElementById('usr-empresa');
+    const otra = document.getElementById('usr-empresa-otra');
+    const nota = document.getElementById('usr-empresa-nota');
+    if (!sel) return;
+
+    const fijas = ((typeof SUBCONFIG_01_USUARIOS !== 'undefined' &&
+                    SUBCONFIG_01_USUARIOS.Variables.Empresa.acceptedValues) || []).slice();
+    let cache = window._usrData || [];
+    if (!cache.length) {
+      try { cache = JSON.parse(localStorage.getItem('refdata_01_Usuarios')) || []; } catch (e) { cache = []; }
+    }
+    const vistas = {};
+    fijas.concat(cache.map(u => u && u.Empresa)).forEach(e => {
+      const v = String(e || '').trim();
+      if (v) vistas[v.toLowerCase()] = v;
+    });
+    const actual  = String(valorActual || '').trim();
+    const esSuper = (typeof PERMISOS !== 'undefined') && PERMISOS.esSuperAdmin();
+    const mia     = String((AppState.User && AppState.User.Empresa) || '').trim();
+    // La empresa de esta ficha y la de quien edita existen siempre como opción,
+    // aunque no estén en la lista fija ni en la caché.
+    [actual, mia].forEach(v => { if (v) vistas[v.toLowerCase()] = v; });
+
+    sel.innerHTML = '';
+    const agregar = (valor, texto) => {
+      const o = document.createElement('option');
+      o.value = valor; o.textContent = texto;
+      sel.appendChild(o);
+    };
+    agregar('', 'Sin empresa (ve todas)');
+    Object.keys(vistas).sort().forEach(k => agregar(vistas[k], vistas[k]));
+    agregar('__OTHER__', 'Otra…');
+
+    // Fijo en la empresa propia si no es el proveedor del servicio
+    const bloqueado = !esSuper && !!mia;
+    sel.value = bloqueado ? mia : actual;
+    sel.disabled = bloqueado;
+    if (otra) { otra.style.display = 'none'; otra.value = ''; }
+    // Un solo oyente por sesión de página: mostrar el input al elegir "Otra…"
+    if (!sel.dataset.otroListo) {
+      PWA_SKILLS.initEnumWithOther('usr-empresa', 'usr-empresa-otra');
+      sel.dataset.otroListo = '1';
+    }
+    if (nota) {
+      nota.textContent = bloqueado
+        ? 'Las cuentas que creas quedan en tu empresa. Solo el proveedor del servicio mueve a alguien de empresa.'
+        : 'Con empresa, la persona solo ve los registros de esa empresa. Sin empresa, los ve todos.';
+    }
+  }
+
   function loadEdicion_01_Usuarios(dni) {
+    // Al (re)entrar al formulario la cámara siempre empieza cerrada
+    if (typeof cerrarCapturaRostro === 'function') cerrarCapturaRostro();
     const form = document.getElementById('form-01-usuarios-main');
     const passField = document.getElementById('usr-new-pass');
     const passLabel = document.getElementById('usr-pass-label');
@@ -130,14 +222,53 @@
     const titulo    = document.getElementById('usr-edicion-titulo');
     const boton     = document.getElementById('usr-edicion-boton');
 
+    // El rol SuperAdmin (proveedor del servicio) solo se ofrece a quien ya lo
+    // tiene: el backend rechaza que un Admin lo asigne, así que mostrárselo
+    // solo serviría para ofrecerle un error. Se agrega aquí y no en el HTML
+    // porque depende de la sesión; y se quita si el rol de la sesión cambió.
+    const selRol = form ? form.elements['Rol'] : null;
+    if (selRol) {
+      const esSuper = (typeof PERMISOS !== 'undefined') && PERMISOS.esSuperAdmin();
+      const yaEsta  = selRol.querySelector('option[value="SuperAdmin"]');
+      if (esSuper && !yaEsta) {
+        const opt = document.createElement('option');
+        opt.value = 'SuperAdmin';
+        opt.textContent = 'SuperAdmin';
+        selRol.insertBefore(opt, selRol.firstChild);
+      } else if (!esSuper && yaEsta) {
+        yaEsta.remove();
+      }
+    }
+
+    // 'CURRENT' = mi propia ficha. Resolverlo al DNI de la sesión es lo que
+    // hace que "Editar" sobre el perfil propio precargue los datos en vez de
+    // abrir el formulario en blanco del alta.
+    const esPropio = (dni === 'CURRENT');
+    if (esPropio && typeof AppState !== 'undefined' && AppState.User) dni = AppState.User.DNI;
+
     let user = null;
-    if (dni && dni !== 'CURRENT') {
-      user = (window._usrData || []).find(u => String(u.DNI) === String(dni));
+    if (dni) {
+      const busca = lista => (lista || []).find(u => String(u.DNI) === String(dni) || String(u.UUID) === String(dni));
+      user = busca(window._usrData);
       if (!user) {
-        try {
-          const cache = JSON.parse(localStorage.getItem('refdata_01_Usuarios')) || [];
-          user = cache.find(u => String(u.DNI) === String(dni));
-        } catch (e) {}
+        try { user = busca(JSON.parse(localStorage.getItem('refdata_01_Usuarios'))); } catch (e) {}
+      }
+      // Mi propia ficha siempre se puede abrir, aunque el directorio aún no
+      // esté en caché (p. ej. entrando directo al perfil sin pasar por el Resumen).
+      if (!user && esPropio && typeof AppState !== 'undefined' && AppState.User) {
+        user = {
+          UUID: AppState.User.UUID || '', DNI: AppState.User.DNI,
+          Nombre_Completo: AppState.User.Nombre, Email: AppState.User.Email || '',
+          Rol: AppState.User.Rol, Status: AppState.User.Status || 'Activo',
+          Empresa: AppState.User.Empresa || ''
+        };
+      }
+      // Pedían editar a alguien concreto y no aparece: avisar y volver. Caer en
+      // el formulario de alta haría creer que se edita cuando se está creando.
+      if (!user) {
+        PWA_SKILLS.toast('No se encontró la ficha de ' + dni + '. Abre la lista de Usuarios y vuelve a intentarlo.', 'warning', 4000);
+        changeInternalView('01_Usuarios', 'Resumen');
+        return;
       }
     }
 
@@ -153,16 +284,21 @@
       const rolNormalizado = (typeof PERMISOS !== 'undefined') ? PERMISOS.normalizar(user.Rol) : user.Rol;
       if (rolNormalizado) form.elements['Rol'].value = rolNormalizado;
       if (user.Status) form.elements['Status'].value = user.Status;
+      poblarEmpresas(user.Empresa);
       document.getElementById('form-01-uuid').value = user.UUID || user.DNI;
-      // La contraseña no se puede cambiar todavía desde aquí (requiere el
-      // endpoint con privilegios de servidor de Supabase Auth Admin API).
+      // La contraseña se restablece en el servidor (Supabase: /api/usuarios;
+      // Apps Script: CHANGE_PASSWORD). Vacío = no se cambia.
+      const puedeCambiar = true;
       if (passField) {
         passField.required = false;
+        // marcarObligatorios() deja aria-required puesto; sin quitarlo el
+        // asterisco rojo vuelve a aparecer sobre "(opcional)".
+        passField.removeAttribute('aria-required');
         passField.value = '';
-        passField.placeholder = 'No disponible al editar';
-        passField.disabled = true;
+        passField.placeholder = puedeCambiar ? 'Dejar vacío para no cambiarla' : 'No disponible al editar';
+        passField.disabled = !puedeCambiar;
       }
-      if (passLabel) passLabel.textContent = 'Contraseña (solo al crear)';
+      if (passLabel) passLabel.textContent = puedeCambiar ? 'Nueva contraseña (opcional)' : 'Contraseña (solo al crear)';
       return;
     }
 
@@ -170,11 +306,13 @@
     // porque si antes se editó a alguien en esta misma sesión de página, los
     // campos quedarían con los datos de esa persona.
     form.reset();
+    poblarEmpresas('');
     if (titulo) titulo.textContent = 'Configurar Acceso de Personal';
     if (boton) boton.textContent = 'Activar Acceso';
     if (dniField) dniField.readOnly = false;
     if (passField) {
       passField.required = true;
+      passField.setAttribute('aria-required', 'true');
       passField.disabled = false;
       passField.placeholder = '';
     }
@@ -197,28 +335,64 @@
     }
   }
 
+  /**
+   * Abre la cámara frontal para la foto de perfil. El rostro se detecta y la
+   * foto se toma sola cuando queda bien encuadrado 3 segundos (FACE_CAPTURE).
+   * La foto entra por el mismo sitio que una elegida a mano: el avatar.
+   */
+  function abrirCapturaRostro() {
+    if (typeof FACE_CAPTURE === 'undefined') {
+      document.getElementById('usr-file-input').click();
+      return;
+    }
+    document.getElementById('usr-face-abrir').style.display = 'none';
+    document.getElementById('usr-face-cerrar').style.display = '';
+    FACE_CAPTURE.montar('usr-face-host', {
+      etiqueta: 'Foto de perfil',
+      onCaptura: function(dataUrl) {
+        const preview = document.getElementById('usr-photo-preview');
+        const placeholder = document.getElementById('usr-photo-placeholder');
+        if (preview) { preview.src = dataUrl; preview.classList.remove('hidden'); }
+        if (placeholder) placeholder.style.display = 'none';
+        PWA_SKILLS.toast('Foto lista. Guarda los cambios para aplicarla.', 'success', 2500);
+      }
+    });
+  }
+
+  function cerrarCapturaRostro() {
+    if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+    const host = document.getElementById('usr-face-host');
+    if (host) host.innerHTML = '';
+    document.getElementById('usr-face-abrir').style.display = '';
+    document.getElementById('usr-face-cerrar').style.display = 'none';
+  }
+
   async function saveAndHashUser() {
     const form = document.getElementById('form-01-usuarios-main');
     if (!form.checkValidity()) { form.reportValidity(); return; }
 
     const editando = !!window._usrEditandoDNI;
     const rawPass = document.getElementById('usr-new-pass').value;
-    if (!editando && !rawPass) { alert('La contraseña es obligatoria.'); return; }
+    if (!editando && !rawPass) { PWA_SKILLS.toast('La contraseña es obligatoria.', 'warning'); return; }
+    // Misma regla que /api/usuarios (que es quien la hace cumplir): 8+
+    // caracteres con letras y números. Aquí solo se avisa antes de enviar.
+    if (rawPass &&
+        (rawPass.length < 8 || !/[A-Za-z]/.test(rawPass) || !/[0-9]/.test(rawPass))) {
+      PWA_SKILLS.toast('La contraseña debe tener al menos 8 caracteres y combinar letras y números.', 'warning');
+      return;
+    }
 
     const formData = new FormData(form);
     const userData = {};
     formData.forEach((value, key) => { userData[key] = value; });
+    // El selector de empresa no lleva name: con "Otra…" el valor está en el
+    // input de al lado. El servidor igual lo fuerza si quien edita no es
+    // SuperAdmin y ya tiene empresa.
+    userData.Empresa = PWA_SKILLS.getEnumValue('usr-empresa', 'usr-empresa-otra');
 
     // UUID garantizado
     if (!userData.UUID) {
       userData.UUID = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
-    }
-
-    // Hash de contraseña (nunca texto plano). Al editar no se toca: cambiar
-    // la contraseña de una cuenta existente requiere la Admin API de
-    // Supabase Auth, todavía no disponible desde el cliente.
-    if (!editando) {
-      userData.Password_Hash = await PWA_SKILLS.hashSHA256(rawPass);
     }
 
     // Foto de perfil comprimida
@@ -239,17 +413,72 @@
 
     userData.Timestamp = PWA_SKILLS.getPeruTime();
 
+    // ── El alta y el cambio de contraseña van online al servidor ──
+    // (la contraseña nunca se guarda en la cola offline del dispositivo; la
+    // deriva el servidor: bcrypt en Supabase, HMAC con sal en Apps Script)
+    {
+      delete userData.Password_Hash;
+      if (!editando || rawPass) {
+        if (!navigator.onLine) {
+          PWA_SKILLS.toast('Crear cuentas o cambiar contraseñas requiere conexión a internet.', 'error', 5000);
+          return;
+        }
+      }
+      if (!editando) {
+        const boton = document.querySelector('#form-01-usuarios-main button[type="submit"], #form-01-usuarios-main [data-accion="guardar"]');
+        if (boton) boton.disabled = true;
+        const r = await DataService.createUser(userData, rawPass);
+        if (boton) boton.disabled = false;
+        if (r.status !== 'OK') { PWA_SKILLS.toast(r.msg || 'No se pudo crear la cuenta.', 'error', 6000); return; }
+        localStorage.removeItem('refdata_01_Usuarios');
+        PWA_SKILLS.toast('Cuenta creada. Ya puede ingresar con su DNI y la contraseña temporal.', 'success', 4500);
+        changeInternalView('01_Usuarios', 'Resumen');
+        // La app no manda correos de invitación: los datos de acceso se envían
+        // por WhatsApp. Es la última vez que la contraseña está disponible en
+        // claro (el servidor solo guarda su bcrypt), así que se ofrece aquí.
+        PWA_SKILLS.compartirCredenciales({
+          nuevo: true,
+          nombre: userData.Nombre_Completo || '',
+          dni: userData.DNI || '',
+          password: rawPass,
+          rol: userData.Rol || 'Trabajador',
+          empresa: userData.Empresa || (AppState.User && AppState.User.EmpresaNombre) || '',
+          telefono: userData.Telefono || ''
+        });
+        return;
+      }
+      if (rawPass) {
+        const r = await DataService.changePassword(userData.UUID, rawPass);
+        if (r.status !== 'OK') { PWA_SKILLS.toast(r.msg || 'No se pudo cambiar la contraseña.', 'error', 6000); return; }
+        // Restablecida por el Admin: también hay que hacérsela llegar.
+        // (Si se la cambia a sí mismo no tiene sentido enviársela por WhatsApp.)
+        const esMiPropiaCuenta = AppState.User && String(AppState.User.DNI) === String(userData.DNI);
+        if (!esMiPropiaCuenta) {
+          PWA_SKILLS.compartirCredenciales({
+            nuevo: false,
+            nombre: userData.Nombre_Completo || '',
+            dni: userData.DNI || '',
+            password: rawPass,
+            rol: userData.Rol || '',
+            empresa: userData.Empresa || '',
+            telefono: userData.Telefono || ''
+          });
+        }
+      }
+    }
+
     try {
       await pushToQueue('01_Usuarios', 'SYNC_OFFLINE_QUEUE', userData);
       form.reset();
+      cerrarCapturaRostro();
       photoPreview.classList.add('hidden');
       document.getElementById('usr-photo-placeholder').style.display = '';
       document.getElementById('form-01-uuid').value = (typeof pseudoGenerateUUID === 'function') ? pseudoGenerateUUID() : crypto.randomUUID();
-      alert('Usuario guardado. Se sincronizará cuando haya conexión.');
+      PWA_SKILLS.toast('Usuario guardado. Se sincronizará cuando haya conexión.', 'success', 3600);
       changeInternalView('01_Usuarios', 'Resumen');
     } catch (err) {
       console.error('Error al guardar usuario:', err);
-      alert('Error al guardar. Revise la consola.');
+      PWA_SKILLS.toast('No se pudo guardar el usuario. Vuelve a intentarlo.', 'error', 5000);
     }
   }
 </script>

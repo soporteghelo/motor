@@ -31,6 +31,9 @@ indexContent = indexContent.replace(includeRegex, (match, filename) => {
 // Inyectar Mock de google.script.run
 const mockScript = `
 <script>
+// Vista previa local: habilita el usuario demo (admin/admin123). En un
+// despliegue real esta marca no existe y el demo no se crea.
+window.__MOTOR_DEMO__ = true;
 window.google = {
   script: {
     run: {
@@ -58,11 +61,13 @@ window.google = {
                     setTimeout(() => successCb(JSON.stringify({
                         status: 'OK',
                         userData: {
+                            UUID: 'USR-admin',
                             DNI: 'admin',
                             Nombre_Completo: 'Administrador Sistema',
                             Email: 'admin@empresa.com',
                             Rol: 'Admin',
-                            Status: 'Activo'
+                            Status: 'Activo',
+                            SessionToken: 'mock-token-' + Date.now()
                         },
                         msg: 'Login exitoso (mock)'
                     })), 500);
@@ -291,10 +296,30 @@ window.google = {
             }
 
             if (action === "SYNC_OFFLINE_QUEUE") {
+                const items = req.items || [];
                 setTimeout(() => successCb(JSON.stringify({
-                    status: 'OK',
-                    msg: 'Sync simulado (mock): ' + (req.dataArray || []).length + ' registros'
+                    status: 'OK', okIds: items.map(it => it.id), fallos: [],
+                    msg: 'Sync simulado (mock): ' + items.length + ' registros'
                 })), 300);
+                return;
+            }
+            if (action === "PING") {
+                setTimeout(() => successCb(JSON.stringify({ status: 'OK', backend: 'appscript', version: 'mock', esquema: 'mock',
+                    configurado: true, modulos: null, msg: 'Backend simulado (vista previa local)' })), 150);
+                return;
+            }
+            if (action === "VERIFICAR_PROYECTO") {
+                setTimeout(() => successCb(JSON.stringify({ status: 'OK', checks: [
+                    { grupo: 'backend', nombre: 'Backend simulado', estado: 'warn', detalle: 'vista previa local: no hay Sheets ni Drive reales' }
+                ] })), 200);
+                return;
+            }
+            if (action === "READ_CHILDREN" || action === "GET_FILES") {
+                setTimeout(() => successCb(JSON.stringify({ status: 'OK', payload: [], archivos: {} })), 150);
+                return;
+            }
+            if (action === "CREATE_USER" || action === "CHANGE_PASSWORD" || action === "LOGOUT" || action === "DELETE_ROWS") {
+                setTimeout(() => successCb(JSON.stringify({ status: 'OK', uuid: (req.datos && req.datos.UUID) || req.uuid || '', msg: 'Simulado (mock)' })), 250);
                 return;
             }
             if (action === "READ_DELTA") {
@@ -302,7 +327,7 @@ window.google = {
                 return;
             }
             if (action === "GET_CONFIG" || action === "SAVE_CONFIG") {
-                setTimeout(() => successCb(JSON.stringify({ status: 'OK', payload: {}, msg: 'Config mock' })), 200);
+                setTimeout(() => successCb(JSON.stringify({ status: 'OK', payload: {}, config: req.config || {}, msg: 'Config mock' })), 200);
                 return;
             }
 
@@ -503,6 +528,9 @@ let localContent = indexContent.replace('<?= scriptUrl ?>', '#');
   localContent = localContent.replace(/<!--\s*Filas Inspecciones Mock\s*-->/g, localInspecciones);
 
 localContent = localContent.replace('</head>', `${mockScript}</head>`);
+// El preview local usa el mock de google.script.run (proveedor Apps Script),
+// no Supabase: sin esto el proveedor por defecto ignoraría el mock.
+localContent = localContent.replace(/DB_PROVIDER:\s*'supabase'/, "DB_PROVIDER: 'appscript'");
 fs.writeFileSync(path.join(rootDir, 'LOCAL_PREVIEW.html'), localContent);
 
 // 2. Generar PROD_INDEX.html (Listo para Apps Script)

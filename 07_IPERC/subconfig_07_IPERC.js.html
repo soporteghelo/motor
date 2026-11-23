@@ -30,6 +30,9 @@ var SUBCONFIG_07_IPERC = {
 
   Config_Modular: {
     NombreInterno:          "07_IPERC",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "",
+    Card_Icon:              "grid_view",
     Titulo:                 "Matriz IPERC",
     DRIVE_FOLDER_NAME:      "07_IPERC_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -117,6 +120,59 @@ var SUBCONFIG_07_IPERC = {
     "Fecha_Registro":    { type: "Hidden", required: false }
   },
 
+  Vistas: {
+    Subtitulo: "Peligros, riesgos y controles",
+    Resumen: {
+      etiquetaCrear: "Nueva matriz", ordenPor: "Fecha_Elaboracion",
+      columnas: [
+        { campo: "Proceso", sub: "Area", etiqueta: "Proceso / Área" },
+        { campo: "Tipo_IPERC", etiqueta: "Tipo" },
+        { campo: "Riesgo_Maximo", etiqueta: "Riesgo máximo", tipo: "badge" },
+        { campo: "Total_Peligros", etiqueta: "Peligros", numero: true },
+        { campo: "Estado", tipo: "badge" },
+        { campo: "Fecha_Revision", etiqueta: "Próxima revisión", render: "revision" }
+      ],
+      vacio: { icono: "grid_view", titulo: "Sin matrices IPERC",
+               mensaje: "La matriz IPERC es la base de todo el sistema: sin ella, los controles no tienen origen.",
+               accion: "Nueva matriz" }
+    },
+    Edicion: {
+      tituloNuevo: "Nueva Matriz IPERC", tituloEditar: "Editar Matriz IPERC",
+      secciones: [
+        { titulo: "Alcance de la matriz", icono: "grid_view",
+          campos: ["Proceso", "Tipo_IPERC", "Area", "Puesto_Tarea"] },
+        { titulo: "Elaboración y revisión", icono: "event",
+          campos: ["Fecha_Elaboracion", "Fecha_Revision", "Elaborado_Por", "Revisado_Por", "Participantes", "Estado"] },
+        { titulo: "Observaciones y firma", icono: "draw",
+          campos: ["Observaciones", "Firma_Responsable"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Proceso", subtitulo: ["Area", "Fecha_Elaboracion"],
+      secciones: [
+        { titulo: "Alcance",
+          campos: ["Proceso", "Tipo_IPERC", "Area", "Puesto_Tarea", "Riesgo_Maximo", "Total_Peligros", "Estado"] },
+        { titulo: "Elaboración y revisión",
+          campos: ["Fecha_Elaboracion", "Fecha_Revision", "Elaborado_Por", "Revisado_Por", "Participantes"] },
+        { titulo: "Observaciones", campos: ["Observaciones"] }
+      ]
+    },
+    Hijos: { titulo: "Peligros identificados", icono: "warning",
+             vacio: "Una matriz sin peligros identificados no controla nada.",
+             vacioDetalle: "Esta matriz todavía no identifica peligros." },
+    Badges: {
+      Riesgo_Maximo: { "Trivial":     { tono: "ok",   icono: "check_circle" },
+                       "Tolerable":   { tono: "lime", icono: "check" },
+                       "Moderado":    { tono: "warn", icono: "warning" },
+                       "Importante":  { tono: "bad",  icono: "priority_high" },
+                       "Intolerable": { tono: "crit", icono: "dangerous" } },
+      Estado: { "Borrador":              { tono: "mute", icono: "edit_note" },
+                "En revisión":           { tono: "info", icono: "search" },
+                "Aprobado":              { tono: "ok",   icono: "verified" },
+                "Requiere actualización":{ tono: "warn", icono: "update" } }
+    }
+  },
+
   /**
    * Valoración compartida por el formulario, el listado y el detalle.
    * Vive en el subconfig para que cambiar la matriz de la empresa sea
@@ -137,6 +193,110 @@ var SUBCONFIG_07_IPERC = {
       const nivel = this.niveles.find(n => valor <= n.max) || this.niveles[this.niveles.length - 1];
       return { valor: valor, clave: nivel.clave, accion: nivel.accion };
     }
+  }
+};
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["07_IPERC"] = {
+  // Peso por nivel: define cuál es el riesgo máximo de toda la matriz
+  PESOS: { "Trivial": 0, "Tolerable": 1, "Moderado": 2, "Importante": 3, "Intolerable": 4 },
+  TONOS: { "Trivial": "ok", "Tolerable": "lime", "Moderado": "warn", "Importante": "bad", "Intolerable": "crit" },
+
+  columnas: {
+    revision: function (r) {
+      if (!r.Fecha_Revision) return '<span class="text-[11px] text-secondary">—</span>';
+      const f = new Date(r.Fecha_Revision);
+      if (isNaN(f)) return '<span class="text-[11px] text-secondary">' + esc(r.Fecha_Revision) + "</span>";
+      const dias = Math.round((f - new Date(PWA_SKILLS.getPeruTime(false))) / 86400000);
+      const tono = dias < 0 ? "bad" : dias <= 30 ? "warn" : "ok";
+      const texto = dias < 0 ? "Vencida" : dias <= 30 ? "En " + dias + " d" : "Vigente";
+      return '<div class="text-[11px] font-semibold" style="color:var(--st-' + tono + '-fg)">' + esc(texto) + "</div>" +
+             '<div class="text-[10px] text-secondary tabular-nums">' + esc(r.Fecha_Revision) + "</div>";
+    }
+  },
+
+  resumen: function () {
+    MOTOR_RENDER.kpis("07_IPERC", [
+      { tono: "crit", etiqueta: "Intolerable", cond: { Riesgo_Maximo: { eq: "Intolerable" } } },
+      { tono: "bad",  etiqueta: "Importante",  cond: { Riesgo_Maximo: { eq: "Importante" } } },
+      { tono: "warn", etiqueta: "Revisión vencida", cond: { Fecha_Revision: { lt: "@hoy" } } },
+      { tono: "mute", etiqueta: "Peligros", metrica: "sum", campo: "Total_Peligros",
+        formato: n => n == null ? "—" : String(Math.round(parseFloat(n) || 0)) }
+    ]);
+  },
+
+  /**
+   * El corazón del módulo: cada peligro se valora con probabilidad ×
+   * severidad y la matriz entera hereda el peor nivel. Se recalcula al
+   * escribir, no al guardar, porque el valor guía la decisión.
+   */
+  edicion: function (ctx) {
+    const raiz = ctx.root;
+    if (!raiz.dataset.ipcCalc) {
+      raiz.addEventListener("change", e => {
+        if (e.target && /^(Probabilidad|Severidad)$/.test(e.target.name || "")) this.recalcular(raiz);
+      });
+      raiz.dataset.ipcCalc = "1";
+    }
+    setTimeout(() => this.recalcular(raiz), 120);
+  },
+
+  recalcular: function (raiz) {
+    const cont = raiz.querySelector("#m07-iperc-hijos");
+    if (!cont || !SUBCONFIG_07_IPERC.Matriz) return;
+    let peor = null, peso = -1;
+    cont.querySelectorAll('[id^="row-"]').forEach(fila => {
+      const p = fila.querySelector('[name="Probabilidad"]');
+      const s = fila.querySelector('[name="Severidad"]');
+      const out = fila.querySelector('[data-display="Nivel_Riesgo"]');
+      if (!out) return;
+      const ev = SUBCONFIG_07_IPERC.Matriz.evaluar(p ? p.value : "", s ? s.value : "");
+      if (!ev) {
+        out.textContent = "—"; out.style.cssText = ""; out.title = "";
+        out.className = "w-full h-10 px-3 rounded-lg border border-dashed border-outline-variant bg-surface-container-low text-xs font-bold flex items-center justify-center text-secondary";
+        return;
+      }
+      const tono = this.TONOS[ev.clave] || "mute";
+      out.textContent = ev.valor + " · " + ev.clave;
+      out.title = ev.accion;
+      out.className = "w-full h-10 px-2 rounded-lg border text-xs font-black flex items-center justify-center text-center leading-tight";
+      out.style.cssText = "background:var(--st-" + tono + "-bg);color:var(--st-" + tono + "-fg);border-color:var(--st-" + tono + "-bd)";
+      if ((this.PESOS[ev.clave] || 0) > peso) { peso = this.PESOS[ev.clave]; peor = ev; }
+    });
+
+    let aviso = raiz.querySelector("#ipc-resumen-riesgo");
+    if (!aviso) {
+      const ancla = raiz.querySelector("#m07-iperc-hijos");
+      if (!ancla) return;
+      aviso = document.createElement("div");
+      aviso.id = "ipc-resumen-riesgo";
+      ancla.parentNode.appendChild(aviso);
+    }
+    if (!peor) { aviso.className = "hidden"; aviso.innerHTML = ""; return; }
+    const t = this.TONOS[peor.clave] || "mute";
+    aviso.className = "mt-4 rounded-xl border p-3";
+    aviso.style.cssText = "background:var(--st-" + t + "-bg);border-color:var(--st-" + t + "-bd)";
+    aviso.innerHTML =
+      '<div class="flex items-start gap-2.5">' +
+      '<span class="material-symbols-outlined text-[19px] shrink-0" style="color:var(--st-' + t + '-fg)" aria-hidden="true">' +
+      (peor.clave === "Intolerable" ? "dangerous" : peor.clave === "Importante" ? "warning" : "info") + "</span>" +
+      '<div class="min-w-0"><p class="text-[12px] font-black" style="color:var(--st-' + t + '-fg)">Riesgo máximo de la matriz: ' +
+      esc(peor.clave) + "</p>" +
+      '<p class="text-[11px] mt-0.5" style="color:var(--st-' + t + '-fg);opacity:.9">' + esc(peor.accion) + "</p></div></div>";
+    raiz.dataset.ipcPeor = peor.clave;
+  },
+
+  /** Lo que se guarda en el padre es el resumen de sus peligros */
+  antesDeGuardar: function (ctx) {
+    ctx.datos.Total_Peligros = String(ctx.hijos.length);
+    let peor = "", peso = -1;
+    ctx.hijos.forEach(h => {
+      const n = String(h.Nivel_Riesgo || "").split("·").pop().trim();
+      if ((this.PESOS[n] != null) && this.PESOS[n] > peso) { peso = this.PESOS[n]; peor = n; }
+    });
+    if (peor) ctx.datos.Riesgo_Maximo = peor;
+    return true;
   }
 };
 </script>

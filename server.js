@@ -17,8 +17,17 @@ const MIME = {
 };
 
 http.createServer((req, res) => {
-  const urlPath   = req.url === '/' ? '/LOCAL_PREVIEW.html' : req.url.split('?')[0];
-  const filePath  = path.join(ROOT, urlPath);
+  let urlPath = req.url === '/' ? '/LOCAL_PREVIEW.html' : req.url.split('?')[0];
+  try { urlPath = decodeURIComponent(urlPath); } catch (e) { urlPath = ''; }
+  const filePath  = path.resolve(ROOT, '.' + urlPath);
+  // Nada fuera del proyecto (../) ni archivos ocultos (.env lleva la service_role)
+  const rel = path.relative(ROOT, filePath);
+  if (!urlPath || rel.startsWith('..') || path.isAbsolute(rel) ||
+      rel.split(path.sep).some(p => p.startsWith('.') || p === 'node_modules')) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('403 - Prohibido');
+    return;
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {

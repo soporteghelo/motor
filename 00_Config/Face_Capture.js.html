@@ -1,0 +1,518 @@
+<script>
+/**
+ * =========================================================================
+ * CAPTURA FACIAL — cámara frontal, detección de rostro y toma automática
+ * =========================================================================
+ * ARCHIVO: Face_Capture.js.html
+ *
+ * QUÉ HACE
+ * Abre la cámara frontal, detecta el rostro con MediaPipe FaceDetection,
+ * guía a la persona ("acércate", "centra tu rostro") y, cuando el rostro
+ * lleva 3 segundos bien encuadrado, dispara la foto SOLA y apaga la cámara.
+ * La foto sale recortada 3:4 a 600×800 JPEG, lista para subirse como
+ * cualquier otra imagen del motor.
+ *
+ * Portado de PLATAFORMA_ELEARNING (`src/hooks/useFaceCapture.ts`, React +
+ * react-webcam) a JS nativo, que es lo único que usa este proyecto.
+ *
+ * CÓMO SE USA EN UN CAMPO
+ * En el subconfig, a un campo `Image` se le añade `captura: "rostro"`, o se
+ * declara de tipo `Face_Photo`:
+ *
+ *   "Foto_Verificacion": { type: "Face_Photo", required: true }
+ *   "Foto_Perfil":       { type: "Image", captura: "rostro" }
+ *
+ * MOTOR_RENDER pinta el panel solo y la foto entra por el mismo camino que
+ * una imagen normal (Storage, Detalle, PDF). No hay nada más que hacer.
+ *
+ * CÓMO SE USA A MANO (fuera del motor)
+ *   const cap = FACE_CAPTURE.montar('mi-contenedor', {
+ *     onCaptura: (dataUrl, meta) => { … },   // meta: { timestamp }
+ *     etiqueta: 'Verificación facial'
+ *   });
+ *   cap.detener();   // al salir de la vista
+ *
+ * SIN MODELO NO SE BLOQUEA EL FORMULARIO
+ * Si el modelo no carga (sin red la primera vez, CDN bloqueado, equipo muy
+ * lento), el panel sigue funcionando con un botón "Tomar foto" manual: la
+ * cámara es lo esencial, la detección es la ayuda.
+ * =========================================================================
+ */
+
+const FACE_CAPTURE = {
+
+  // ── Parámetros de detección (los mismos del proyecto de origen) ─────────
+  ESTABILIDAD_MS: 3000,   // cuánto debe mantenerse quieto el rostro
+  PROXIMIDAD_MIN: 0.15,   // ancho del rostro sobre el ancho del cuadro
+  PROXIMIDAD_MAX: 0.75,
+  SALIDA: { ancho: 600, alto: 800, calidad: 0.95 },
+  INTERVALO_MS: 100,      // cada cuánto se analiza un fotograma
+
+  // MediaPipe con versión fija + SRI (regla de CSP del proyecto)
+  CDN: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection@0.4.1646425229/',
+  SRI: 'sha384-oO3wOXOXIGBvHXjKwoF69nDtnGjqWIBuT+yCjjIAZmDek7qgjztCwK+WjCuL9O0a',
+
+  MENSAJES: {
+    inicio:     { txt: 'Iniciando cámara…',            icono: 'hourglass_empty', estado: 'neutro' },
+    cargando:   { txt: 'Preparando detección…',        icono: 'hourglass_empty', estado: 'neutro' },
+    sin_rostro: { txt: 'Coloca tu rostro en el óvalo', icono: 'face',            estado: 'neutro' },
+    lejos:      { txt: 'Acércate más a la cámara',     icono: 'zoom_in',         estado: 'warn'  },
+    cerca:      { txt: 'Aléjate un poco de la cámara', icono: 'zoom_out',        estado: 'warn'  },
+    descentrado:{ txt: 'Centra tu rostro en el óvalo', icono: 'filter_center_focus', estado: 'warn' },
+    bien:       { txt: '¡Perfecto! Mantente quieto…',  icono: 'check_circle',    estado: 'ok'     },
+    manual:     { txt: 'Encuádrate y pulsa Tomar foto', icono: 'photo_camera',   estado: 'neutro' },
+    sin_camara: { txt: 'No se pudo abrir la cámara',   icono: 'videocam_off',    estado: 'error'  },
+    respaldo:   { txt: 'Usa la cámara del teléfono',   icono: 'photo_camera',    estado: 'warn'   },
+    listo:      { txt: 'Captura exitosa',              icono: 'verified',        estado: 'ok'     }
+  },
+
+  _activas: [],      // instancias montadas (para apagarlas al salir)
+  _scriptPromesa: null,
+  _n: 0,
+
+  // =======================================================================
+  // 1 · CARGA DEL MODELO
+  // =======================================================================
+  /** Carga face_detection.js una sola vez. Resuelve a false si no se pudo. */
+  _cargarModelo: function() {
+    if (this._scriptPromesa) return this._scriptPromesa;
+    if (window.FaceDetection) { this._scriptPromesa = Promise.resolve(true); return this._scriptPromesa; }
+    const self = this;
+    this._scriptPromesa = new Promise(function(resolve) {
+      const el = document.createElement('script');
+      el.src = self.CDN + 'face_detection.js';
+      el.integrity = self.SRI;
+      el.crossOrigin = 'anonymous';
+      el.async = true;
+      el.onload = function() { resolve(!!window.FaceDetection); };
+      el.onerror = function() { console.warn('FACE_CAPTURE: no se pudo cargar el modelo; se usará captura manual.'); resolve(false); };
+      document.head.appendChild(el);
+    });
+    return this._scriptPromesa;
+  },
+
+  // =======================================================================
+  // 2 · MONTAJE
+  // =======================================================================
+  /**
+   * Pinta el panel de captura dentro de `contenedorId` y arranca la cámara.
+   * @param {string} contenedorId
+   * @param {{onCaptura?:Function, etiqueta?:string, estabilidadMs?:number, valorInicial?:string}} opts
+   * @returns {object|null} instancia con detener() / repetir() / reiniciar()
+   */
+  montar: function(contenedorId, opts) {
+    opts = opts || {};
+    const cont = document.getElementById(contenedorId) ||
+                 document.querySelector('#main-container #' + CSS.escape(contenedorId));
+    if (!cont) return null;
+
+    // Un contenedor, una instancia: remontar no deja la cámara anterior viva
+    this._activas.filter(i => i.contenedorId === contenedorId).forEach(i => i.detener());
+
+    const self = this;
+    const inst = {
+      id: 'fc' + (++this._n),
+      contenedorId: contenedorId,
+      cont: cont,
+      opts: opts,
+      estabilidadMs: opts.estabilidadMs || this.ESTABILIDAD_MS,
+      stream: null,
+      fd: null,
+      timer: null,
+      inicioEstable: null,
+      cerrado: false,
+      detectando: false,
+      manual: false,
+      dataUrl: null,
+      timestamp: ''
+    };
+
+    cont.innerHTML = this._html(inst);
+    inst.el = {
+      aviso:    cont.querySelector('#' + inst.id + '-aviso'),
+      avisoTxt: cont.querySelector('#' + inst.id + '-aviso-txt'),
+      avisoIco: cont.querySelector('#' + inst.id + '-aviso-ico'),
+      camara:   cont.querySelector('#' + inst.id + '-camara'),
+      video:    cont.querySelector('#' + inst.id + '-video'),
+      ovalo:    cont.querySelector('#' + inst.id + '-ovalo'),
+      marco:    cont.querySelector('#' + inst.id + '-marco'),
+      barra:    cont.querySelector('#' + inst.id + '-barra'),
+      manual:   cont.querySelector('#' + inst.id + '-manual'),
+      respaldo: cont.querySelector('#' + inst.id + '-respaldo'),
+      archivo:  cont.querySelector('#' + inst.id + '-archivo'),
+      foto:     cont.querySelector('#' + inst.id + '-foto'),
+      img:      cont.querySelector('#' + inst.id + '-img')
+    };
+
+    inst.detener   = function() { self._detener(inst); };
+    inst.repetir   = function() { self._repetir(inst); };
+    inst.reiniciar = function() { self._repetir(inst); };
+    inst.valor     = function() { return inst.dataUrl; };
+
+    this._activas.push(inst);
+
+    // Valor ya guardado (editar un registro): se muestra la foto, sin cámara
+    if (opts.valorInicial) { this._mostrarFoto(inst, opts.valorInicial, false); return inst; }
+
+    this._arrancar(inst);
+    return inst;
+  },
+
+  /** Apaga todas las cámaras abiertas. La llama el router al cambiar de vista. */
+  detenerTodas: function() {
+    this._activas.slice().forEach(i => i.detener());
+  },
+
+  // =======================================================================
+  // 3 · HTML DEL PANEL
+  // =======================================================================
+  _html: function(inst) {
+    const id = inst.id;
+    const etq = inst.opts.etiqueta || 'Verificación facial';
+    return '' +
+    '<div class="fc-panel" data-fc="' + esc(id) + '">' +
+      '<div id="' + id + '-aviso" class="fc-aviso fc-neutro" role="status" aria-live="polite">' +
+        '<span id="' + id + '-aviso-ico" class="material-symbols-outlined text-[16px]" aria-hidden="true">hourglass_empty</span>' +
+        '<span id="' + id + '-aviso-txt">' + esc(this.MENSAJES.inicio.txt) + '</span>' +
+      '</div>' +
+
+      '<div id="' + id + '-camara" class="fc-camara">' +
+        '<div id="' + id + '-marco" class="fc-marco">' +
+          '<video id="' + id + '-video" playsinline autoplay muted class="fc-video" aria-label="' + esc(etq) + '"></video>' +
+          '<div class="fc-overlay" aria-hidden="true"><div id="' + id + '-ovalo" class="fc-ovalo"></div></div>' +
+          '<div class="fc-barra-fondo" aria-hidden="true"><div id="' + id + '-barra" class="fc-barra"></div></div>' +
+        '</div>' +
+        '<div class="fc-botones">' +
+          '<button type="button" id="' + id + '-manual" class="fc-btn fc-btn-primario bg-primary text-on-primary" style="display:none;" ' +
+            'onclick="FACE_CAPTURE.capturarAhora(\'' + id + '\')">' +
+            '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">photo_camera</span>Tomar foto</button>' +
+          '<button type="button" class="fc-btn" onclick="FACE_CAPTURE.reiniciar(\'' + id + '\')">' +
+            '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">refresh</span>Reiniciar cámara</button>' +
+          '<button type="button" id="' + id + '-respaldo" class="fc-btn" style="display:none;" ' +
+            'onclick="FACE_CAPTURE.elegirArchivo(\'' + id + '\')">' +
+            '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">add_a_photo</span>Cámara del teléfono</button>' +
+          '<input type="file" id="' + id + '-archivo" accept="image/*" capture="user" style="display:none;" ' +
+            'onchange="FACE_CAPTURE.desdeArchivo(\'' + id + '\', this)">' +
+        '</div>' +
+      '</div>' +
+
+      '<div id="' + id + '-foto" class="fc-foto" style="display:none;">' +
+        '<div class="fc-foto-marco">' +
+          '<img id="' + id + '-img" alt="' + esc(etq) + '" class="fc-img">' +
+          '<span class="fc-sello"><span class="material-symbols-outlined text-[14px]" aria-hidden="true">verified</span>Captura exitosa</span>' +
+        '</div>' +
+        '<button type="button" class="fc-btn mt-2" onclick="FACE_CAPTURE.repetir(\'' + id + '\')">' +
+          '<span class="material-symbols-outlined text-[16px]" aria-hidden="true">replay</span>Repetir foto</button>' +
+      '</div>' +
+    '</div>';
+  },
+
+  // =======================================================================
+  // 4 · CICLO DE VIDA DE LA CÁMARA
+  // =======================================================================
+  _arrancar: async function(inst) {
+    this._aviso(inst, 'inicio');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this._mostrarManual(inst, false);
+      return;
+    }
+    try {
+      inst.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+      });
+    } catch (e) {
+      // Permiso denegado, cámara ocupada por otra app, equipo sin cámara:
+      // se ofrece la cámara nativa del teléfono en vez de dejar el campo
+      // imposible de llenar.
+      console.warn('FACE_CAPTURE: cámara denegada o no disponible —', e && e.name);
+      this._mostrarManual(inst, false);
+      return;
+    }
+    if (inst.cerrado) { this._liberar(inst); return; }
+
+    const v = inst.el.video;
+    v.srcObject = inst.stream;
+    try { await v.play(); } catch (e) { /* algunos navegadores lo reanudan solos */ }
+
+    this._aviso(inst, 'cargando');
+    const hayModelo = await this._cargarModelo();
+    if (inst.cerrado) return;
+
+    if (!hayModelo) { this._mostrarManual(inst, true); return; }
+
+    try {
+      inst.fd = new window.FaceDetection({ locateFile: (f) => FACE_CAPTURE.CDN + f });
+      inst.fd.setOptions({ model: 'short', minDetectionConfidence: 0.5 });
+      inst.fd.onResults((res) => this._resultados(inst, res));
+    } catch (e) {
+      console.warn('FACE_CAPTURE: el modelo no se pudo iniciar —', e);
+      this._mostrarManual(inst, true);
+      return;
+    }
+
+    this._aviso(inst, 'sin_rostro');
+    inst.timer = setInterval(() => this._analizar(inst), this.INTERVALO_MS);
+  },
+
+  /** Envía un fotograma al detector (sin encolar: uno a la vez). */
+  _analizar: async function(inst) {
+    if (inst.cerrado || inst.detectando || !inst.fd) return;
+    const v = inst.el.video;
+    if (!v || !v.videoWidth || v.readyState < 2) return;
+    inst.detectando = true;
+    try { await inst.fd.send({ image: v }); }
+    catch (e) { /* un fotograma perdido no importa */ }
+    finally { inst.detectando = false; }
+  },
+
+  _resultados: function(inst, res) {
+    if (inst.cerrado) return;
+    const dets = (res && res.detections) || [];
+    if (!dets.length) return this._guiar(inst, 'sin_rostro');
+
+    const bb = dets[0].boundingBox || {};
+    if (bb.width < this.PROXIMIDAD_MIN) return this._guiar(inst, 'lejos');
+    if (bb.width > this.PROXIMIDAD_MAX) return this._guiar(inst, 'cerca');
+    const centrado = bb.xCenter > 0.25 && bb.xCenter < 0.75 && bb.yCenter > 0.2 && bb.yCenter < 0.8;
+    if (!centrado) return this._guiar(inst, 'descentrado');
+
+    this._aviso(inst, 'bien');
+    if (!inst.inicioEstable) inst.inicioEstable = Date.now();
+    const pct = Math.min(((Date.now() - inst.inicioEstable) / inst.estabilidadMs) * 100, 100);
+    this._progreso(inst, pct);
+    if (pct >= 100) this._disparar(inst);
+  },
+
+  /** Mensaje de guía + progreso a cero (el rostro se movió). */
+  _guiar: function(inst, clave) {
+    this._aviso(inst, clave);
+    inst.inicioEstable = null;
+    this._progreso(inst, 0);
+  },
+
+  // =======================================================================
+  // 5 · CAPTURA
+  // =======================================================================
+  /** Toma la foto, apaga la cámara y avisa al consumidor. */
+  _disparar: function(inst) {
+    if (inst.cerrado) return;
+    inst.cerrado = true;               // evita una segunda captura en vuelo
+    const dataUrl = this._recortar(inst.el.video);
+    this._pararDeteccion(inst);
+    this._liberar(inst);
+    if (!dataUrl) { this._aviso(inst, 'sin_camara'); return; }
+    this._mostrarFoto(inst, dataUrl, true);
+  },
+
+  /** Botón "Tomar foto" (modo manual, sin modelo). */
+  capturarAhora: function(id) {
+    const inst = this._activas.find(i => i.id === id);
+    if (inst && !inst.dataUrl) this._disparar(inst);
+  },
+
+  /** Recorta el fotograma a 3:4 y lo devuelve como JPEG 600×800. */
+  _recortar: function(video) {
+    if (!video || !video.videoWidth) return null;
+    const S = this.SALIDA;
+    const lienzo = document.createElement('canvas');
+    lienzo.width = S.ancho; lienzo.height = S.alto;
+    const ctx = lienzo.getContext('2d');
+    if (!ctx) return null;
+    const objetivo = S.ancho / S.alto;                       // 3:4
+    const actual = video.videoWidth / video.videoHeight;
+    let sw, sh, sx, sy;
+    if (actual > objetivo) { sh = video.videoHeight; sw = sh * objetivo; sx = (video.videoWidth - sw) / 2; sy = 0; }
+    else                   { sw = video.videoWidth;  sh = sw / objetivo; sx = 0; sy = (video.videoHeight - sh) / 2; }
+    // Espejo: la persona se ve como en un espejo, igual que en la vista previa
+    ctx.translate(S.ancho, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, S.ancho, S.alto);
+    try { return lienzo.toDataURL('image/jpeg', S.calidad); } catch (e) { return null; }
+  },
+
+  _mostrarFoto: function(inst, dataUrl, avisar) {
+    inst.dataUrl = dataUrl;
+    inst.timestamp = PWA_SKILLS.getPeruTime(true);
+    if (inst.el.img) inst.el.img.src = dataUrl;
+    if (inst.el.camara) inst.el.camara.style.display = 'none';
+    if (inst.el.foto) inst.el.foto.style.display = '';
+    this._aviso(inst, 'listo');
+    if (avisar && typeof inst.opts.onCaptura === 'function') {
+      try { inst.opts.onCaptura(dataUrl, { timestamp: inst.timestamp }); } catch (e) { console.error(e); }
+    }
+  },
+
+  // =======================================================================
+  // 6 · REPETIR / DETENER
+  // =======================================================================
+  repetir:   function(id) { const i = this._activas.find(x => x.id === id); if (i) this._repetir(i); },
+  reiniciar: function(id) { const i = this._activas.find(x => x.id === id); if (i) this._repetir(i); },
+
+  _repetir: function(inst) {
+    this._pararDeteccion(inst);
+    this._liberar(inst);
+    if (typeof inst.opts.onRepetir === 'function') { try { inst.opts.onRepetir(); } catch (e) {} }
+    inst.dataUrl = null;
+    inst.timestamp = '';
+    inst.cerrado = false;
+    inst.inicioEstable = null;
+    inst.manual = false;
+    if (inst.el.foto)   inst.el.foto.style.display = 'none';
+    if (inst.el.camara) inst.el.camara.style.display = '';
+    if (inst.el.manual) inst.el.manual.style.display = 'none';
+    this._progreso(inst, 0);
+    this._arrancar(inst);
+  },
+
+  _detener: function(inst) {
+    inst.cerrado = true;
+    this._pararDeteccion(inst);
+    this._liberar(inst);
+    this._activas = this._activas.filter(i => i !== inst);
+  },
+
+  _pararDeteccion: function(inst) {
+    if (inst.timer) { clearInterval(inst.timer); inst.timer = null; }
+    if (inst.fd) { try { inst.fd.close(); } catch (e) {} inst.fd = null; }
+  },
+
+  /** Suelta la cámara: sin esto el led sigue encendido al cambiar de vista. */
+  _liberar: function(inst) {
+    if (inst.stream) {
+      try { inst.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      inst.stream = null;
+    }
+    const v = inst.el && inst.el.video;
+    if (v) { try { v.pause(); } catch (e) {} v.srcObject = null; }
+  },
+
+  // =======================================================================
+  // 7 · PINTADO DE ESTADO
+  // =======================================================================
+  _aviso: function(inst, clave) {
+    const m = this.MENSAJES[clave] || this.MENSAJES.sin_rostro;
+    if (inst.el.avisoTxt) inst.el.avisoTxt.textContent = m.txt;
+    if (inst.el.avisoIco) inst.el.avisoIco.textContent = m.icono;
+    if (inst.el.aviso) inst.el.aviso.className = 'fc-aviso fc-' + m.estado;
+    if (inst.el.marco) inst.el.marco.className = 'fc-marco fc-marco-' + m.estado;
+    if (inst.el.ovalo) inst.el.ovalo.className = 'fc-ovalo fc-ovalo-' + m.estado;
+  },
+
+  _progreso: function(inst, pct) {
+    if (inst.el.barra) inst.el.barra.style.width = Math.round(pct) + '%';
+  },
+
+  _mostrarManual: function(inst, conCamara) {
+    inst.manual = true;
+    this._aviso(inst, conCamara ? 'manual' : 'respaldo');
+    if (inst.el.manual && conCamara) inst.el.manual.style.display = '';
+    // Sin cámara en el navegador queda la cámara propia del teléfono: el
+    // campo nunca se vuelve imposible de llenar.
+    if (inst.el.respaldo && !conCamara) inst.el.respaldo.style.display = '';
+  },
+
+  /**
+   * Respaldo: la foto la toma la cámara nativa del teléfono (input file con
+   * `capture="user"`). Sin detección automática, pero el formulario avanza.
+   */
+  elegirArchivo: function(id) {
+    const inst = this._activas.find(i => i.id === id);
+    if (inst && inst.el.archivo) inst.el.archivo.click();
+  },
+
+  desdeArchivo: function(id, input) {
+    const inst = this._activas.find(i => i.id === id);
+    if (!inst || !input.files || !input.files.length) return;
+    // AppState se declara con const: no es propiedad de window
+    const ajustes = (typeof AppState !== 'undefined' && AppState.Settings) || {};
+    const calidad = ajustes.CalidadCompresion || 'Medio';
+    const self = this;
+    PWA_SKILLS.compressImage(input.files[0], calidad).then(function(dataUrl) {
+      input.value = '';
+      inst.cerrado = true;
+      self._pararDeteccion(inst);
+      self._liberar(inst);
+      self._mostrarFoto(inst, dataUrl, true);
+    }).catch(function() { PWA_SKILLS.toast('No se pudo leer la foto.', 'error'); });
+  }
+};
+
+// Al cambiar de vista o cerrar la pestaña, nunca queda la cámara encendida
+window.addEventListener('pagehide', function() { FACE_CAPTURE.detenerTodas(); });
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') FACE_CAPTURE.detenerTodas();
+});
+</script>
+
+
+<style>
+/* ── Panel de captura facial ─────────────────────────────────────────────
+   Solo tokens del sistema de diseño (--ds-*, --st-*, --color-*): nunca hex
+   crudos, para que se vea bien en claro y en oscuro (regla 22). */
+.fc-panel { display: flex; flex-direction: column; gap: 10px; max-width: 24rem; }
+
+.fc-aviso {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 10px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  border: 1px solid transparent; text-align: center;
+}
+.fc-aviso.fc-neutro { background: var(--st-mute-bg); color: var(--st-mute-fg); border-color: var(--st-mute-bd); }
+.fc-aviso.fc-ok     { background: var(--st-ok-bg);   color: var(--st-ok-fg);   border-color: var(--st-ok-bd); }
+.fc-aviso.fc-warn   { background: var(--st-warn-bg); color: var(--st-warn-fg); border-color: var(--st-warn-bd); }
+.fc-aviso.fc-error  { background: var(--st-bad-bg);  color: var(--st-bad-fg);  border-color: var(--st-bad-bd); }
+
+.fc-camara { display: flex; flex-direction: column; gap: 8px; }
+.fc-marco {
+  position: relative; width: 100%; aspect-ratio: 3 / 4; overflow: hidden;
+  border-radius: var(--ds-radius, 14px); background: var(--ds-surface-sunken);
+  border: 2px solid var(--ds-border); transition: border-color .3s;
+}
+.fc-marco-ok    { border-color: var(--st-ok-fg); }
+.fc-marco-warn  { border-color: var(--st-warn-fg); }
+.fc-marco-error { border-color: var(--st-bad-fg); }
+
+/* Espejo: la persona se ve como se vería en un espejo */
+.fc-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
+
+.fc-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.fc-ovalo {
+  width: 62%; height: 72%; border-radius: 50%;
+  border: 2.5px dashed rgba(255, 255, 255, .55);
+  box-shadow: 0 0 0 9999px var(--ds-scrim);
+  transition: border-color .3s, border-style .3s;
+}
+.fc-ovalo-ok    { border-style: solid; border-color: var(--st-ok-fg); }
+.fc-ovalo-warn  { border-color: var(--st-warn-fg); }
+.fc-ovalo-error { border-color: var(--st-bad-fg); }
+
+.fc-barra-fondo { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(0, 0, 0, .35); }
+.fc-barra { height: 100%; width: 0%; background: var(--st-ok-fg); transition: width .12s linear; }
+
+.fc-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+.fc-btn {
+  flex: 1 1 auto; min-height: 44px; padding: 0 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 10px; border: 1px solid var(--ds-border);
+  background: var(--ds-surface); color: var(--ds-fg);
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  cursor: pointer; transition: background .2s, border-color .2s;
+}
+.fc-btn:hover { background: var(--ds-surface-sunken); border-color: var(--color-primary); }
+/* Amarillo = acción (regla 22): el botón lleva además la clase bg-primary,
+   que la regla global de Index.html pinta en amarillo de seguridad. */
+.fc-btn-primario { border-color: transparent; }
+
+.fc-foto { display: flex; flex-direction: column; }
+.fc-foto-marco {
+  position: relative; border-radius: var(--ds-radius, 14px); overflow: hidden;
+  border: 2px solid var(--st-ok-fg); background: var(--ds-surface-sunken);
+}
+.fc-img { width: 100%; display: block; max-height: 55vh; object-fit: cover; }
+.fc-sello {
+  position: absolute; left: 0; right: 0; bottom: 8px; margin: 0 auto; width: fit-content;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--st-ok-fg); color: var(--st-crit-fg, #fff);
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+}
+</style>

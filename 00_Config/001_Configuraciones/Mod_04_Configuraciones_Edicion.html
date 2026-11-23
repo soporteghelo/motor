@@ -43,15 +43,15 @@
       <div class="grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-5 md:gap-y-5">
         <div class="col-span-2 md:col-span-1">
           <label class="block text-xs font-bold text-secondary mb-2">Nombre de la Aplicación</label>
-          <input type="text" id="cfg-app-nombre" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+          <input type="text" id="cfg-app-nombre" maxlength="60" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
         </div>
         <div class="col-span-2 md:col-span-1">
           <label class="block text-xs font-bold text-secondary mb-2">Empresa / Organización</label>
-          <input type="text" id="cfg-app-empresa" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+          <input type="text" id="cfg-app-empresa" maxlength="80" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
         </div>
         <div class="col-span-2 md:col-span-1">
           <label class="block text-xs font-bold text-secondary mb-2">Versión</label>
-          <input type="text" id="cfg-app-version" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
+          <input type="text" id="cfg-app-version" maxlength="12" pattern="[0-9A-Za-z.\-]{1,12}" title="Solo números, letras y puntos" class="w-full h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm focus:border-primary outline-none">
         </div>
         <div class="col-span-2 md:col-span-1">
           <label class="block text-xs font-bold text-secondary mb-2">URL del Logo (opcional)</label>
@@ -67,11 +67,11 @@
           <label class="block text-xs font-bold text-secondary mb-2">Color Primario</label>
           <div class="flex items-center gap-3">
             <input type="color" id="cfg-color-picker" class="w-11 h-11 rounded-xl border border-outline-variant cursor-pointer bg-surface-container-low p-0.5">
-            <input type="text" id="cfg-color-hex" maxlength="7" placeholder="#1A73E8" class="flex-1 h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-mono focus:border-primary outline-none">
+            <input type="text" id="cfg-color-hex" maxlength="7" pattern="#[0-9A-Fa-f]{6}" title="Color en formato #RRGGBB" placeholder="#162138" class="flex-1 h-11 px-4 rounded-xl border border-outline-variant bg-surface-container-low text-sm font-mono focus:border-primary outline-none">
           </div>
           <div class="mt-3 flex gap-2 flex-wrap">
-            <button onclick="setCfgColor('#1A73E8')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#1A73E8" title="Google Blue"></button>
-            <button onclick="setCfgColor('#000666')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#000666" title="Navy Deep"></button>
+            <button onclick="setCfgColor('#162138')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#162138" title="Marino (predeterminado)" aria-label="Marino (predeterminado)"></button>
+            <button onclick="setCfgColor('#1A73E8')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#1A73E8" title="Azul" aria-label="Azul"></button>
             <button onclick="setCfgColor('#1B5E20')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#1B5E20" title="Forest Green"></button>
             <button onclick="setCfgColor('#B71C1C')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#B71C1C" title="Deep Red"></button>
             <button onclick="setCfgColor('#E65100')" class="w-7 h-7 rounded-full border-2 border-white shadow" style="background:#E65100" title="Deep Orange"></button>
@@ -128,69 +128,42 @@
         </div>
       </div>
       <div class="mt-6 p-4 bg-amber-50 rounded-xl border border-amber-200">
-        <p class="text-[11px] text-amber-800 font-medium">Las contraseñas se almacenan como hash SHA-256. Nunca se guarda la contraseña en texto plano.</p>
+        <p class="text-[11px] text-amber-800 font-medium">Las contraseñas nunca se guardan en texto plano: el servidor las protege con un hash lento y con sal (bcrypt en Supabase). Cada contraseña debe tener 8 o más caracteres con letras y números.</p>
       </div>
     </div>
 
-    <!-- Tab: Módulos -->
-    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-6 shadow-sm hidden" id="cfg-panel-modulos">
-      <p class="text-xs text-secondary mb-5">Activa o desactiva módulos para controlar qué secciones aparecen en el menú principal.</p>
-      <div class="space-y-3">
-        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-primary">assignment</span>
-            <div>
-              <p class="text-sm font-bold text-on-surface">Inspecciones</p>
-              <p class="text-[10px] text-secondary">Módulo 03 — Registro de hallazgos</p>
-            </div>
-          </div>
-          <select id="cfg-mod-inspecciones" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
-            <option value="Activo">Activo</option>
-            <option value="Inactivo">Inactivo</option>
-          </select>
-        </div>
-        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-primary">analytics</span>
-            <div>
-              <p class="text-sm font-bold text-on-surface">Reportes</p>
-              <p class="text-[10px] text-secondary">Módulo 02 — Monitoreo operativo</p>
-            </div>
-          </div>
-          <select id="cfg-mod-reportes" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
-            <option value="Activo">Activo</option>
-            <option value="Inactivo">Inactivo</option>
-          </select>
-        </div>
-        <div class="flex items-center justify-between p-4 rounded-xl border border-outline-variant bg-surface-container-low">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-outlined text-primary">group</span>
-            <div>
-              <p class="text-sm font-bold text-on-surface">Usuarios</p>
-              <p class="text-[10px] text-secondary">Módulo 01 — Gestión de personal</p>
-            </div>
-          </div>
-          <select id="cfg-mod-usuarios" class="h-8 px-3 rounded-lg border border-outline-variant bg-white text-xs font-bold focus:border-primary outline-none">
-            <option value="Activo">Activo</option>
-            <option value="Inactivo">Inactivo</option>
-          </select>
-        </div>
+    <!-- Tab: Módulos — qué ve cada rol (la matriz se genera desde los subconfigs) -->
+    <div class="cfg-panel bg-white rounded-2xl border border-outline-variant p-4 sm:p-6 shadow-sm hidden" id="cfg-panel-modulos">
+      <div class="flex items-start gap-2 mb-4">
+        <span class="material-symbols-outlined text-[18px] text-secondary shrink-0 mt-px" aria-hidden="true">visibility</span>
+        <p class="text-xs text-secondary leading-relaxed">Elige qué módulos ve cada rol de tu empresa. Lo que ocultes desaparece del menú y del panel,
+          y el servidor deja de entregar esos datos a ese rol. Los módulos nuevos aparecen aquí solos.</p>
       </div>
+      <div id="cfg-vis-matriz" role="group" aria-label="Visibilidad de módulos por rol"></div>
     </div>
 
   </div>
 </div>
 
 <style>
-.cfg-tab { color: #505f76; }
-.cfg-tab.active { background: white; color: #000666; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.cfg-tab { color: var(--ds-fg-muted); }
+.cfg-tab.active { background: var(--ds-surface); color: var(--color-primary); box-shadow: var(--ds-shadow); }
+/* Matriz de visibilidad: nombre flexible + una columna estrecha por rol (cabe en 360px) */
+.cfg-vis-fila { display:grid; grid-template-columns:minmax(0,1fr) repeat(3, 56px); align-items:center; gap:4px;
+                padding:6px 4px; border-bottom:1px solid var(--ds-border); }
+.cfg-vis-fila:last-of-type { border-bottom:0; }
+.cfg-vis-cab { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--ds-fg-muted); padding-top:0; }
+.cfg-vis-celda { display:flex; align-items:center; justify-content:center; min-height:44px; cursor:pointer; }
+.cfg-vis-chk { width:20px; height:20px; accent-color:var(--color-primary); cursor:pointer; }
+.cfg-vis-chk:disabled { cursor:not-allowed; }
+.cfg-vis-nota { display:block; font-size:12px; color:var(--ds-fg-muted); line-height:1.3; }
 </style>
 
 <script>
 function switchCfgTab(tabName) {
   document.querySelectorAll('.cfg-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.cfg-panel').forEach(p => p.classList.add('hidden'));
-  const btn = document.querySelector(`.cfg-tab[data-tab="${tabName}"]`);
+  const btn = document.querySelector(`.cfg-tab[data-tab="${esc(tabName)}"]`);
   const panel = document.getElementById(`cfg-panel-${tabName}`);
   if (btn) btn.classList.add('active');
   if (panel) panel.classList.remove('hidden');
@@ -218,9 +191,7 @@ function loadEdicion_04_Configuraciones() {
   set('cfg-sync-intervalo', s.Sync_Intervalo);
   set('cfg-batch-size', s.Max_Batch_Size);
   set('cfg-session-timeout', s.Session_Timeout);
-  set('cfg-mod-inspecciones', s.Modulo_Inspecciones);
-  set('cfg-mod-reportes', s.Modulo_Reportes);
-  set('cfg-mod-usuarios', s.Modulo_Usuarios);
+  renderMatrizVisibilidad();
 
   // Sincronizar color picker <-> hex input
   const picker = document.getElementById('cfg-color-picker');
@@ -241,6 +212,74 @@ function loadEdicion_04_Configuraciones() {
   switchCfgTab('general');
 }
 
+/** ¿El subconfig deja leer el módulo a este rol? (si no, la casilla no aplica) */
+function rolPuedeLeer(modulo, rol) {
+  const sc = PERMISOS._subconfig(modulo);
+  const m = sc && sc.Config_Modular ? sc.Config_Modular[rol + 'Role'] : null;
+  return !!(m && m.canRead);
+}
+
+/**
+ * Pinta la matriz módulo × rol. Casilla marcada = visible. No se pueden
+ * marcar los módulos fuera del plan (lo decide el SuperAdmin) ni los roles
+ * que el subconfig no deja leer.
+ */
+function renderMatrizVisibilidad() {
+  const cont = document.querySelector('#main-container #cfg-vis-matriz');
+  if (!cont || typeof PERMISOS === 'undefined') return;
+  const vis = PERMISOS._visibilidad();
+  const roles = PERMISOS.ROLES_CONFIGURABLES;
+  const mods = PERMISOS.modulos();
+  if (!mods.length) {
+    cont.innerHTML = '<p class="text-xs text-secondary text-center py-6">No hay módulos registrados.</p>';
+    return;
+  }
+  const corto = { Admin: 'Admin', Supervisor: 'Superv.', Trabajador: 'Trab.' };
+  const cab = '<div class="cfg-vis-fila cfg-vis-cab" aria-hidden="true"><span>Módulo</span>' +
+    roles.map(r => '<span class="text-center"><span class="hidden sm:inline">' + esc(r) + '</span><span class="sm:hidden">' + esc(corto[r]) + '</span></span>').join('') + '</div>';
+
+  const filas = mods.map(m => {
+    const enPlan = PERMISOS.moduloEnPlan(m.id);
+    const celdas = roles.map(r => {
+      if (!rolPuedeLeer(m.id, r)) {
+        return '<span class="cfg-vis-celda text-secondary text-[12px]" title="Este rol no tiene permiso de lectura en el módulo">—</span>';
+      }
+      const marcado = enPlan && PERMISOS.visibleParaRol(m.id, r, vis);
+      return '<label class="cfg-vis-celda">' +
+        '<input type="checkbox" class="cfg-vis-chk" data-mod="' + esc(m.id) + '" data-rol="' + esc(r.toLowerCase()) + '"' +
+        (marcado ? ' checked' : '') + (enPlan ? '' : ' disabled') +
+        ' aria-label="' + esc(m.titulo + ' visible para ' + r) + '"></label>';
+    }).join('');
+    const nota = !enPlan
+      ? '<span class="cfg-vis-nota">No incluido en tu plan</span>'
+      : (m.usadoPor.length ? '<span class="cfg-vis-nota">Lo usan: ' + esc(m.usadoPor.join(', ')) + '</span>' : '');
+    return '<div class="cfg-vis-fila' + (enPlan ? '' : ' opacity-60') + '">' +
+      '<span class="flex items-center gap-2 min-w-0">' +
+        '<span class="material-symbols-outlined text-[18px] text-primary shrink-0" aria-hidden="true">' + esc(m.icono) + '</span>' +
+        '<span class="min-w-0"><span class="block text-[12px] font-bold text-on-surface truncate">' + esc(m.titulo) + '</span>' + nota + '</span>' +
+      '</span>' + celdas + '</div>';
+  }).join('');
+
+  cont.innerHTML = cab + filas +
+    '<p class="text-[12px] text-secondary mt-3">El Super Administrador ve siempre todos los módulos. Usuarios y Configuración no se pueden ocultar.</p>';
+}
+
+/** Lee la matriz: solo se guardan los módulos con algún rol oculto. */
+function leerMatrizVisibilidad() {
+  const out = {};
+  document.querySelectorAll('#main-container .cfg-vis-chk:not([disabled])').forEach(chk => {
+    if (chk.checked) return;
+    const mod = chk.dataset.mod, rol = chk.dataset.rol;
+    (out[mod] = out[mod] || {})[rol] = false;
+  });
+  // Se conservan los ocultamientos de módulos fuera del plan (casillas deshabilitadas)
+  const previo = PERMISOS._visibilidad();
+  Object.keys(previo).forEach(mod => {
+    if (!PERMISOS.moduloEnPlan(mod) && previo[mod]) out[mod] = previo[mod];
+  });
+  return out;
+}
+
 function submitAppSettings() {
   const get = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
   const hex = get('cfg-color-hex');
@@ -254,15 +293,20 @@ function submitAppSettings() {
     Sync_Intervalo:      get('cfg-sync-intervalo'),
     Max_Batch_Size:      get('cfg-batch-size'),
     Session_Timeout:     get('cfg-session-timeout'),
-    Modulo_Inspecciones: get('cfg-mod-inspecciones'),
-    Modulo_Reportes:     get('cfg-mod-reportes'),
-    Modulo_Usuarios:     get('cfg-mod-usuarios')
+    Modulos_Visibles:    leerMatrizVisibilidad()
   };
-  saveAppSettings(settings);
-
-  PWA_SKILLS.toast('Configuración guardada y aplicada.', 'success', 3200);
-  changeInternalView('04_Configuraciones', 'Resumen');
-  if (typeof loadResumen_04_Configuraciones === 'function') loadResumen_04_Configuraciones();
+  // Si el Admin se oculta a sí mismo todos los módulos, se le avisa antes
+  const vis = settings.Modulos_Visibles;
+  const modsPlan = PERMISOS.modulos().filter(m => PERMISOS.moduloEnPlan(m.id));
+  if (modsPlan.length && modsPlan.every(m => vis[m.id] && vis[m.id].admin === false) &&
+      !confirm('Ocultaste todos los módulos al rol Administrador: tú tampoco los verás (podrás volver a mostrarlos desde aquí). ¿Guardar de todas formas?')) return;
+  saveAppSettings(settings).then(r => {
+    if (r.alcance === 'empresa') PWA_SKILLS.toast('Configuración guardada para toda la empresa.', 'success', 3200);
+    else if (r.status === 'WARN') PWA_SKILLS.toast('Guardada solo en este dispositivo: ' + (r.msg || 'sin conexión'), 'warning', 5000);
+    else PWA_SKILLS.toast('Configuración guardada en este dispositivo.', 'success', 3200);
+    changeInternalView('04_Configuraciones', 'Resumen');
+    if (typeof loadResumen_04_Configuraciones === 'function') loadResumen_04_Configuraciones();
+  });
 }
 
 function resetAppSettings() {

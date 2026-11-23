@@ -41,7 +41,7 @@ const PDF_TEMPLATE = {
       if (def.type === 'Hidden' || def.type === 'Hidden_UUID') return;   // trazabilidad interna
       const item = { clave: clave, etiqueta: (def.label || clave).replace(/_/g, ' '), tipo: def.type,
                      valores: def.acceptedValues || null };
-      if (['Image', 'Image_Collection', 'Signature', 'File'].includes(def.type)) out.media.push(item);
+      if (['Image', 'Image_Collection', 'Signature', 'File', 'Face_Photo'].includes(def.type)) out.media.push(item);
       else out.texto.push(item);
     });
 
@@ -66,9 +66,15 @@ const PDF_TEMPLATE = {
    * con todos los campos y a partir de ahí quita, mueve y ajusta.
    */
   plantillaBase: function(modulo) {
+    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
+
+    // 05_Incidentes tiene un formato propio (Flash Report): la industria
+    // espera un banner de severidad y un orden de secciones específico, no
+    // la grilla genérica de "Datos del registro" que reciben los demás módulos.
+    if (modulo === '05_Incidentes') return this._plantillaFlashReport(modulo, ajustes);
+
     const campos = this.camposDe(modulo);
     const titulo = String(modulo).replace(/^\d+_/, '').replace(/_/g, ' ');
-    const ajustes = (typeof getAppSettings === 'function') ? getAppSettings() : {};
 
     const bloques = [
       { id: this._id(), tipo: 'encabezado',
@@ -105,6 +111,51 @@ const PDF_TEMPLATE = {
   },
 
   _id: function() { return 'b' + Math.random().toString(36).slice(2, 9); },
+
+  /**
+   * Plantilla "Flash Report" — el formato estándar de la industria para
+   * notificar un incidente en las primeras horas, antes de cerrar la
+   * investigación: banner de severidad al frente, respuesta inmediata y
+   * notificación antes que el análisis de causas, plan de acción al final.
+   */
+  _plantillaFlashReport: function(modulo, ajustes) {
+    const bloques = [
+      { id: this._id(), tipo: 'encabezado',
+        titulo: 'Reporte Flash de Incidente',
+        subtitulo: ajustes.App_Empresa || '',
+        logoUrl: ajustes.App_Logo || '',
+        mostrarFecha: true, alineacion: 'izquierda' },
+      { id: this._id(), tipo: 'bannerSeveridad', campoGravedad: 'Gravedad', campoTipo: 'Tipo_Evento' },
+      { id: this._id(), tipo: 'datos', titulo: 'Datos del evento', columnas: 3,
+        campos: ['Fecha_Evento', 'Hora_Evento', 'Area', 'Lugar_Exacto', 'Estado', 'Severidad_Potencial'] },
+      { id: this._id(), tipo: 'datos', titulo: 'Persona(s) involucrada(s)', columnas: 3,
+        campos: ['Nombre_Trabajador', 'Trabajador_DNI', 'Puesto', 'Tipo_Personal', 'Parte_Afectada', 'Dias_Descanso', 'Testigos'] },
+      { id: this._id(), tipo: 'texto', titulo: 'Descripción de lo ocurrido', contenido: '{{Descripcion}}' },
+      { id: this._id(), tipo: 'texto', titulo: 'Acciones inmediatas tomadas', contenido: '{{Acciones_Inmediatas}}' },
+      { id: this._id(), tipo: 'datos', titulo: 'Notificación', columnas: 2,
+        campos: ['Requiere_Notificacion_Autoridad', 'Notificados'] },
+      { id: this._id(), tipo: 'datos', titulo: 'Impacto y daños', columnas: 2,
+        campos: ['Equipo_Involucrado', 'Costo_Estimado_Danos'] },
+      { id: this._id(), tipo: 'datos', titulo: 'Análisis de causas', columnas: 1,
+        campos: ['Causa_Inmediata', 'Causa_Basica', 'Categoria_Causa'] },
+      { id: this._id(), tipo: 'tablaHija', titulo: 'Plan de acción correctiva',
+        campos: ['Accion', 'Responsable', 'Fecha_Limite', 'Estado_Accion'] },
+      { id: this._id(), tipo: 'imagenes', titulo: 'Evidencia fotográfica', campos: ['Evidencia_Fotos'] },
+      { id: this._id(), tipo: 'datos', titulo: 'Seguimiento de la investigación', columnas: 2,
+        campos: ['Investigador_DNI', 'Fecha_Cierre'] },
+      { id: this._id(), tipo: 'firmas', titulo: 'Conformidad',
+        firmas: [
+          { etiqueta: 'Investigador', campo: 'Firma_Investigador' },
+          { etiqueta: 'Jefe de Área / Gerencia', campo: '' }
+        ] }
+    ];
+
+    return {
+      version: 1, modulo: modulo,
+      pagina: { tamano: 'A4', orientacion: 'vertical', margen: 14 },
+      bloques: bloques
+    };
+  },
 
   // -----------------------------------------------------------------------
   // RENDERIZADO — bloques → HTML imprimible
@@ -171,6 +222,21 @@ const PDF_TEMPLATE = {
           break;
         }
 
+        case 'bannerSeveridad': {
+          const grav = registro ? (registro[b.campoGravedad] || '') : '';
+          const evento = registro ? (registro[b.campoTipo] || '') : '';
+          const clave = String(grav).toLowerCase();
+          const clase = clave.indexOf('mortal') !== -1 ? 'pt-sev-mortal'
+                      : clave.indexOf('grave')  !== -1 ? 'pt-sev-grave'
+                      : 'pt-sev-leve';
+          cuerpo +=
+            '<div class="pt-banner ' + clase + '">' +
+              '<div class="pt-banner-item"><span>Gravedad</span><strong>' + self._esc(grav || '—') + '</strong></div>' +
+              '<div class="pt-banner-item"><span>Tipo de evento</span><strong>' + self._esc(evento || '—') + '</strong></div>' +
+            '</div>';
+          break;
+        }
+
         case 'datos': {
           const cols = Math.min(3, Math.max(1, parseInt(b.columnas) || 2));
           const celdas = (b.campos || []).map(clave =>
@@ -210,7 +276,8 @@ const PDF_TEMPLATE = {
           const imgs = (b.campos || []).map(clave => {
             const bruto = registro ? registro[clave] : '';
             if (!bruto) return '';
-            return String(bruto).split(',').map(u => {
+            const lista = (typeof partirListaMedia === 'function') ? partirListaMedia(bruto) : String(bruto).split(',');
+            return lista.map(u => {
               const src = self._src(u.trim());
               return src ? '<figure class="pt-fig"><img src="' + self._esc(src) + '" alt="">' +
                            '<figcaption>' + self._esc(self._etiquetaDe(mod, clave)) + '</figcaption></figure>' : '';
@@ -227,7 +294,10 @@ const PDF_TEMPLATE = {
 
         case 'firmas': {
           const fs = (b.firmas || []).map(f => {
-            const src = f.campo ? self._src(registro ? registro[f.campo] : '') : '';
+            // Una firma es un solo archivo: si el campo trae varios, se usa el primero
+            const crudo = f.campo && registro ? registro[f.campo] : '';
+            const primero = (typeof partirListaMedia === 'function') ? (partirListaMedia(crudo)[0] || '') : crudo;
+            const src = f.campo ? self._src(primero) : '';
             return '<div class="pt-firma">' +
                      (src ? '<img src="' + self._esc(src) + '" alt="">' : '<div class="pt-firma-hueco"></div>') +
                      '<span>' + self._esc(f.etiqueta || '') + '</span>' +
@@ -277,6 +347,15 @@ const PDF_TEMPLATE = {
       '.pt-head h1 { font-size:17pt; margin:0; color:#000666; }' +
       '.pt-head p { margin:2px 0 0; font-size:10pt; color:#505f76; }' +
       '.pt-fecha { font-size:8.5pt; color:#767683; margin-top:3px; }' +
+      '.pt-banner { display:flex; margin-bottom:16px; border-radius:6px; overflow:hidden; border:1px solid #c6c5d4; break-inside:avoid; }' +
+      '.pt-banner-item { flex:1; padding:10px 14px; }' +
+      '.pt-banner-item + .pt-banner-item { border-left:1px solid rgba(0,0,0,.12); }' +
+      '.pt-banner-item span { display:block; font-size:7.5pt; text-transform:uppercase; letter-spacing:.05em; opacity:.85; }' +
+      '.pt-banner-item strong { display:block; font-size:13pt; margin-top:2px; }' +
+      '.pt-sev-leve   { background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }' +
+      '.pt-sev-grave  { background:#fff7ed; color:#9a3412; border-color:#fed7aa; }' +
+      '.pt-sev-mortal { background:#1b1b21; color:#ffffff; border-color:#1b1b21; }' +
+      '.pt-sev-mortal .pt-banner-item + .pt-banner-item { border-left-color:rgba(255,255,255,.25); }' +
       '.pt-sec { margin-bottom:14px; }' +
       '.pt-sec h2 { font-size:10pt; text-transform:uppercase; letter-spacing:.06em; color:#505f76; ' +
         'border-bottom:1px solid #c6c5d4; padding-bottom:3px; margin:0 0 8px; }' +
@@ -311,9 +390,9 @@ const PDF_TEMPLATE = {
    * y solo sustituye marcadores. Así el documento impreso es exactamente el
    * que el administrador aprobó, no una nueva interpretación de los bloques.
    */
-  exportar: function(modulo, registro, hijos, titulo) {
+  exportar: function(modulo, registro, hijos, titulo, ventana) {
     const html = this.documentoHTML(this.plantillaBase(modulo), registro, hijos, titulo || modulo);
-    const win = window.open('', '_blank');
+    const win = ventana || window.open('', '_blank');
     if (!win) {
       if (typeof PWA_SKILLS !== 'undefined') {
         PWA_SKILLS.toast('El navegador bloqueó la ventana. Permite las ventanas emergentes.', 'error', 5000);
@@ -323,7 +402,11 @@ const PDF_TEMPLATE = {
     win.document.open();
     win.document.write(html);
     win.document.close();
-    win.onload = function() { win.focus(); win.print(); };
+    // Se espera a que carguen las imágenes (fotos/firmas firmadas). Si la
+    // ventana venía abierta de antes, el load puede haber ocurrido ya.
+    const imprimir = function() { win.focus(); win.print(); };
+    if (win.document.readyState === 'complete') setTimeout(imprimir, 400);
+    else win.onload = imprimir;
     return true;
   },
 
@@ -333,16 +416,23 @@ const PDF_TEMPLATE = {
    * Así funciona igual online, offline y en el preview local.
    */
   buscarRegistro: function(modulo, uuid) {
-    const claves = ['_actData', '_actDemoData'];
     const fuentes = [];
 
-    // Caché específica que ya publican algunos módulos
-    claves.forEach(k => { if (Array.isArray(window[k])) fuentes.push(window[k]); });
+    // Caché en memoria del renderizador: es la que acaba de pintar la vista
+    if (typeof MOTOR_RENDER !== 'undefined' && Array.isArray(MOTOR_RENDER._datos[modulo])) {
+      fuentes.push(MOTOR_RENDER._datos[modulo]);
+    }
+    // Caché específica que publique un módulo con vista propia
+    ['_actData', '_actDemoData'].forEach(k => { if (Array.isArray(window[k])) fuentes.push(window[k]); });
 
     // Caché de referencia estándar
     try {
-      const raw = localStorage.getItem('refdata_' + modulo);
-      if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) fuentes.unshift(arr); }
+      const copia = (typeof MOTOR_CACHE !== 'undefined') ? MOTOR_CACHE.leerSync(modulo) : null;
+      if (copia && copia.length) fuentes.unshift(copia);
+      else {
+        const raw = localStorage.getItem('refdata_' + modulo);
+        if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) fuentes.unshift(arr); }
+      }
     } catch (e) {}
 
     for (const f of fuentes) {
@@ -354,21 +444,79 @@ const PDF_TEMPLATE = {
 
   /**
    * Exporta el registro visible con el formato interno.
-   * Si no se encuentra el registro en caché, cae a los datos de ejemplo para
+   * Con `uuid`: si no esta en la copia local se pide al servidor y, si aun
+   * asi no aparece, NO se exporta (un PDF de seguridad con datos de ejemplo
+   * es un documento falso). Sin `uuid` es la vista previa del formato.
+   * (Historico) Antes caia a los datos de ejemplo para
    * que el usuario al menos vea el formato (y se le avisa).
    */
-  exportarRegistro: function(modulo, uuid, titulo) {
+  /**
+   * Copia del registro con los campos de imagen/firma convertidos a URLs
+   * mostrables: en producción el campo guarda la RUTA de Storage (bucket
+   * privado), que hay que firmar para que la ventana de impresión la cargue.
+   */
+  async _conMediaResuelta(modulo, registro) {
+    if (!registro || typeof DataService === 'undefined' || !DataService.resolveMedia) return registro;
+    const copia = Object.assign({}, registro);
+    const campos = this.camposDe(modulo).media || [];
+    for (const c of campos) {
+      const v = copia[c.clave];
+      if (!v) continue;
+      try { copia[c.clave] = (await DataService.resolveMedia(partirListaMedia(v))).filter(Boolean).join(','); }
+      catch (e) {}
+    }
+    return copia;
+  },
+
+  async exportarRegistro(modulo, uuid, titulo) {
+    // La ventana se abre YA, dentro del clic: si se abre después de los
+    // await (hijos, firmas de URL), el bloqueador de emergentes la frena.
+    const ventana = window.open('', '_blank');
+    if (ventana) {
+      ventana.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#454652">Generando documento…</p>');
+    }
     let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
     let hijos = [];
+
+    // No esta en la copia local: se pide ESE registro al servidor.
+    if (!registro && uuid && typeof DataService !== 'undefined' && DataService.query) {
+      try {
+        const res = await DataService.query(modulo, { cond: { UUID: { eq: String(uuid) } }, limite: 1 });
+        if (res && res.status === 'OK' && Array.isArray(res.payload) && res.payload[0]) registro = res.payload[0];
+      } catch (e) { /* sin red: se avisa abajo */ }
+    }
+
+    if (!registro && uuid) {
+      // NUNCA un PDF con datos inventados cuando se pidio un registro
+      // concreto: un documento de seguridad con aspecto oficial y contenido
+      // de ejemplo es peor que no tener documento. (La vista previa del
+      // formato, que llama sin uuid, si usa el registro de ejemplo.)
+      if (ventana) {
+        ventana.document.body.innerHTML =
+          '<div style="font-family:Arial,sans-serif;padding:32px;color:#162138;max-width:520px">' +
+          '<h2 style="margin:0 0 8px">No se pudo generar el documento</h2>' +
+          '<p style="color:#4f5c78;line-height:1.5">No se encontro el registro en este dispositivo y no fue ' +
+          'posible pedirlo al servidor. Conectate y vuelve a abrir el registro antes de exportarlo.</p></div>';
+      }
+      if (typeof PWA_SKILLS !== 'undefined') {
+        PWA_SKILLS.toast('No se encontró el registro: no se exporta un PDF con datos de ejemplo.', 'error', 5000);
+      }
+      return null;
+    }
 
     if (!registro) {
       const ej = this.registroEjemplo(modulo);
       registro = ej.registro; hijos = ej.hijos;
       if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('No se halló el registro en caché; se exporta el formato con datos de ejemplo.', 'warning', 4200);
+        PWA_SKILLS.toast('Vista previa del formato con datos de ejemplo.', 'info', 3200);
       }
+    } else if (this.tieneTablaHija(modulo) && uuid && typeof DataService !== 'undefined' && DataService.readChildren) {
+      // Igual que en Edición y Detalle: READ_DB solo trae el padre, así que
+      // las filas hijas del PDF hay que pedirlas aparte o la tabla sale vacía.
+      try { hijos = await DataService.readChildren(modulo, uuid); } catch (e) { hijos = []; }
     }
-    return this.exportar(modulo, registro, hijos, titulo || (modulo + ' ' + (uuid || '')));
+    registro = await this._conMediaResuelta(modulo, registro);
+    return this.exportar(modulo, registro, hijos, titulo || (modulo + ' ' + (uuid || '')), ventana);
   },
 
   /** Registro de ejemplo para la vista previa del editor */

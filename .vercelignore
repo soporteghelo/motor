@@ -1,0 +1,10 @@
+# Solo se necesita lo que lee build_web.js (Index.html, módulos, web/) y api/
+.playwright-mcp/
+LOCAL_PREVIEW.html
+PROD_INDEX.html
+00_Config/Code.gs
+tools/*.sql
+design-system/
+.claude/
+.mcp.json
+.env

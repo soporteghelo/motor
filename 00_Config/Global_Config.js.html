@@ -13,6 +13,54 @@
  * =========================================================================
  */
 
+/**
+ * Escapa un valor para insertarlo en HTML (texto o atributo entre comillas).
+ * OBLIGATORIO para todo dato de un registro que se pinte con innerHTML o
+ * plantillas: los campos los escribe cualquier usuario y, sin escapar, un
+ * `<img onerror=…>` se ejecutaría en la sesión de quien abre la lista
+ * (y podría leer su token). Para valores dentro de onclick usar data-* +
+ * this.dataset, nunca interpolar en código JS.
+ */
+/**
+ * CSS.escape se usa para meter un valor dentro de un selector sin que rompa
+ * la consulta. Existe en los navegadores actuales, pero no en webviews
+ * antiguos ni en los entornos de prueba: sin este respaldo, cualquier
+ * querySelector con un identificador dinámico lanzaba y dejaba la vista a
+ * medio pintar.
+ */
+if (typeof window !== 'undefined' && (typeof window.CSS === 'undefined' || typeof window.CSS.escape !== 'function')) {
+  window.CSS = window.CSS || {};
+  window.CSS.escape = function (valor) {
+    return String(valor).replace(/[^a-zA-Z0-9_ -￿-]/g, c => '\\' + c);
+  };
+}
+
+function esc(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * Todo input de DNI acepta como máximo 8 caracteres.
+ * Es campo DNI si su nombre lo dice (DNI, Trabajador_DNI, DNI_Jefe…) o su
+ * etiqueta lo menciona ("DNI Reportante"). Devuelve los atributos a pegar en
+ * el <input> (o '' si no es DNI).
+ */
+const DNI_MAX = 8;
+function esCampoDNI(nombre, etiqueta) {
+  return /(^|_)DNI($|_)/i.test(String(nombre || '')) || /\bDNI\b/i.test(String(etiqueta || ''));
+}
+function attrsDNI(nombre, etiqueta) {
+  // Un documento de identidad no lleva espacios ni signos. Se admiten letras
+  // porque el carné de extranjería las usa, y el backend acepta 6 a 15
+  // caracteres alfanuméricos; aquí el tope son 8 (regla 8).
+  return esCampoDNI(nombre, etiqueta)
+    ? ' maxlength="' + DNI_MAX + '" inputmode="numeric" autocomplete="off"' +
+      ' pattern="[0-9A-Za-z]{6,' + DNI_MAX + '}" title="Entre 6 y ' + DNI_MAX + ' caracteres, sin espacios ni signos"'
+    : '';
+}
+
 const AppState = {
   // --- INFRAESTRUCTURA CORE ---
   ROOT_APP_FOLDER_ID: "SUSTITUIR_POR_TU_ID_DE_DRIVE",
@@ -72,6 +120,17 @@ const AppState = {
     }
   },
 
+  // --- SOPORTE (proveedor del servicio) ---
+  // Único sitio donde vive el contacto del proveedor. Lo usan el mensaje de
+  // bienvenida por WhatsApp (01_Usuarios) y el "olvidé mi contraseña" del
+  // login: no hay correo de recuperación porque la mayoría del personal de
+  // campo no tiene email real (ver api/usuarios.js → @sin-correo.invalid).
+  Soporte: {
+    WhatsApp: '51983113140',          // formato internacional sin "+" ni espacios
+    Etiqueta: '+51 983 113 140',
+    Nombre:   'Soporte MOTOR'
+  },
+
   // --- CONFIGURACIÓN DE COMPONENTES GLOBALES ---
   UI_Components: {
     Header: {
@@ -108,7 +167,11 @@ const AppState = {
     // JWT de Supabase Auth: lleva rol y empresa_id en app_metadata
     SupabaseJWT:   localStorage.getItem('pwa_supabase_jwt')      || null,
     // Renueva el JWT cuando expira (1h) sin forzar un nuevo login
-    SupabaseRefreshToken: localStorage.getItem('pwa_supabase_refresh') || null
+    SupabaseRefreshToken: localStorage.getItem('pwa_supabase_refresh') || null,
+    // Plan de la empresa ({ "07_IPERC": false, ... }) que activa el SuperAdmin,
+    // y configuración de la app que guarda el Admin (empresas.config)
+    EmpresaModulos: (function(){ try { return JSON.parse(localStorage.getItem('pwa_empresa_modulos') || 'null'); } catch(e) { return null; } })(),
+    EmpresaConfig:  (function(){ try { return JSON.parse(localStorage.getItem('pwa_empresa_config')  || 'null'); } catch(e) { return null; } })()
   },
 
   // --- MOTOR DE COMPORTAMIENTO ---
@@ -122,12 +185,27 @@ const AppState = {
 
   activeModule: null,
 
-  // --- PROVEEDOR DE BASE DE DATOS ---
-  // 'sheets' → Google Sheets via Apps Script (legado, ya no es el default)
-  // 'supabase' → Supabase REST API (fuente de datos única de la app)
-  DB_PROVIDER: 'supabase',
+  // ═══════════════════════════════════════════════════════════════════════
+  // 🔀 BASE DE DATOS — se cambia SOLO aquí (o en Vercel: variable DB_PROVIDER)
+  // ═══════════════════════════════════════════════════════════════════════
+  //   'supabase'  → Supabase: Postgres + Storage + Auth  (bloque Supabase abajo)
+  //   'appscript' → Google Sheets + Drive vía Apps Script (00_Config/Code.gs)
+  // Toda la app habla con DataService (DataProvider.js.html), que elige el
+  // proveedor según este valor: ningún módulo depende de cuál esté activo.
+  DB_PROVIDER: 'appscript',
+
+  // --- CONFIGURACIÓN APPS SCRIPT ---
+  // URL /exec de la implementación web de Code.gs. Solo hace falta si la app
+  // NO se sirve desde el propio Apps Script (p. ej. en Vercel); allí se usa
+  // google.script.run y la URL se ignora. En Vercel: variable APPS_SCRIPT_URL.
+  AppsScript: {
+    URL: 'https://script.google.com/macros/s/AKfycbwBlrHXwyx2HouwZJniNiUJFdsS54URi-55mh4rWnK8ZdMTmpjUuxWMvIMMCXWk4KNC4A/exec'
+  },
 
   // --- CONFIGURACIÓN SUPABASE ---
+  // En Vercel, build_web.js reemplaza estos valores por las variables de
+  // entorno SUPABASE_URL / SUPABASE_ANON_KEY (window.__MOTOR_ENV__); los de
+  // aquí quedan como respaldo para el preview local.
   Supabase: {
     URL:            'https://fkelhhfptckarqgknkfh.supabase.co',
     ANON_KEY:       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrZWxoaGZwdGNrYXJxZ2tua2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxOTM5MjcsImV4cCI6MjEwMTc2OTkyN30.joWcmZIHws6eOf3I-o6hEXFAQMq9juEJdWaKVqPdl4c',   // clave pública: es segura porque RLS está activo
@@ -152,13 +230,51 @@ const AppState = {
     guardar('pwa_empresa_nombre',  this.User.EmpresaNombre);
     guardar('pwa_supabase_jwt',    this.User.SupabaseJWT);
     guardar('pwa_supabase_refresh', this.User.SupabaseRefreshToken);
+    guardar('pwa_empresa_modulos', this.User.EmpresaModulos ? JSON.stringify(this.User.EmpresaModulos) : null);
+    guardar('pwa_empresa_config',  this.User.EmpresaConfig  ? JSON.stringify(this.User.EmpresaConfig)  : null);
 
     if (typeof PERMISOS !== 'undefined') PERMISOS.aplicarMenu();
   },
 
-  clearSession: function() {
+  /**
+   * @param {boolean} borrarDatosLocales  true solo en un cierre de sesión
+   *   VOLUNTARIO ya confirmado: borra también la cola offline. Al expirar la
+   *   sesión o revocarse el acceso NO se borra, para no perder registros de
+   *   campo que aún no subieron (se suben al volver a entrar).
+   */
+  clearSession: function(borrarDatosLocales) {
+    if (borrarDatosLocales === true) {
+      try { if (typeof localDB !== 'undefined' && localDB) localDB.close(); } catch (e) {}
+      try { if (typeof OFFLINE_DB_NAME !== 'undefined') indexedDB.deleteDatabase(OFFLINE_DB_NAME); } catch (e) {}
+    }
     localStorage.clear();
     location.reload();
   }
 };
+
+// Variables de entorno inyectadas por build_web.js (despliegue Vercel)
+if (typeof window !== 'undefined' && window.__MOTOR_ENV__) {
+  const env = window.__MOTOR_ENV__;
+  if (env.SUPABASE_URL)      AppState.Supabase.URL      = env.SUPABASE_URL;
+  if (env.SUPABASE_ANON_KEY) AppState.Supabase.ANON_KEY = env.SUPABASE_ANON_KEY;
+  if (env.SUPABASE_URL) {
+    const m = String(env.SUPABASE_URL).match(/^https:\/\/([^.]+)\./);
+    if (m) AppState.Supabase.PROJECT_REF = m[1];
+  }
+  if (env.APP_VERSION) AppState.VERSION = env.APP_VERSION;
+  if (env.DB_PROVIDER) AppState.DB_PROVIDER = env.DB_PROVIDER;
+  if (env.APPS_SCRIPT_URL) AppState.AppsScript.URL = env.APPS_SCRIPT_URL;
+  AppState.IS_PRODUCTION = true;
+}
+
+// 'sheets' era el nombre anterior del proveedor Apps Script.
+// Si la página la sirve el propio Apps Script (HtmlService la entrega desde
+// *.googleusercontent.com), el backend ES Apps Script: se usa google.script.run
+// aunque el valor por defecto sea 'supabase'. Así PROD_INDEX.html funciona
+// pegado en Apps Script sin tocar nada.
+AppState.DB_PROVIDER = (function (p) {
+  try { if (/\.googleusercontent\.com$/i.test(location.hostname)) return 'appscript'; } catch (e) {}
+  p = String(p || '').toLowerCase().replace(/[\s_-]/g, '');
+  return (p === 'appscript' || p === 'appsscript' || p === 'sheets' || p === 'gas' || p === 'drive') ? 'appscript' : 'supabase';
+})(AppState.DB_PROVIDER);
 </script>

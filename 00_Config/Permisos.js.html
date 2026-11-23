@@ -135,15 +135,97 @@ const PERMISOS = {
    * (2) el rol tiene permiso de lectura. Los módulos desactivados no
    * aparecen ni son alcanzables escribiendo la ruta.
    */
+  // Módulos que toda empresa necesita: no dependen del plan ni de la
+  // visibilidad configurable (ocultarlos dejaría al Admin sin salida).
+  TRANSVERSALES: ['00_Admin', '01_Usuarios', '04_Configuraciones'],
+
+  // Roles cuya visibilidad configura el Admin (el SuperAdmin ve siempre todo).
+  ROLES_CONFIGURABLES: ['Admin', 'Supervisor', 'Trabajador'],
+
+  esTransversal: function(modulo) { return this.TRANSVERSALES.indexOf(modulo) !== -1; },
+
+  /**
+   * Módulos de trabajo descubiertos en los subconfigs cargados. Es la fuente
+   * única para la configuración de visibilidad y para las tarjetas del panel:
+   * un módulo nuevo aparece solo en cuanto se registra su subconfig.
+   * @returns {{id:string,titulo:string,icono:string,usadoPor:string[]}[]}
+   */
+  modulos: function() {
+    if (this._cacheModulos) return this._cacheModulos;
+    const lista = [];
+    Object.keys(window).forEach(k => {
+      if (!/^SUBCONFIG_/.test(k)) return;
+      const sc = window[k];
+      const cm = sc && sc.Config_Modular;
+      if (!cm || !cm.NombreInterno || this.esTransversal(cm.NombreInterno)) return;
+      lista.push({
+        id:     cm.NombreInterno,
+        titulo: cm.Titulo || cm.NombreInterno.replace(/^\d+_/, '').replace(/_/g, ' '),
+        icono:  cm.Card_Icon || 'widgets',
+        _vars:  sc.Variables || {}
+      });
+    });
+    // Dependencias REF: ocultar un módulo deja vacíos los selectores que lo usan
+    lista.forEach(m => {
+      m.usadoPor = lista.filter(o => o.id !== m.id && Object.keys(o._vars).some(v =>
+        o._vars[v] && o._vars[v].relationalDataOrigin === m.id)).map(o => o.titulo);
+    });
+    lista.forEach(m => { delete m._vars; });
+    lista.sort((a, b) => a.id.localeCompare(b.id));
+    if (lista.length) this._cacheModulos = lista;
+    return lista;
+  },
+
+  /** ¿El plan de la empresa incluye el módulo? (empresas.modulos, lo decide el SuperAdmin) */
+  moduloEnPlan: function(modulo) {
+    if (this.rol() === 'SuperAdmin' || this.esTransversal(modulo)) return true;
+    const plan = (typeof AppState !== 'undefined' && AppState.User) ? AppState.User.EmpresaModulos : null;
+    // Plan vacío o ausente = todo contratado (mismo criterio que modulo_habilitado() en SQL)
+    if (!plan || typeof plan !== 'object' || !Object.keys(plan).length) return true;
+    return plan[modulo] === true;
+  },
+
+  /**
+   * Visibilidad que decide el Admin, por módulo y rol:
+   *   EmpresaConfig.Modulos_Visibles = { "07_IPERC": { trabajador: false }, … }
+   * Manda la configuración de la empresa (llega con el login); los ajustes
+   * locales solo cuentan si no hay ninguna (preview / sin red).
+   */
+  _visibilidad: function() {
+    const emp = (typeof AppState !== 'undefined' && AppState.User && AppState.User.EmpresaConfig) || null;
+    if (emp && emp.Modulos_Visibles && typeof emp.Modulos_Visibles === 'object') return emp.Modulos_Visibles;
+    const cfg = (typeof getAppSettings === 'function') ? getAppSettings() : {};
+    return (cfg.Modulos_Visibles && typeof cfg.Modulos_Visibles === 'object') ? cfg.Modulos_Visibles : {};
+  },
+
+  /** ¿El Admin dejó visible el módulo para este rol? (por defecto, sí) */
+  visibleParaRol: function(modulo, rol, visibilidad) {
+    const vis = visibilidad || this._visibilidad();
+    const clave = this.normalizar(rol || this.rol()).toLowerCase();
+    const v = vis[modulo] ? vis[modulo][clave] : undefined;
+    return v !== false && v !== 'false';
+  },
+
   moduloActivo: function(modulo) {
+    if (!this.moduloEnPlan(modulo)) return false;
+    // Compatibilidad: ajuste antiguo { "03_Inspecciones": false } para toda la empresa
     const cfg = (typeof getAppSettings === 'function') ? getAppSettings() : {};
     const activos = cfg.Modulos_Activos;
-    if (!activos || typeof activos !== 'object') return true;   // sin configuración, todo activo
-    return activos[modulo] !== false;
+    return !(activos && typeof activos === 'object' && activos[modulo] === false);
   },
 
   moduloVisible: function(modulo) {
-    return this.moduloActivo(modulo) && this.puede(modulo, 'leer');
+    if (!this.moduloActivo(modulo)) return false;
+    if (this.rol() !== 'SuperAdmin' && !this.esTransversal(modulo) && !this.visibleParaRol(modulo)) return false;
+    return this.puede(modulo, 'leer');
+  },
+
+  /** Explica por qué un módulo no se abre (para la pantalla de acceso restringido) */
+  motivoBloqueo: function(modulo) {
+    if (!this.moduloEnPlan(modulo)) return 'Este módulo no está incluido en el plan de tu empresa.';
+    if (!this.moduloActivo(modulo)) return 'Este módulo está desactivado para tu empresa.';
+    if (!this.puede(modulo, 'leer')) return 'Tu rol (' + this.etiqueta() + ') no tiene acceso a este módulo.';
+    return 'El administrador de tu empresa ocultó este módulo para el rol ' + this.etiqueta() + '.';
   },
 
   // -----------------------------------------------------------------------
@@ -179,8 +261,39 @@ const PERMISOS = {
    * Filtra un conjunto de filas según el alcance del rol en ese módulo.
    * Los módulos llaman a esto después de leer y antes de pintar.
    */
+  /** Empresa contratista del usuario en sesión ('' = ve todas). */
+  empresa: function() {
+    return String((typeof AppState !== 'undefined' && AppState.User && AppState.User.Empresa) || '')
+      .trim().toLowerCase().replace(/\s+/g, ' ');
+  },
+
+  /**
+   * Quita las filas de otra empresa. Es comodidad visual: quien manda es el
+   * backend (Code.gs → mismaEmpresa_), que ni siquiera las envía. Una fila sin
+   * Empresa es anterior a este campo y la ve cualquiera.
+   */
+  filtrarPorEmpresa: function(modulo, filas) {
+    const mia = this.empresa();
+    if (!mia || this.esSuperAdmin()) return filas;
+    // En las fichas de personal la empresa está en 'Empresa'. En los registros
+    // de módulo el backend la publica SIEMPRE como 'empresa_registro', venga
+    // de la columna 'Empresa' o de 'Empresa_Registro' (08_PETAR, donde
+    // 'Empresa' es la contratista que ejecuta el trabajo, no la dueña del
+    // registro). Por eso aquí no se mira 'Empresa' de un módulo.
+    const campos = (modulo === '01_Usuarios')
+      ? ['Empresa', 'empresa']
+      : ['empresa_registro', 'Empresa_Registro'];
+    return filas.filter(f => {
+      let suya = '';
+      campos.some(c => { const v = f && f[c]; if (v) { suya = String(v); return true; } return false; });
+      suya = suya.trim().toLowerCase().replace(/\s+/g, ' ');
+      return !suya || suya === mia;
+    });
+  },
+
   filtrarDatos: function(modulo, filas) {
     if (!Array.isArray(filas)) return [];
+    filas = this.filtrarPorEmpresa(modulo, filas);
     const alcance = this.alcance(modulo);
     if (alcance === 'todos') return filas;
 
@@ -210,25 +323,25 @@ const PERMISOS = {
    * y cada vez que cambian los módulos activos.
    */
   aplicarMenu: function() {
-    const mapa = {
-      '03_Inspecciones':'dnav-03', '05_Incidentes':'dnav-05', '06_Capacitaciones':'dnav-06',
-      '07_IPERC':'dnav-07', '08_PETAR':'dnav-08', '09_EPP':'dnav-09', '10_Charlas':'dnav-10',
-      '02_Reportes':'dnav-02', '04_Actos_Condiciones':'dnav-04ac'
+    // Todo acceso a un módulo (menú lateral, tarjetas del panel, barra
+    // inferior) lleva data-modulo="<id>": se oculta lo que el rol no ve.
+    // Un módulo nuevo solo necesita ese atributo en sus enlaces.
+    const vis = {};
+    const visible = mod => {
+      if (!(mod in vis)) {
+        let v = this.moduloVisible(mod);
+        // Gestión de usuarios en el menú: solo Admin y SuperAdmin (los demás
+        // leen 01_Usuarios para los selectores, pero no lo administran).
+        if (mod === '01_Usuarios') v = v && this.esAlMenos('Admin');
+        if (mod === '00_Admin') v = this.esSuperAdmin();
+        if (mod === '04_Configuraciones') v = this.esAlMenos('Admin');
+        vis[mod] = v;
+      }
+      return vis[mod];
     };
-    Object.keys(mapa).forEach(mod => {
-      const el = document.getElementById(mapa[mod]);
-      if (el) el.style.display = this.moduloVisible(mod) ? '' : 'none';
+    document.querySelectorAll('[data-modulo]').forEach(el => {
+      el.style.display = visible(el.getAttribute('data-modulo')) ? '' : 'none';
     });
-
-    // Administración de usuarios: solo Admin y SuperAdmin.
-    const userAdmin = document.getElementById('dnav-01');
-    if (userAdmin) userAdmin.style.display = this.esAlMenos('Admin') && this.moduloVisible('01_Usuarios') ? '' : 'none';
-
-    // Administración y Configuración: solo quien administra la plataforma
-    const admin = document.getElementById('dnav-00');
-    if (admin) admin.style.display = this.esSuperAdmin() ? '' : 'none';
-    const cfg = document.getElementById('dnav-04');
-    if (cfg) cfg.style.display = this.esAlMenos('Admin') ? '' : 'none';
   },
 
   /**
@@ -242,10 +355,20 @@ const PERMISOS = {
     const cont = document.getElementById('main-container');
     if (!cont) return;
 
-    ['crear', 'editar', 'eliminar'].forEach(accion => {
-      if (this.puede(modulo, accion)) return;
-      cont.querySelectorAll('[data-permiso="' + accion + '"]').forEach(el => el.remove());
-    });
+    const prohibidas = ['crear', 'editar', 'eliminar'].filter(a => !this.puede(modulo, a));
+    const selector = prohibidas.map(a => '[data-permiso="' + a + '"]').join(',');
+    const limpiar = () => { if (selector) cont.querySelectorAll(selector).forEach(el => el.remove()); };
+    limpiar();
+
+    // Las filas de la tabla (con su botón Editar) se pintan DESPUÉS, cuando
+    // llegan los datos: un observador las limpia al aparecer. Se reemplaza
+    // en cada vista para no acumular observadores de módulos anteriores.
+    if (this._observador) this._observador.disconnect();
+    this._observador = null;
+    if (selector && typeof MutationObserver !== 'undefined') {
+      this._observador = new MutationObserver(limpiar);
+      this._observador.observe(cont, { childList: true, subtree: true });
+    }
 
     // Aviso de alcance: el usuario debe saber por qué la lista se ve corta
     const texto = this.explicacionAlcance(modulo);

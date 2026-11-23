@@ -4,7 +4,7 @@
      ========================================================================= -->
 <div id="module-01_usuarios-detalle" class="module-view" style="display:none;">
     
-    <header class="flex justify-between items-center w-full mb-8">
+    <header class="flex justify-between items-center w-full mb-4 sm:mb-8">
       <div class="flex items-center gap-4">
         <button onclick="changeInternalView('01_Usuarios', 'Summary')" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white transition-colors text-secondary border border-outline-variant">
            <span class="material-symbols-outlined">arrow_back</span>
@@ -19,31 +19,31 @@
       </div>
       
       <div class="flex flex-col gap-1.5 items-end">
-         <button onclick="changeInternalView('01_Usuarios', 'Edicion', 'CURRENT')" class="h-7 px-3 rounded-lg bg-primary text-on-primary text-[9px] font-bold shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+         <button id="usr-det-editar" data-permiso="editar" onclick="editarUsuarioDelDetalle()" class="h-7 px-3 rounded-lg bg-primary text-on-primary text-[9px] font-bold shadow-sm hover:opacity-90 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
             <span class="material-symbols-outlined text-[14px]">edit</span>
             Editar
          </button>
       </div>
     </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-8">
        
        <!-- Card de Identidad -->
-       <div class="lg:col-span-1 space-y-6">
+       <div class="lg:col-span-1 space-y-4 sm:space-y-6">
           <div class="bg-white rounded-2xl border border-outline-variant p-2 shadow-sm overflow-hidden">
-             <div id="usr-det-photo-container" class="aspect-square bg-surface-container-low rounded-xl overflow-hidden mb-4">
+             <div id="usr-det-photo-container" class="aspect-video sm:aspect-square bg-surface-container-low rounded-xl overflow-hidden mb-3 sm:mb-4">
                 <img id="usr-det-photo" src="" class="w-full h-full object-cover hidden">
              </div>
-             <div class="p-4 pt-0">
+             <div class="p-3 sm:p-4 pt-0">
                 <p class="text-[10px] text-secondary font-black uppercase tracking-widest mb-1">Rol de Sistema</p>
                 <div id="usr-det-rol" class="text-sm font-bold text-primary">ADMINISTRADOR</div>
              </div>
           </div>
 
-          <div class="bg-surface-container-low rounded-2xl p-6 border border-outline-variant border-dashed">
+          <div class="bg-surface-container-low rounded-2xl p-4 sm:p-6 border border-outline-variant border-dashed">
              <h3 class="text-xs font-black text-on-surface uppercase mb-4 flex items-center gap-2">
                 <span class="material-symbols-outlined text-sm">security</span>
-                Audit Log
+                Rastro de auditoría
              </h3>
              <ul class="space-y-3">
                 <li class="flex flex-col gap-1">
@@ -52,36 +52,64 @@
                 </li>
              </ul>
           </div>
+
+          <!-- Seguridad de la cuenta: solo en el perfil PROPIO.
+               Nadie cambia aquí la clave de otra persona (eso va por la
+               Edición, que exige permiso y pasa por /api/usuarios). -->
+          <div id="usr-det-seguridad" class="bg-white rounded-2xl border border-outline-variant p-4 sm:p-6 shadow-sm" style="display:none;">
+             <h3 class="text-xs font-black text-on-surface uppercase mb-1.5 flex items-center gap-2">
+                <span class="material-symbols-outlined text-sm" aria-hidden="true">lock_reset</span>
+                Mi contraseña
+             </h3>
+             <p class="text-[11px] text-on-surface-variant leading-snug mb-3">
+                Si entraste con una contraseña temporal, cámbiala ahora. Solo tú debes conocerla:
+                cada registro que creas queda firmado con tu nombre.
+             </p>
+             <button type="button" onclick="abrirCambioMiPassword()"
+                class="w-full h-10 rounded-xl bg-primary text-on-primary text-[11px] font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">key</span>
+                Cambiar mi contraseña
+             </button>
+             <button type="button" onclick="PWA_SKILLS.escribirASoporte('Olvidé mi contraseña y necesito que la restablezcan.')"
+                class="w-full h-9 mt-2 rounded-xl border border-outline-variant text-[11px] font-bold text-secondary hover:bg-surface-container transition-colors flex items-center justify-center gap-1.5">
+                <span class="material-symbols-outlined text-[15px]" aria-hidden="true">support_agent</span>
+                ¿La olvidaste? Escribe a soporte
+             </button>
+          </div>
        </div>
 
        <!-- Información Detallada -->
-       <div class="lg:col-span-3 space-y-6">
-          <div class="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm">
-             <h2 class="text-sm font-black text-secondary uppercase tracking-widest mb-8 border-b border-outline-variant pb-2">Información Institucional</h2>
-             
-             <div class="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
+       <div class="lg:col-span-3 space-y-4 sm:space-y-6">
+          <div class="bg-white rounded-2xl border border-outline-variant p-4 sm:p-8 shadow-sm">
+             <h2 class="text-sm font-black text-secondary uppercase tracking-widest mb-4 sm:mb-8 border-b border-outline-variant pb-2">Información Institucional</h2>
+
+             <div class="det-grid grid grid-cols-2 gap-y-4 gap-x-4 sm:gap-y-8 sm:gap-x-12">
                 <div>
-                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Usuario (DNI)</label>
-                   <p id="usr-det-dni-v" class="text-base font-bold text-on-surface">--</p>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Usuario (DNI)</label>
+                   <p id="usr-det-dni-v" class="text-sm sm:text-base font-bold text-on-surface">--</p>
                 </div>
                 <div>
-                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Correo de Contacto</label>
-                   <p id="usr-det-email" class="text-base font-bold text-primary">--</p>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Área</label>
+                   <p id="usr-det-area" class="text-sm sm:text-base font-bold text-on-surface">--</p>
                 </div>
                 <div>
-                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Área</label>
-                   <p id="usr-det-area" class="text-base font-bold text-on-surface">--</p>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Puesto</label>
+                   <p id="usr-det-puesto" class="text-sm sm:text-base font-bold text-on-surface">--</p>
                 </div>
                 <div>
-                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-2">Puesto</label>
-                   <p id="usr-det-puesto" class="text-base font-bold text-on-surface">--</p>
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Empresa</label>
+                   <p id="usr-det-empresa" class="text-sm sm:text-base font-bold text-on-surface">--</p>
+                </div>
+                <div class="col-span-2">
+                   <label class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1">Correo de Contacto</label>
+                   <p id="usr-det-email" class="text-sm sm:text-base font-bold text-primary break-all">--</p>
                 </div>
              </div>
           </div>
 
-          <div class="bg-white rounded-2xl border border-outline-variant p-8 shadow-sm">
-             <h2 class="text-sm font-black text-on-surface-variant uppercase tracking-widest mb-6">Firma Digital Registrada</h2>
-             <div id="usr-det-sig-container" class="min-h-[12rem] bg-surface-container-low rounded-2xl border border-dashed border-outline-variant flex items-center justify-center overflow-hidden">
+          <div class="bg-white rounded-2xl border border-outline-variant p-4 sm:p-8 shadow-sm">
+             <h2 class="text-sm font-black text-on-surface-variant uppercase tracking-widest mb-3 sm:mb-6">Firma Digital Registrada</h2>
+             <div id="usr-det-sig-container" class="min-h-[6rem] sm:min-h-[12rem] bg-surface-container-low rounded-2xl border border-dashed border-outline-variant flex items-center justify-center overflow-hidden">
                 <!-- Inyectado por PWA_SKILLS.renderDriveMedia -->
              </div>
           </div>
@@ -92,6 +120,141 @@
 </div>
 
 <script>
+/**
+ * Abre la Edición del colaborador que se está viendo.
+ * Antes el botón pasaba siempre el literal 'CURRENT', así que al editar a
+ * cualquier otra persona el formulario no encontraba su ficha y se abría
+ * vacío, como un alta nueva. 'CURRENT' se reserva para el perfil propio:
+ * el router omite para él la comprobación de permiso (todos pueden editar
+ * sus propios datos, aunque su rol no pueda editar cuentas ajenas).
+ */
+/**
+ * Cambio de la PROPIA contraseña (autoservicio).
+ * Pide la contraseña actual —tener el celular abierto no debe bastar para
+ * secuestrar una cuenta— y al terminar cierra la sesión: los tokens viejos
+ * ya no valen y la persona debe comprobar que recuerda su clave nueva.
+ */
+function abrirCambioMiPassword() {
+  const prev = document.getElementById('mi-pass-modal');
+  if (prev) prev.remove();
+
+  const sop = (typeof AppState !== 'undefined' && AppState.Soporte) || {};
+  const wrap = document.createElement('div');
+  wrap.id = 'mi-pass-modal';
+  wrap.className = 'fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.setAttribute('aria-label', 'Cambiar mi contraseña');
+  wrap.innerHTML = `
+    <div class="absolute inset-0 bg-black/55 backdrop-blur-sm" data-cerrar></div>
+    <div class="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl border border-outline-variant shadow-2xl max-h-[92vh] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-200">
+
+      <div class="flex items-start gap-3 p-5 pb-3 border-b border-outline-variant">
+        <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">lock_reset</span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <h3 class="text-sm font-black text-on-surface leading-tight">Cambiar mi contraseña</h3>
+          <p class="text-[11px] text-on-surface-variant mt-0.5">Al guardar se cerrará tu sesión y deberás entrar con la contraseña nueva.</p>
+        </div>
+        <button type="button" data-cerrar class="w-8 h-8 rounded-full hover:bg-surface-container text-secondary flex items-center justify-center shrink-0" aria-label="Cerrar">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+        </button>
+      </div>
+
+      <form id="mi-pass-form" class="p-5 pt-4 overflow-y-auto space-y-4" autocomplete="off">
+        <div>
+          <label for="mi-pass-actual" class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Contraseña actual <span class="text-error">*</span></label>
+          <input id="mi-pass-actual" type="password" required autocomplete="current-password"
+                 class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <div>
+          <label for="mi-pass-nueva" class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Contraseña nueva <span class="text-error">*</span></label>
+          <input id="mi-pass-nueva" type="password" required autocomplete="new-password"
+                 class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+          <p class="text-[10px] text-on-surface-variant mt-1">Mínimo 8 caracteres, con letras y números.</p>
+        </div>
+        <div>
+          <label for="mi-pass-repetir" class="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Repetir la nueva <span class="text-error">*</span></label>
+          <input id="mi-pass-repetir" type="password" required autocomplete="new-password"
+                 class="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-container-lowest text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none">
+        </div>
+        <label class="flex items-center gap-2 text-[11px] font-bold text-secondary cursor-pointer">
+          <input type="checkbox" id="mi-pass-ver" class="w-4 h-4 rounded border-outline-variant">
+          Mostrar las contraseñas
+        </label>
+        <p class="text-[10px] text-on-surface-variant leading-snug">
+          Si olvidaste tu contraseña actual, no la cambies aquí: pídele al proveedor del
+          servicio que la restablezca${sop.Etiqueta ? ' (' + esc(sop.Etiqueta) + ')' : ''}.
+        </p>
+      </form>
+
+      <div class="p-4 border-t border-outline-variant flex gap-2">
+        <button type="button" data-cerrar class="h-11 px-4 rounded-xl border border-outline-variant text-xs font-bold text-on-surface hover:bg-surface-container transition-colors">Cancelar</button>
+        <button type="button" data-guardar class="flex-1 h-11 px-4 rounded-xl bg-primary text-on-primary text-xs font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5">
+          <span class="material-symbols-outlined text-[17px]" aria-hidden="true">save</span>Guardar y cerrar sesión
+        </button>
+      </div>
+    </div>`;
+
+  const cerrar = () => { wrap.remove(); document.removeEventListener('keydown', onEsc); };
+  const onEsc = e => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', onEsc);
+  wrap.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrar));
+
+  wrap.querySelector('#mi-pass-ver').addEventListener('change', e => {
+    const tipo = e.target.checked ? 'text' : 'password';
+    ['mi-pass-actual', 'mi-pass-nueva', 'mi-pass-repetir'].forEach(id => { wrap.querySelector('#' + id).type = tipo; });
+  });
+
+  const botonGuardar = wrap.querySelector('[data-guardar]');
+  botonGuardar.addEventListener('click', async () => {
+    const actual  = wrap.querySelector('#mi-pass-actual').value;
+    const nueva   = wrap.querySelector('#mi-pass-nueva').value;
+    const repetir = wrap.querySelector('#mi-pass-repetir').value;
+
+    if (!actual || !nueva) { PWA_SKILLS.toast('Completa los tres campos.', 'warning'); return; }
+    if (nueva !== repetir) { PWA_SKILLS.toast('La contraseña nueva y su repetición no coinciden.', 'warning', 4000); return; }
+    // Mismas reglas que el servidor (api/usuarios.js → passwordInvalida)
+    if (nueva.length < 8 || !/[A-Za-z]/.test(nueva) || !/[0-9]/.test(nueva)) {
+      PWA_SKILLS.toast('La contraseña debe tener al menos 8 caracteres y combinar letras y números.', 'warning', 5000);
+      return;
+    }
+
+    botonGuardar.disabled = true;
+    const etiquetaPrevia = botonGuardar.innerHTML;
+    botonGuardar.innerHTML = '<span class="material-symbols-outlined text-[17px] animate-spin" aria-hidden="true">progress_activity</span>Guardando…';
+
+    let r;
+    try { r = await DataService.changeOwnPassword(actual, nueva); }
+    catch (e) { r = { status: 'ERROR', msg: 'No se pudo cambiar la contraseña. Inténtalo de nuevo.' }; }
+
+    if (!r || r.status !== 'OK') {
+      botonGuardar.disabled = false;
+      botonGuardar.innerHTML = etiquetaPrevia;
+      PWA_SKILLS.toast((r && r.msg) || 'No se pudo cambiar la contraseña.', 'error', 6000);
+      return;
+    }
+
+    cerrar();
+    PWA_SKILLS.toast('Contraseña actualizada. Se cerrará tu sesión: vuelve a entrar con la contraseña nueva.', 'success', 5000);
+    // clearSession(false) borra la sesión y la credencial offline (la clave
+    // vieja ya no sirve en este equipo) pero CONSERVA la cola de registros
+    // sin sincronizar, que se suben al volver a entrar.
+    setTimeout(() => AppState.clearSession(false), 2600);
+  });
+
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.querySelector('#mi-pass-actual').focus(), 80);
+}
+
+function editarUsuarioDelDetalle() {
+  const dni = window._usrDetalleDNI || '';
+  const propio = (typeof AppState !== 'undefined' && AppState.User &&
+                  String(AppState.User.DNI) === String(dni));
+  changeInternalView('01_Usuarios', 'Edicion', (!dni || propio) ? 'CURRENT' : dni);
+}
+
 async function loadDetail_01_Usuarios(dni) {
   console.log(`Cargando Detalle Usuario: ${dni}`);
   document.getElementById('usr-det-name').innerText = 'Cargando...';
@@ -125,7 +288,19 @@ async function loadDetail_01_Usuarios(dni) {
         Status: AppState.User.Status
       };
     }
-    if (!user) { document.getElementById('usr-det-name').innerText = 'Usuario no encontrado'; return; }
+    if (!user) { window._usrDetalleDNI = ''; document.getElementById('usr-det-name').innerText = 'Usuario no encontrado'; return; }
+
+    // Lo recuerda el botón Editar de esta misma cabecera.
+    window._usrDetalleDNI = user.DNI || '';
+
+    // El bloque "Mi contraseña" solo aparece en el perfil propio: cambiar la
+    // clave de otra persona pasa por la Edición, que exige permiso de Admin.
+    const bloqueSeguridad = document.getElementById('usr-det-seguridad');
+    if (bloqueSeguridad) {
+      const esPropio = typeof AppState !== 'undefined' && AppState.User &&
+                       String(AppState.User.DNI) === String(user.DNI);
+      bloqueSeguridad.style.display = esPropio ? '' : 'none';
+    }
 
     document.getElementById('usr-det-name').innerText = user.Nombre_Completo || '--';
     document.getElementById('usr-det-id').innerText = `DNI: ${user.DNI}`;
@@ -133,6 +308,8 @@ async function loadDetail_01_Usuarios(dni) {
     document.getElementById('usr-det-email').innerText = user.Email || '--';
     document.getElementById('usr-det-area').innerText = user.Area || '--';
     document.getElementById('usr-det-puesto').innerText = user.Puesto || '--';
+    // Sin empresa = ve los registros de todas (ver Code.gs → mismaEmpresa_)
+    document.getElementById('usr-det-empresa').innerText = user.Empresa || 'Sin empresa';
     document.getElementById('usr-det-rol').innerText =
       (typeof PERMISOS !== 'undefined' ? PERMISOS.normalizar(user.Rol) : user.Rol) || '--';
 

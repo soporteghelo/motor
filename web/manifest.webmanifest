@@ -1,0 +1,18 @@
+{
+  "name": "SSOMA · Gestión de Seguridad Minera",
+  "short_name": "SSOMA",
+  "description": "Inspecciones, incidentes, IPERC, PETAR, EPP, capacitaciones y charlas de seguridad.",
+  "lang": "es-PE",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbf8ff",
+  "theme_color": "#1a237e",
+  "icons": [
+    { "src": "/icons/icon.svg",     "sizes": "any",     "type": "image/svg+xml" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

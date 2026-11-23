@@ -22,6 +22,9 @@ var SUBCONFIG_06_CAPACITACIONES = {
 
   Config_Modular: {
     NombreInterno:          "06_Capacitaciones",
+    // Miniatura de la tarjeta móvil: columna con la imagen (vacío = solo icono) e icono por defecto
+    Card_Image:             "Registro_Firmas",
+    Card_Icon:              "school",
     Titulo:                 "Capacitaciones",
     DRIVE_FOLDER_NAME:      "06_Capacitaciones_DB",
     GOOGLE_DOC_TEMPLATE_ID: "",              // se vincula desde Configuración → PDF
@@ -35,7 +38,7 @@ var SUBCONFIG_06_CAPACITACIONES = {
       { name: "DNI",       label: "DNI",       type: "text", colSpan: "md:col-span-2" },
       { name: "Nombre",    label: "Nombre",    type: "text", colSpan: "md:col-span-4" },
       { name: "Area_Asis", label: "Área",      type: "text", colSpan: "md:col-span-2" },
-      { name: "Nota",      label: "Nota",      type: "text", colSpan: "md:col-span-2" },
+      { name: "Nota",      label: "Nota",      type: "number", min: 0, max: 20, step: 0.1, colSpan: "md:col-span-2" },
       { name: "Resultado", label: "Resultado", type: "text", colSpan: "md:col-span-2" }
     ],
 
@@ -84,7 +87,8 @@ var SUBCONFIG_06_CAPACITACIONES = {
 
     // ── Cuándo y quién ──
     "Fecha_Ejecucion":    { type: "Date", required: true,  isFilter: true,  label: "Fecha de ejecución" },
-    "Duracion_Horas":     { type: "Text", required: false, isFilter: false, label: "Duración (horas)" },
+    "Duracion_Horas":     { type: "Text", required: false, isFilter: false, label: "Duración (horas)",
+                         control: "number", min: 0, max: 999, step: 0.5 },
     "Instructor":         { type: "Text", required: false, isFilter: true,  label: "Instructor" },
     "Entidad":            { type: "Text", required: false, isFilter: false, label: "Entidad capacitadora" },
     "Lugar":              { type: "Text", required: false, isFilter: false, label: "Lugar" },
@@ -97,7 +101,8 @@ var SUBCONFIG_06_CAPACITACIONES = {
     // ── Evaluación ──
     "Evaluacion":         { type: "Enum", required: false, isFilter: false, label: "¿Hubo evaluación?",
                             acceptedValues: ["Sí", "No"], allowOtherValues: false },
-    "Nota_Minima":        { type: "Text", required: false, isFilter: false, label: "Nota mínima aprobatoria" },
+    "Nota_Minima":        { type: "Text", required: false, isFilter: false, label: "Nota mínima aprobatoria",
+                         control: "number", min: 0, max: 20, step: 0.1 },
 
     "Estado":             { type: "Enum", required: true,  isFilter: true,  label: "Estado",
                             acceptedValues: ["Programada", "Ejecutada", "Cancelada"], allowOtherValues: false },
@@ -114,6 +119,113 @@ var SUBCONFIG_06_CAPACITACIONES = {
 
     "Registrado_Por":     { type: "Text",   required: false, isFilter: false, label: "Registrado por" },
     "Fecha_Registro":     { type: "Hidden", required: false }
+  },
+
+  Vistas: {
+    Subtitulo: "Formación, vigencia y asistencia",
+    Resumen: {
+      etiquetaCrear: "Registrar", ordenPor: "Fecha_Ejecucion",
+      columnas: [
+        { campo: "Nombre_Capacitacion", sub: "Tema", etiqueta: "Capacitación" },
+        { campo: "Tipo" },
+        { campo: "Fecha_Ejecucion", etiqueta: "Ejecutada" },
+        { campo: "Fecha_Vencimiento", etiqueta: "Vigencia", render: "vigencia" },
+        { campo: "Instructor" },
+        { campo: "Estado", tipo: "badge" }
+      ],
+      vacio: { icono: "school", titulo: "Sin capacitaciones registradas",
+               mensaje: "La capacitación que no está registrada no existe ante una fiscalización.",
+               accion: "Registrar capacitación" }
+    },
+    Edicion: {
+      tituloNuevo: "Registrar Capacitación", tituloEditar: "Editar Capacitación",
+      secciones: [
+        { titulo: "Qué se dictó", icono: "school",
+          campos: ["Nombre_Capacitacion", "Tipo", "Tema", "Modalidad"] },
+        { titulo: "Cuándo y quién", icono: "event",
+          campos: ["Fecha_Ejecucion", "Duracion_Horas", "Instructor", "Entidad", "Lugar"] },
+        { titulo: "Vigencia y evaluación", icono: "verified",
+          campos: ["Vigencia_Meses", "Fecha_Vencimiento", "Evaluacion", "Nota_Minima", "Estado", "Observaciones"] },
+        { titulo: "Evidencia", icono: "photo_camera", campos: ["Registro_Firmas", "Material"] }
+      ]
+    },
+    Detalle: {
+      titulo: "Nombre_Capacitacion", subtitulo: ["Tema", "Fecha_Ejecucion"],
+      secciones: [
+        { titulo: "Datos de la capacitación",
+          campos: ["Tipo", "Tema", "Modalidad", "Fecha_Ejecucion", "Duracion_Horas", "Instructor", "Entidad", "Lugar"] },
+        { titulo: "Vigencia y evaluación",
+          campos: ["Vigencia_Meses", "Fecha_Vencimiento", "Evaluacion", "Nota_Minima", "Estado"] },
+        { titulo: "Observaciones", campos: ["Observaciones"] }
+      ]
+    },
+    Hijos: { titulo: "Asistentes", icono: "groups",
+             vacio: "Sin lista de asistencia la capacitación no queda documentada.",
+             vacioDetalle: "Esta capacitación no registró asistentes." },
+    Badges: {
+      Estado: { "Programada": { tono: "info", icono: "schedule" },
+                "Ejecutada":  { tono: "ok",   icono: "check_circle" },
+                "Cancelada":  { tono: "bad",  icono: "cancel" } }
+    }
+  },
+};
+
+window.MOTOR_HOOKS = window.MOTOR_HOOKS || {};
+
+MOTOR_HOOKS["06_Capacitaciones"] = {
+  /** Vigencia = comparar el vencimiento con hoy; no es un campo guardado */
+  estado: function (r) {
+    if (!r.Fecha_Vencimiento) return { clave: "permanente", tono: "mute", texto: "Sin caducidad", dias: null };
+    const venc = new Date(r.Fecha_Vencimiento);
+    if (isNaN(venc)) return { clave: "permanente", tono: "mute", texto: "Sin caducidad", dias: null };
+    const dias = Math.round((venc - new Date(PWA_SKILLS.getPeruTime(false))) / 86400000);
+    if (dias < 0)  return { clave: "vencida",    tono: "bad",  texto: "Vencida hace " + Math.abs(dias) + " d", dias: dias };
+    if (dias <= 30) return { clave: "por-vencer", tono: "warn", texto: "Vence en " + dias + " d", dias: dias };
+    return { clave: "vigente", tono: "ok", texto: "Vigente", dias: dias };
+  },
+  columnas: {
+    vigencia: function (r) {
+      const v = this.estado(r);
+      return '<div class="text-[11px] font-semibold" style="color:var(--st-' + v.tono + '-fg)">' + esc(v.texto) + "</div>" +
+             (r.Fecha_Vencimiento ? '<div class="text-[10px] text-secondary tabular-nums">' + esc(r.Fecha_Vencimiento) + "</div>" : "");
+    }
+  },
+  // Los mismos tres tramos que estado(), pero escritos como condiciones para
+  // que los cuente la base. Una capacitacion SIN Fecha_Vencimiento no entra en
+  // ninguno (es "Sin caducidad"): las desigualdades no se cumplen con un nulo.
+  resumen: function () {
+    MOTOR_RENDER.kpis("06_Capacitaciones", [
+      { tono: "bad",  etiqueta: "Vencidas",   cond: { Fecha_Vencimiento: { lt: "@hoy" } } },
+      { tono: "warn", etiqueta: "Por vencer", cond: { Fecha_Vencimiento: { gte: "@hoy", lte: "@hoy+30" } } },
+      { tono: "ok",   etiqueta: "Vigentes",   cond: { Fecha_Vencimiento: { gt: "@hoy+30" } } },
+      { tono: "mute", etiqueta: "Horas-hombre", metrica: "sum", campo: "Duracion_Horas",
+        formato: h => h == null ? "—" : String(Math.round(parseFloat(h) || 0)) }
+    ]);
+  },
+  /** El vencimiento se calcula solo con la fecha y los meses de vigencia */
+  edicion: function (ctx) {
+    const r = ctx.root;
+    const fecha = r.querySelector("#m06-capacitaciones-f-Fecha_Ejecucion");
+    const meses = r.querySelector("#m06-capacitaciones-f-Vigencia_Meses");
+    const venc  = r.querySelector("#m06-capacitaciones-f-Fecha_Vencimiento");
+    if (!fecha || !meses || !venc) return;
+    const recalcular = () => {
+      const n = parseInt(meses.value, 10);
+      if (!fecha.value || !n) { if (meses.value === "No vence") venc.value = ""; return; }
+      const f = new Date(fecha.value);
+      if (isNaN(f)) return;
+      f.setMonth(f.getMonth() + n);
+      venc.value = f.toISOString().slice(0, 10);
+    };
+    if (!r.dataset.capCalc) {
+      fecha.addEventListener("change", recalcular);
+      meses.addEventListener("change", recalcular);
+      r.dataset.capCalc = "1";
+    }
+    if (ctx.nuevo) {
+      const estado = r.querySelector("#m06-capacitaciones-f-Estado");
+      if (estado && !estado.value) estado.value = "Ejecutada";
+    }
   }
 };
 </script>
