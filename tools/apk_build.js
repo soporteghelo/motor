@@ -132,6 +132,33 @@ if (fs.existsSync(manifiesto)) {
   }
 }
 
+// ── 3c. Icono del lanzador ────────────────────────────────────────────────
+/**
+ * Mismo motivo que el manifiesto: `android/` se regenera y trae el icono de
+ * Capacitor. Los PNG salen de `python tools/gen_icons.py` (web/icons/android/)
+ * y aquí se copian sobre `res/mipmap-*`. El fondo del icono adaptable va en el
+ * azul marino del logo, el mismo de su lienzo, para que no se vea un borde.
+ */
+const iconosAndroid = path.join(ROOT, 'web/icons/android');
+const resAndroid = path.join(ANDROID, 'app/src/main/res');
+if (fs.existsSync(iconosAndroid) && fs.existsSync(resAndroid)) {
+  let n = 0;
+  for (const dens of fs.readdirSync(iconosAndroid)) {
+    for (const f of fs.readdirSync(path.join(iconosAndroid, dens))) {
+      const dst = path.join(resAndroid, dens, f);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(path.join(iconosAndroid, dens, f), dst);
+      n++;
+    }
+  }
+  const fondo = path.join(resAndroid, 'values/ic_launcher_background.xml');
+  if (fs.existsSync(fondo)) {
+    fs.writeFileSync(fondo, '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n' +
+      '    <color name="ic_launcher_background">#071B39</color>\n</resources>\n');
+  }
+  console.log('🖼️  Icono del lanzador: ' + n + ' archivo(s) aplicados');
+}
+
 // ── 4. Compilar ───────────────────────────────────────────────────────────
 const gradlew = path.join(ANDROID, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
 if (!fs.existsSync(gradlew)) morir('Falta ' + gradlew + '. Vuelve a ejecutar: npx cap add android');

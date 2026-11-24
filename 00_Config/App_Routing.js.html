@@ -136,7 +136,7 @@ function showView(viewID, options) {
   container.innerHTML = '';
   
   if (viewID === 'Login') {
-    appTitle.innerText = "Acceso - PWA";
+    appTitle.innerText = "By Angel T.";
     container.innerHTML = renderLogin();
   } 
   else if (viewID === 'Menu') {
@@ -354,10 +354,11 @@ function renderLogin() {
           <div class="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-2xl"></div>
           
           <div class="flex flex-col items-center mb-10">
-             <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-primary/20 rotate-3">
-                <span class="material-symbols-outlined text-white text-3xl">verified_user</span>
+             <div class="w-24 h-24 rounded-[1.4rem] overflow-hidden mb-6 shadow-lg shadow-primary/20 flex items-center justify-center bg-primary">
+                <img src="/icons/logo.png" alt="Logo MOTOR SSOMA" width="96" height="96" class="w-full h-full object-cover"
+                     onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'material-symbols-outlined text-white text-4xl',textContent:'verified_user'}))">
              </div>
-             <h1 class="text-2xl font-black text-on-surface tracking-tighter">ScriptManager</h1>
+             <h1 class="text-2xl font-black text-on-surface tracking-tighter">MOTOR SSOMA</h1>
              <p class="text-xs text-secondary font-bold uppercase tracking-widest mt-1">Acceso Corporativo</p>
           </div>
 

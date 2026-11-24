@@ -258,6 +258,7 @@
        controles, que son acciones. */
     .top-bar { max-width: 100%; min-width: 0; gap: 8px; }
     .top-bar .title-group { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .top-bar .top-bar-logo { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px; display: block; }
     .top-bar #app-title {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
@@ -1690,6 +1691,10 @@
       </button>
       <!-- Avatar + Info -->
       <div class="relative z-10 px-5 pt-7 pb-5">
+        <div class="flex items-center gap-2 mb-4">
+          <img src="/icons/logo.png" alt="" width="28" height="28" class="rounded-lg" aria-hidden="true" onerror="this.remove()">
+          <span class="text-white/90 text-[11px] font-black uppercase tracking-[0.14em]">MOTOR SSOMA</span>
+        </div>
         <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black mb-3 shadow-xl border-2 border-white/25 bg-white/20 text-white" id="drawer-avatar">A</div>
         <div class="text-white font-black text-[15px] leading-snug" id="drawer-username">Admin Usuario</div>
         <div class="text-white/55 text-[11px] mt-0.5" id="drawer-email">admin@empresa.com</div>
@@ -1819,6 +1824,7 @@
               onclick="toggleNavDrawer()" aria-label="Abrir menú de navegación" aria-expanded="false" aria-controls="nav-drawer">
         <span class="material-symbols-outlined" aria-hidden="true">menu</span>
       </button>
+      <img src="/icons/logo.png" alt="" width="30" height="30" class="top-bar-logo" aria-hidden="true" onerror="this.remove()">
       <h1 id="app-title" class="text-base font-semibold">MOTOR PWA</h1>
     </div>
 

@@ -13,6 +13,7 @@ node_modules/
 # El proyecto android/ se regenera con "npx cap add android": no hace falta
 # versionarlo. Lo que NO se puede perder es la clave de firma.
 android/
+!web/icons/android/
 ios/
 .apk/
 .ota/

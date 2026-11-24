@@ -247,6 +247,18 @@ Apps Script; el proyecto de Supabase del código ya no existe.
     está permitido**: añadir un CDN y olvidar la CSP rompe la prueba en vez de
     romper la app en producción.
 
+### Iconos y logo
+
+La fuente única es `web/icons/logo-master.png` (1254 px, fondo marino plano).
+`python tools/gen_icons.py` (Pillow) genera de ahí `icon-192/512`,
+`icon-maskable-512` (símbolo al 80 %: sobrevive a máscaras circulares),
+`icon.svg`, `logo.png` (pantalla de acceso) y los mipmaps de Android en
+`web/icons/android/`. `tools/apk_build.js` copia esos mipmaps sobre `res/` y
+pone el fondo del icono adaptable en `#071B39`, porque `android/` no se
+versiona. `build_web.js` deja fuera de `dist/` el logo maestro y `android/`.
+Cambiar el logo = reemplazar el maestro y re-ejecutar el script; en la app
+instalada el icono del lanzador solo cambia con un APK nuevo.
+
 ### iOS
 
 `capacitor.config.json` ya sirve para iOS: `npx cap add ios` en un Mac. Hace

@@ -15,7 +15,7 @@ const SHELL   = 'motor-shell-' + VERSION;
 const CDN     = 'motor-cdn-v2';
 
 const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon.svg',
-                  '/icons/icon-192.png', '/icons/icon-512.png']
+                  '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/icons/logo.png']
                  // Tailwind, fuentes, iconos y SheetJS ya no vienen de un CDN:
                  // viven en /vendor. La lista la escribe build_web.js leyendo
                  // web/vendor/, para que no se quede vieja al cambiar una

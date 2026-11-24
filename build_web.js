@@ -207,7 +207,7 @@ const csp = cspDesdeVercel();
 const cabeza = `
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <script>window.__MOTOR_ENV__ = ${JSON.stringify(env).replace(/</g, '\\u003c')};</script>
-  <meta name="theme-color" content="#1a237e">
+  <meta name="theme-color" content="#071b39">
   <meta name="description" content="Gestión SSOMA para minería: inspecciones, incidentes, IPERC, PETAR, EPP, capacitaciones y charlas.">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -252,7 +252,12 @@ fs.mkdirSync(DIST, { recursive: true });
 fs.readdirSync(DIST).forEach(f => fs.rmSync(path.join(DIST, f), { recursive: true, force: true }));
 fs.writeFileSync(path.join(DIST, 'index.html'), html);
 
+// Material de trabajo que no debe viajar en cada bundle OTA ni en dist/:
+// el logo maestro (1254 px) y los iconos de lanzador de Android (los usa
+// tools/apk_build.js desde web/, no el navegador).
+const SOLO_FUENTE = [path.join(WEB, 'icons', 'logo-master.png'), path.join(WEB, 'icons', 'android')];
 const copiar = (src, dst) => {
+  if (SOLO_FUENTE.includes(src)) return;
   if (fs.statSync(src).isDirectory()) {
     fs.mkdirSync(dst, { recursive: true });
     fs.readdirSync(src).forEach(f => copiar(path.join(src, f), path.join(dst, f)));
