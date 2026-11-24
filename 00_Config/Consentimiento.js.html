@@ -413,8 +413,20 @@ const CONSENTIMIENTO = {
   // =======================================================================
   // 5 · PLANTILLA DEL PDF
   // =======================================================================
+  /**
+   * El generador de PDF lo carga PDF_TEMPLATE.cargarGenerador(), que prueba
+   * primero la copia local de /vendor y solo después el CDN.
+   *
+   * Antes esto cargaba el CDN directamente, y la CSP del proyecto
+   * (`script-src 'self' … https://cdn.jsdelivr.net`) no permite cdnjs: en
+   * dist/ y dentro del APK el script quedaba bloqueado y nadie podía firmar
+   * su constancia. Un solo cargador, un solo sitio donde arreglarlo.
+   */
   _cargarLibreria() {
     if (window.html2pdf) return Promise.resolve(true);
+    if (typeof PDF_TEMPLATE !== 'undefined' && PDF_TEMPLATE.cargarGenerador) {
+      return PDF_TEMPLATE.cargarGenerador();
+    }
     if (this._libPromesa) return this._libPromesa;
     const self = this;
     this._libPromesa = new Promise((resolve, reject) => {

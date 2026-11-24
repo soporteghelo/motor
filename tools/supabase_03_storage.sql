@@ -5,6 +5,7 @@
 --
 --   evidencias  privado · fotos, firmas y adjuntos de los registros
 --   documentos  privado · PDF generados y archivos de gestión
+--   informes    privado · el informe PDF de cada registro (derivado)
 --   publico     público · logos y recursos de marca de cada empresa
 --
 -- CONVENCIÓN DE RUTAS  <empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>
@@ -22,6 +23,7 @@ values
          'application/msword','application/vnd.ms-excel','text/csv','text/plain',
          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
          'application/vnd.ms-powerpoint','image/jpeg','image/png']),
+  ('informes',   'informes',   false, 10485760, array['application/pdf']),
   ('publico',    'publico',    true,   2097152,
    array['image/jpeg','image/png','image/webp'])
 on conflict (id) do update
@@ -57,6 +59,7 @@ begin
     when '08_PETAR' then return exists (select 1 from petar t where t.uuid = v_id);
     when '09_EPP' then return exists (select 1 from epp t where t.uuid = v_id);
     when '10_Charlas' then return exists (select 1 from charlas t where t.uuid = v_id);
+    when '11_Webs' then return exists (select 1 from webs t where t.uuid = v_id);
     -- Foto y firma del personal: las ve quien puede ver a esa persona
     when '01_Usuarios' then return exists (select 1 from usuarios u where u.id::text = v_id);
     else return false;
@@ -107,6 +110,112 @@ drop policy if exists documentos_del on storage.objects;
 create policy documentos_del on storage.objects for delete using (
   bucket_id = 'documentos' and auth_rol() in ('superadmin','admin')
                      and (auth_rol() = 'superadmin' or storage_empresa(name) = auth_empresa())
+);
+
+create or replace function storage_puede_archivar(ruta text) returns boolean
+language plpgsql stable security invoker set search_path = public as $$
+declare
+  v_mod text := split_part(ruta, '/', 2);
+  v_id  text := split_part(ruta, '/', 3);
+begin
+  if auth_rol() = 'superadmin' then return true; end if;
+  if storage_empresa(ruta) is distinct from auth_empresa() then return false; end if;
+  case v_mod
+    when '02_Reportes' then return exists (
+      select 1 from reportes t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and t.creado_por_dni = auth_dni()) or t.creado_por_dni = auth_dni()));
+    when '03_Inspecciones' then return exists (
+      select 1 from inspecciones t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.auditor_dni = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '04_Actos_Condiciones' then return exists (
+      select 1 from actos_condiciones t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.moderado_por = auth_dni() or t.reportado_por = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '05_Incidentes' then return exists (
+      select 1 from incidentes t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.trabajador_dni = auth_dni() or t.reportado_por = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '06_Capacitaciones' then return exists (
+      select 1 from capacitaciones t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and t.creado_por_dni = auth_dni()) or t.creado_por_dni = auth_dni()));
+    when '07_IPERC' then return exists (
+      select 1 from iperc t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.revisado_por = auth_dni() or t.elaborado_por = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '08_PETAR' then return exists (
+      select 1 from petar t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.supervisor_dni = auth_dni() or t.aprobado_por = auth_dni() or t.ejecutante_dni = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '09_EPP' then return exists (
+      select 1 from epp t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.entregado_por = auth_dni() or t.trabajador_dni = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '10_Charlas' then return exists (
+      select 1 from charlas t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or (auth_rol() = 'supervisor' and (t.creado_por_dni = auth_dni() or t.expositor_dni = auth_dni())) or t.creado_por_dni = auth_dni()));
+    when '11_Webs' then return exists (
+      select 1 from webs t
+       where t.uuid = v_id
+         and (auth_rol() = 'admin' or t.creado_por_dni = auth_dni()));
+    else return false;
+  end case;
+end $$;
+
+create or replace function informe_huerfano(ruta text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_mod text := split_part(ruta, '/', 2);
+  v_id  text := split_part(ruta, '/', 3);
+begin
+  case v_mod
+    when '02_Reportes' then return not exists (select 1 from reportes t where t.uuid = v_id);
+    when '03_Inspecciones' then return not exists (select 1 from inspecciones t where t.uuid = v_id);
+    when '04_Actos_Condiciones' then return not exists (select 1 from actos_condiciones t where t.uuid = v_id);
+    when '05_Incidentes' then return not exists (select 1 from incidentes t where t.uuid = v_id);
+    when '06_Capacitaciones' then return not exists (select 1 from capacitaciones t where t.uuid = v_id);
+    when '07_IPERC' then return not exists (select 1 from iperc t where t.uuid = v_id);
+    when '08_PETAR' then return not exists (select 1 from petar t where t.uuid = v_id);
+    when '09_EPP' then return not exists (select 1 from epp t where t.uuid = v_id);
+    when '10_Charlas' then return not exists (select 1 from charlas t where t.uuid = v_id);
+    when '11_Webs' then return not exists (select 1 from webs t where t.uuid = v_id);
+    else return false;
+  end case;
+end $$;
+revoke all on function informe_huerfano(text) from public;
+grant execute on function informe_huerfano(text) to authenticated;
+
+-- ── bucket informes (privado · un PDF por registro) ──
+drop policy if exists informes_sel on storage.objects;
+create policy informes_sel on storage.objects for select using (
+  bucket_id = 'informes' and storage_puede_leer(name)
+);
+drop policy if exists informes_ins on storage.objects;
+create policy informes_ins on storage.objects for insert with check (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+);
+-- Sobrescribir es lo normal aquí: el informe se regenera con cada cambio del
+-- registro y su nombre no cambia (uno por registro, no uno por edición).
+drop policy if exists informes_upd on storage.objects;
+create policy informes_upd on storage.objects for update using (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+) with check (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+);
+-- Se borra al eliminar el registro: quien podía reescribirlo o, cuando el
+-- registro ya no existe (informe huérfano), quien pueda verlo dentro de su
+-- empresa. En la práctica eso es el Admin, que es el único rol con canDelete
+-- en los diez módulos y, por tanto, el único que llega a este caso: la app
+-- borra primero el registro y después su informe.
+drop policy if exists informes_del on storage.objects;
+create policy informes_del on storage.objects for delete using (
+  bucket_id = 'informes' and (
+       storage_puede_archivar(name)
+    or (storage_empresa(name) = auth_empresa() and informe_huerfano(name))
+  )
 );
 
 -- ── bucket publico (lectura abierta, escritura del admin) ──

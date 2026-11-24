@@ -17,7 +17,7 @@ values (
   'Empresa Demostración S.A.C.',
   '20000000001',
   'trial',
-  '{"02_Reportes":true,"03_Inspecciones":true,"04_Actos_Condiciones":true,"05_Incidentes":true,"06_Capacitaciones":true,"07_IPERC":true,"08_PETAR":true,"09_EPP":true,"10_Charlas":true}'::jsonb,
+  '{"02_Reportes":true,"03_Inspecciones":true,"04_Actos_Condiciones":true,"05_Incidentes":true,"06_Capacitaciones":true,"07_IPERC":true,"08_PETAR":true,"09_EPP":true,"10_Charlas":true,"11_Webs":true}'::jsonb,
   current_date + interval '30 days'
 )
 on conflict (id) do nothing;

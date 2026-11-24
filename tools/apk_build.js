@@ -102,6 +102,36 @@ if (!fs.existsSync(local) || fs.readFileSync(local, 'utf8') !== deseado) {
   console.log('📝 android/local.properties actualizado');
 }
 
+// ── 3b. Permisos del manifiesto ───────────────────────────────────────────
+/**
+ * `android/` NO se versiona: lo regenera `npx cap add android`. Cualquier
+ * ajuste nativo se vuelve a aplicar aquí, de forma idempotente, para que no
+ * se pierda al regenerarlo.
+ *
+ * CAMERA la necesita Face_Capture, que usa getUserMedia: Capacitor pide el
+ * permiso en caliente, pero Android no concede uno que no esté declarado, así
+ * que sin esta línea la captura de rostro falla dentro del APK.
+ *
+ * uses-feature con required="false" es obligatorio al declarar CAMERA: si no,
+ * Google Play da por hecho que la cámara es imprescindible y oculta la app a
+ * los dispositivos que no la tengan.
+ */
+const manifiesto = path.join(ANDROID, 'app/src/main/AndroidManifest.xml');
+if (fs.existsSync(manifiesto)) {
+  let xml = fs.readFileSync(manifiesto, 'utf8');
+  const lineas = [
+    '<uses-permission android:name="android.permission.CAMERA" />',
+    '<uses-feature android:name="android.hardware.camera" android:required="false" />'
+  ].filter(l => !xml.includes(l));
+  if (lineas.length) {
+    const ancla = '<uses-permission android:name="android.permission.INTERNET" />';
+    if (!xml.includes(ancla)) morir('No encontré el permiso INTERNET en AndroidManifest.xml.');
+    xml = xml.replace(ancla, ancla + '\n    ' + lineas.join('\n    '));
+    fs.writeFileSync(manifiesto, xml);
+    console.log('📝 AndroidManifest.xml: +' + lineas.length + ' línea(s) (cámara)');
+  }
+}
+
 // ── 4. Compilar ───────────────────────────────────────────────────────────
 const gradlew = path.join(ANDROID, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew');
 if (!fs.existsSync(gradlew)) morir('Falta ' + gradlew + '. Vuelve a ejecutar: npx cap add android');

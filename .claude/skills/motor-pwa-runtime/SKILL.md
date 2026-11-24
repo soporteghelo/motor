@@ -1,6 +1,6 @@
 ---
 name: motor-pwa-runtime
-description: Implementa y mantiene comportamientos reutilizables del frontend de MOTOR PWA, incluidos archivos multimedia, firmas, borradores sin conexión, campos dinámicos, sincronización, filtros, exportaciones, tablas responsivas, estados de carga y notificaciones. Úsala al modificar `PWA_SKILLS`, un módulo que invoca `PWA_SKILLS` o comportamientos compartidos de `00_Config`.
+description: Implementa y mantiene comportamientos reutilizables del frontend de MOTOR PWA, incluidos archivos multimedia, firmas, el informe PDF de cada registro (visor, archivo en Drive/Storage y envío por WhatsApp), borradores sin conexión, campos dinámicos, sincronización, filtros, exportaciones, tablas responsivas, estados de carga y notificaciones. Úsala al modificar `PWA_SKILLS`, `PDF_TEMPLATE`, un módulo que los invoca o comportamientos compartidos de `00_Config`.
 ---
 
 # Motor PWA: funciones compartidas
@@ -9,7 +9,7 @@ Usa la implementación canónica ubicada en `../../../00_Config/Global_Skills.js
 
 ## Flujo de trabajo
 
-1. Identifica la API existente de `PWA_SKILLS` que corresponde al requerimiento; consulta la [referencia de API](references/api.md).
+1. Identifica la API existente de `PWA_SKILLS` que corresponde al requerimiento; consulta la [referencia de API](references/api.md). Para el informe PDF de un registro —visor, archivo automático, borrado y envío por WhatsApp—, la referencia es [informes.md](references/informes.md).
 2. Modifica la implementación canónica o el módulo que la invoca, preservando el comportamiento específico del módulo.
 3. Mantén compatibles el ruteador, permisos y flujo sin conexión.
 4. Ejecuta `node generate_preview.js` después de editar `00_Config` o cualquier módulo.
@@ -32,5 +32,10 @@ Usa la implementación canónica ubicada en `../../../00_Config/Global_Skills.js
   `PWA_SKILLS.mejorarSelects(root)` están para casos a mano, y
   `data-sin-buscador` lo desactiva en un campo concreto. Contrato en la skill
   `motor-pwa-design`.
+- El informe PDF de un registro **no se programa por módulo**: `PDF_TEMPLATE`
+  lo arma del subconfig, lo muestra en un visor dentro de la app (nunca una
+  ventana nueva), lo archiva en Drive/Storage al sincronizar el registro y en
+  cada cambio, lo borra con el registro y lo envía por WhatsApp. Contrato y
+  trampas en [informes.md](references/informes.md).
 - Usa `renderSkeleton()`, `showEmptyState()` y `finishLoading()` para listas asíncronas.
 - Conserva etiquetas accesibles, foco visible y los tokens claro/oscuro de la aplicación.

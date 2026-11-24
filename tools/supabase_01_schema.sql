@@ -452,3 +452,19 @@ create table if not exists charlas_asistentes (
   actualizado_en timestamptz not null default now()
 );
 create index if not exists idx_charlas_asistentes_padre on charlas_asistentes(parent_uuid);
+
+-- ── 11_Webs ───────────────────────────────────────────────────────
+create table if not exists webs (
+  empresa_id     uuid not null references empresas(id) on delete cascade,
+  uuid           text primary key,
+  titulo         text,
+  clasificacion  text,
+  link_web       text,
+  descripcion    text,
+  creado_por     uuid references usuarios(id),
+  creado_por_dni text,
+  creado_en      timestamptz not null default now(),
+  actualizado_en timestamptz not null default now()
+);
+create index if not exists idx_webs_empresa on webs(empresa_id);
+create index if not exists idx_webs_creador on webs(creado_por_dni);

@@ -202,6 +202,19 @@ const AppState = {
     URL: 'https://script.google.com/macros/s/AKfycbwBlrHXwyx2HouwZJniNiUJFdsS54URi-55mh4rWnK8ZdMTmpjUuxWMvIMMCXWk4KNC4A/exec'
   },
 
+  // --- ACTUALIZACIÓN POR AIRE (app instalable) ---
+  // De aquí baja la app instalada su versión nueva, sin reinstalar el APK.
+  // Es un simple almacén de archivos (latest.json + los .zip): no tiene nada
+  // que ver con la base de datos, así que da igual el DB_PROVIDER.
+  //
+  // Son los archivos adjuntos de una publicación fija del repositorio, que
+  // debe ser PÚBLICO: el teléfono los descarga sin iniciar sesión.
+  // Se publican con `npm run ota:publish` (ver tools/ota_publish.js).
+  // En un despliegue se puede sustituir con la variable de entorno OTA_URL.
+  OTA: {
+    URL: 'https://github.com/soporteghelo/motor/releases/download/ota'
+  },
+
   // --- CONFIGURACIÓN SUPABASE ---
   // En Vercel, build_web.js reemplaza estos valores por las variables de
   // entorno SUPABASE_URL / SUPABASE_ANON_KEY (window.__MOTOR_ENV__); los de

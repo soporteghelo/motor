@@ -116,6 +116,7 @@ const MOTOR_RENDER = {
     if (/^hora|_hora|hora_/i.test(nombre))                                   return 'time';
     if (/(^|_)(email|correo)(_|$)/i.test(nombre))                            return 'email';
     if (/(^|_)(celular|telefono|tel|movil|whatsapp)(_|$)/i.test(nombre))     return 'tel';
+    if (/(^|_)(link|url|sitio_web|website)(_|$)/i.test(nombre))              return 'url';
     // Un campo que guarda una cantidad no debe aceptar letras: «Días de
     // descanso» con «dsdsds» dentro no es un error del usuario, es un campo
     // mal declarado. Lo seguro es `control: "number"` en el subconfig; esta
@@ -703,6 +704,10 @@ const MOTOR_RENDER = {
       pon('autocomplete', 'tel');
       // Dígitos, espacios y los signos de un teléfono; nada de letras
       pon('pattern', def.pattern || '[0-9+()\s-]{6,20}');
+    } else if (ctl === 'url') {
+      pon('inputmode', 'url');
+      pon('autocomplete', 'url');
+      pon('pattern', def.pattern || 'https?://.+');
     } else if (ctl === 'text' || ctl === 'textarea') {
       pon('maxlength', def.maxLength);
     }
@@ -752,21 +757,49 @@ const MOTOR_RENDER = {
     } else if (ctl === 'imagen' || ctl === 'archivo') {
       const multiple = (def.type === 'Image_Collection') ? ' multiple' : '';
       const accept = (ctl === 'imagen') ? 'image/*' : '';
-      control = '<div class="flex items-center gap-3 flex-wrap">' +
-          '<button type="button" onclick="document.getElementById(\'' + esc(id) + '\').click()" ' +
-            'aria-label="Agregar ' + esc(lbl) + '" ' +
+      const datos = 'data-campo="' + esc(nombre) + '" data-modulo="' + esc(this._mod(modulo)) + '" ' +
+                    'onchange="MOTOR_RENDER.tomarArchivos(this)"';
+      // Botón cuadrado de 80px: muy por encima del área táctil mínima y con
+      // el mismo aspecto que ya tenían estos campos.
+      const tecla = (destino, icono, texto, etiquetaAria) =>
+          '<button type="button" onclick="document.getElementById(\'' + esc(destino) + '\').click()" ' +
+            'aria-label="' + esc(etiquetaAria) + '" ' +
             'class="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant bg-surface flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container transition-all text-secondary">' +
-            '<span class="material-symbols-outlined text-2xl" aria-hidden="true">' + (ctl === 'imagen' ? 'add_a_photo' : 'upload_file') + '</span>' +
-            '<span class="text-[12px] font-bold mt-0.5 uppercase">' + (ctl === 'imagen' ? 'Foto' : 'Archivo') + '</span></button>' +
-          '<input type="file" id="' + esc(id) + '"' + multiple + (accept ? ' accept="' + accept + '"' : '') + ' style="display:none;" ' +
-            'data-campo="' + esc(nombre) + '" data-modulo="' + esc(this._mod(modulo)) + '" ' +
-            'onchange="MOTOR_RENDER.tomarArchivos(this)">' +
-          '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+            '<span class="material-symbols-outlined text-2xl" aria-hidden="true">' + icono + '</span>' +
+            '<span class="text-[12px] font-bold mt-0.5 uppercase">' + texto + '</span></button>';
+
+      if (ctl === 'imagen') {
+        // DOS entradas, no una. `capture="environment"` abre la cámara trasera
+        // directamente; sin ese atributo se abre el selector de archivos.
+        //
+        // Hace falta separarlas porque dentro del APK el selector de Capacitor
+        // NO ofrece la cámara: solo con `capture` lanza ACTION_IMAGE_CAPTURE
+        // (ver BridgeWebChromeClient). Y no se puede poner `capture` en la
+        // única entrada, porque entonces se pierde el acceso a la galería:
+        // a veces la foto ya está tomada.
+        //
+        // La cámara va primero: en campo es lo que se usa casi siempre.
+        control = '<div class="flex items-center gap-3 flex-wrap">' +
+            tecla(id + '-cam', 'photo_camera', 'Cámara', 'Tomar foto de ' + lbl + ' con la cámara') +
+            tecla(id, 'photo_library', 'Galería', 'Elegir ' + lbl + ' de la galería') +
+            // La cámara entrega una foto cada vez: nunca lleva `multiple`.
+            '<input type="file" id="' + esc(id) + '-cam" accept="image/*" capture="environment" ' +
+              'style="display:none;" ' + datos + '>' +
+            '<input type="file" id="' + esc(id) + '"' + multiple + ' accept="image/*" ' +
+              'style="display:none;" ' + datos + '>' +
+            '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+      } else {
+        control = '<div class="flex items-center gap-3 flex-wrap">' +
+            tecla(id, 'upload_file', 'Archivo', 'Agregar ' + lbl) +
+            '<input type="file" id="' + esc(id) + '"' + multiple + (accept ? ' accept="' + accept + '"' : '') +
+              ' style="display:none;" ' + datos + '>' +
+            '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+      }
 
     } else {
       const tipo = (ctl === 'date') ? 'date' : (ctl === 'time') ? 'time'
                  : (ctl === 'number') ? 'number' : (ctl === 'password') ? 'password'
-                 : (ctl === 'email') ? 'email' : (ctl === 'tel') ? 'tel' : 'text';
+                 : (ctl === 'email') ? 'email' : (ctl === 'tel') ? 'tel' : (ctl === 'url') ? 'url' : 'text';
       // DNI: máximo 8 caracteres (ver attrsDNI en Global_Config)
       const dni = (tipo === 'text') ? attrsDNI(nombre, def.label) : '';
       control = '<input type="' + tipo + '" id="' + esc(id) + '"' + dni +
@@ -1200,6 +1233,11 @@ const MOTOR_RENDER = {
           '<button id="' + esc(s) + '-det-pdf" ' +
             'class="h-7 px-3 rounded-lg border border-outline-variant bg-white text-[9px] font-bold text-on-surface hover:bg-surface-container transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">' +
             '<span class="material-symbols-outlined text-[14px]" aria-hidden="true">picture_as_pdf</span>PDF</button>' +
+          // El informe archivado se envía por WhatsApp: adjunto si el
+          // dispositivo sabe compartir archivos, y si no su enlace.
+          '<button id="' + esc(s) + '-det-enviar" ' +
+            'class="h-7 px-3 rounded-lg border border-outline-variant bg-white text-[9px] font-bold text-on-surface hover:bg-surface-container transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">' +
+            '<span class="material-symbols-outlined text-[14px]" aria-hidden="true">share</span>Enviar</button>' +
         '</div></header>' +
       '<div class="max-w-4xl mx-auto space-y-3 sm:space-y-5">' +
         '<div id="' + esc(s) + '-det-extra"></div>' + secciones + hijos + galeria +
@@ -1242,8 +1280,8 @@ const MOTOR_RENDER = {
       if (tit) tit.textContent = 'Registro no encontrado';
       // Sin registro no hay nada que editar ni que imprimir: dejar los
       // botones activos llevaba a exportar un PDF con datos de ejemplo.
-      const sinDatos = q(s + '-det-editar'), sinPdf = q(s + '-det-pdf');
-      [sinDatos, sinPdf].forEach(b => { if (b) b.classList.add('hidden'); });
+      const sinDatos = q(s + '-det-editar'), sinPdf = q(s + '-det-pdf'), sinEnviar = q(s + '-det-enviar');
+      [sinDatos, sinPdf, sinEnviar].forEach(b => { if (b) b.classList.add('hidden'); });
       const cuerpo = root.querySelector('#' + CSS.escape(s + '-det-cuerpo')) || root;
       const aviso = document.createElement('div');
       aviso.id = s + '-det-aviso';
@@ -1261,13 +1299,18 @@ const MOTOR_RENDER = {
     // Registro encontrado: por si se venia de uno que no existia
     const avisoPrevio = root.querySelector('#' + CSS.escape(s + '-det-aviso'));
     if (avisoPrevio) avisoPrevio.remove();
-    [q(s + '-det-editar'), q(s + '-det-pdf')].forEach(b => { if (b) b.classList.remove('hidden'); });
+    [q(s + '-det-editar'), q(s + '-det-pdf'), q(s + '-det-enviar')].forEach(b => { if (b) b.classList.remove('hidden'); });
 
     // Acciones de la cabecera (sin interpolar el UUID en onclick)
     const btnEd = q(s + '-det-editar');
     if (btnEd) btnEd.onclick = () => changeInternalView(modulo, 'Edicion', r.UUID);
+    // Título del documento: lo que la persona lee en la cabecera del Detalle,
+    // no el UUID (en el PDF y en WhatsApp un UUID no le dice nada a nadie).
+    const tituloDoc = String(r[V.Detalle.titulo] || '').trim() || this.titulo(modulo);
     const btnPdf = q(s + '-det-pdf');
-    if (btnPdf) btnPdf.onclick = () => PDF_TEMPLATE.exportarRegistro(modulo, r.UUID, this.titulo(modulo) + ' ' + r.UUID);
+    if (btnPdf) btnPdf.onclick = () => PDF_TEMPLATE.exportarRegistro(modulo, r.UUID, tituloDoc);
+    const btnEnviar = q(s + '-det-enviar');
+    if (btnEnviar) btnEnviar.onclick = e => PDF_TEMPLATE.enviarPorWhatsApp(modulo, r.UUID, tituloDoc, e.currentTarget);
 
     if (tit) tit.textContent = r[V.Detalle.titulo] || this.titulo(modulo);
 

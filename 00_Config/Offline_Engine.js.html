@@ -116,6 +116,47 @@ let _syncEnCurso = null;        // promesa de la sincronización activa
 let _syncRepetir = null;        // opciones de una llamada que llegó durante otra
 let _syncTimeout = null;
 
+/**
+ * ¿El mensaje de error dice "no se pudo preguntar" en vez de "el servidor dijo
+ * que no"? Es la última red de seguridad por si un proveedor olvida marcar
+ * `transitorio`: confundir ambas cosas bloquea registros que estaban bien.
+ */
+/** ¿Corre dentro del APK (Capacitor) y no en un navegador? */
+function enAppInstalada() {
+    return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' &&
+              window.Capacitor.isNativePlatform());
+}
+
+const RED_CAIDA = /sin conexi[oó]n|failed to fetch|networkerror|load failed|net::|err_internet|err_network|timeout|tiempo de espera|HTTP 5\d\d|servidor ocupado/i;
+function esFalloDeRed(msg) {
+    return RED_CAIDA.test(String(msg || ''));
+}
+
+/**
+ * Desbloquea lo que se bloqueó por quedarse sin señal, no por un rechazo real.
+ *
+ * Antes, un fallo de red contaba como rechazo: cinco reintentos sin cobertura
+ * y el registro quedaba bloqueado para siempre del envío automático. Esto
+ * recupera los que ya están así en el dispositivo; sin ello, los registros
+ * atrapados por ese error seguirían sin subir aunque el fallo esté corregido.
+ */
+async function rehabilitarBloqueadosPorRed() {
+    if (!localDB) return 0;
+    let items = [];
+    try { items = await readAllPendings(); } catch (e) { return 0; }
+    const recuperables = items.filter(it => it.bloqueado && esFalloDeRed(it.ultimoError));
+    if (!recuperables.length) return 0;
+    await new Promise((resolve) => {
+        const tx = localDB.transaction([OFFLINE_STORE_NAME], 'readwrite');
+        const store = tx.objectStore(OFFLINE_STORE_NAME);
+        recuperables.forEach(it => { it.bloqueado = false; it.rechazos = 0; store.put(it); });
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+    });
+    console.log('[Sync] ' + recuperables.length + ' registro(s) bloqueados por falta de señal vuelven a la cola.');
+    return recuperables.length;
+}
+
 /** Solo se sube con una sesión real: sin JWT, RLS rechazaría todo y se contarían rechazos falsos. */
 function sesionListaParaSync() {
     // AppState es un `const` global: NO cuelga de window, se consulta con typeof
@@ -157,14 +198,18 @@ async function _sincronizarCola(opciones) {
     if (!localDB) { try { await initOfflineDB(); } catch (e) { return Object.assign(resumen, { motivo: 'sin-db' }); } }
 
     const todos = await readAllPendings();
-    if (!navigator.onLine)       { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-red' }); }
+    // En el navegador, navigator.onLine es fiable y ahorra un intento inútil.
+    // Dentro del APK NO lo es (el WebView de Android no lo actualiza sin el
+    // plugin de red), así que ahí se intenta siempre: si no hay señal el fallo
+    // es transitorio y no cuenta. Confiar en él aquí dejaría la cola parada.
+    if (!navigator.onLine && !enAppInstalada()) { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-red' }); }
     if (!sesionListaParaSync())  { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-sesion' }); }
 
     const aSubir = opciones.forzar ? todos : todos.filter(it => !it.bloqueado);
     if (aSubir.length === 0) { await actualizarIndicadorSync(); return finalizarResumen(resumen); }
 
     console.log(`📡 Sync de ${aSubir.length} transacciones pendientes...`);
-    if (window.updateSyncUI) updateSyncUI('Sincronizando…', false);
+    if (window.updateSyncUI) updateSyncUI('Enviando…', false);
 
     const byModule = {};
     aSubir.forEach(item => {
@@ -200,6 +245,14 @@ async function _sincronizarCola(opciones) {
           await clearQueueAfterSync(hechos);
           resumen.subidos += hechos.length;
           modulosConCambios.push(moduleName);
+          // El informe PDF del registro se archiva cuando el registro ya está
+          // en el servidor, nunca antes: sin señal no hay dónde subirlo. Aquí
+          // solo se apunta (es inmediato); generarlos es lo que viene después,
+          // fuera de este bucle, para no retrasar el resto de la cola.
+          if (typeof PDF_TEMPLATE !== 'undefined' && PDF_TEMPLATE.encolarArchivo) {
+            try { PDF_TEMPLATE.encolarArchivo(moduleName, hechos.map(it => it.payload && it.payload.UUID)); }
+            catch (e) { console.warn('[Informe PDF] no se pudo encolar:', e); }
+          }
           // Ya viajaron: se les quita el distintivo "Por subir" de la copia
           // local, aunque su Resumen no esté abierto para repintarse.
           if (typeof MOTOR_CACHE !== 'undefined' && MOTOR_CACHE.marcarSubidos) {
@@ -212,7 +265,14 @@ async function _sincronizarCola(opciones) {
         if (result && Array.isArray(result.fallos)) {
           result.fallos.forEach(f => { fallos[f.id] = f; });
         } else if (result && result.status !== 'OK') {
-          const transitorio = result.status === 'INVALID_TOKEN';
+          // Transitorio = el registro NO fue rechazado, es que no se pudo
+          // preguntar. No debe sumar rechazos: a los SYNC_MAX_RECHAZOS el
+          // registro se bloquea y deja de subir solo, y un trabajador sin
+          // señal acumularía esos intentos hasta perder el envío automático.
+          // El proveedor ya lo clasifica (`transitorio`): hay que respetarlo.
+          const transitorio = !!result.transitorio ||
+                              result.status === 'INVALID_TOKEN' ||
+                              esFalloDeRed(result.msg);
           batch.forEach(it => { if (okIds.indexOf(it.localQueueId) === -1) fallos[it.localQueueId] = { msg: result.msg, transitorio }; });
         }
 
@@ -231,7 +291,26 @@ async function _sincronizarCola(opciones) {
     }
 
     await actualizarIndicadorSync();
+    // Informes PDF de lo que acaba de subir. Va al final y sin await: generar
+    // un PDF cuesta ~1 s de CPU y la persona ya está viendo su Resumen; el
+    // retraso evita que el guardado se sienta lento. Lo que no alcance queda
+    // apuntado y sale en la pasada siguiente.
+    archivarInformesPendientes();
     return finalizarResumen(resumen);
+}
+
+/**
+ * Lanza el archivado de informes PDF sin bloquear a quien lo llama.
+ * Es seguro invocarla de más: PDF_TEMPLATE.procesarPendientes() ignora las
+ * llamadas que se solapan y no hace nada si la lista está vacía.
+ */
+let _informesTimer = null;
+function archivarInformesPendientes(retraso) {
+    if (typeof PDF_TEMPLATE === 'undefined' || !PDF_TEMPLATE.procesarPendientes) return;
+    clearTimeout(_informesTimer);
+    _informesTimer = setTimeout(() => {
+        PDF_TEMPLATE.procesarPendientes().catch(e => console.warn('[Informe PDF]', e));
+    }, retraso == null ? 1500 : retraso);
 }
 
 async function finalizarResumen(resumen) {
@@ -291,14 +370,23 @@ async function actualizarIndicadorSync() {
     try { if (localDB) items = await readAllPendings(); } catch (e) {}
     const bloqueados = items.filter(it => it.bloqueado).length;
     const pendientes = items.length - bloqueados;
-    if (!navigator.onLine) {
-        updateSyncUI(items.length ? `Sin conexión · ${items.length} pendiente(s)` : 'Sin conexión', true);
+    // El distintivo del botón cuenta TODO lo que no ha llegado al servidor,
+    // con error o sin él: para el trabajador la pregunta es "¿ya se envió?".
+    const sinEnviar = items.length;
+    // navigator.onLine solo se cree en el navegador: en el APK vale siempre
+    // true y diría "Sincronizado" estando sin señal.
+    // La pastilla dice UNA palabra: si hay enlace con el servidor. Cuántos
+    // cambios faltan lo dice el número sobre el botón de sincronizar, y no se
+    // repite aquí: «Sin conexión · 3 pendiente(s)» partía la cabecera en dos
+    // líneas en el móvil, justo donde se registra en campo.
+    if (!navigator.onLine && !enAppInstalada()) {
+        updateSyncUI('Sin conexión', true, sinEnviar);
     } else if (bloqueados) {
-        updateSyncUI(`${bloqueados} con error` + (pendientes ? ` · ${pendientes} pendiente(s)` : ''), true);
+        updateSyncUI('Con error', true, sinEnviar);
     } else if (pendientes) {
-        updateSyncUI(`${pendientes} pendiente(s)`, true);
+        updateSyncUI('Por enviar', true, sinEnviar);
     } else {
-        updateSyncUI('Sincronizado', false);
+        updateSyncUI('Conectado', false, 0);
     }
 }
 
@@ -339,19 +427,28 @@ function pseudoGenerateUUID() {
 window.addEventListener("load", () => {
    // Sin .catch(), un navegador que niega IndexedDB (ventana privada,
    // almacenamiento bloqueado) dejaba una promesa rechazada sin atender.
-   initOfflineDB().then(()=> {
+   initOfflineDB().then(async ()=> {
+      // Rescata lo que se bloqueó por falta de señal antes de intentar subir
+      await rehabilitarBloqueadosPorRed();
       // Sube lo que quedó pendiente de la última vez
       triggerSyncToCloud({ origen: 'inicio' });
+      // Y archiva los informes que quedaron sin generar (app cerrada a medias,
+      // dispositivo sin señal todo el turno): la lista vive en localStorage.
+      archivarInformesPendientes(6000);
    }).catch(() => { /* ya se avisó al usuario desde initApp */ });
 });
 
 window.addEventListener('online',  () => programarSync({ origen: 'red' }));
 window.addEventListener('offline', () => { actualizarIndicadorSync(); });
 
-// Reintento periódico: el evento 'online' no basta si el primer intento
-// falla (wifi sin salida real, servidor caído). Solo con la app a la vista.
+// Reintento periódico: el evento 'online' no basta si el primer intento falla
+// (wifi sin salida real, servidor caído) y, sobre todo, porque dentro del
+// WebView de Android `navigator.onLine` NO es de fiar: sin el plugin de red
+// vale siempre true y el evento 'online' no llega nunca. Por eso aquí NO se
+// consulta: se intenta y, si no hay señal, el fallo es transitorio y no
+// cuenta como rechazo. Solo con la app a la vista, para no gastar batería.
 setInterval(() => {
-   if (document.visibilityState === 'visible' && navigator.onLine) triggerSyncToCloud({ origen: 'reintento' });
+   if (document.visibilityState === 'visible') triggerSyncToCloud({ origen: 'reintento' });
 }, SYNC_REINTENTO_MS);
 
 document.addEventListener('visibilitychange', () => {

@@ -168,13 +168,74 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Archivo', system-ui, sans-serif; }
     
+    /* Ningún contenido puede empujar la página a lo ancho. Sin esto, una
+       tabla o un texto largo ensanchan el documento: en el navegador aparece
+       una barra horizontal y, dentro del APK, una franja en blanco al lado
+       del contenido. El ancho lo manda la pantalla, siempre. */
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+
     body {
       background-color: var(--color-bg);
       color: var(--color-text);
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      /* 100dvh, no 100vh: en el WebView y en los navegadores móviles la barra
+         del sistema hace que 100vh sea MÁS alto que lo visible. */
+      height: 100dvh;
+      width: 100%;
       overflow: hidden; /* Evita arrastre del html general */
+    }
+    @supports not (height: 100dvh) {
+      body { height: 100vh; }
+    }
+
+    /* Contador de cambios que aún NO llegaron al servidor, en la esquina
+       superior del botón de sincronizar. Sin número = todo enviado: es la
+       señal que busca el trabajador antes de cerrar la app.
+       El número vive SOLO aquí. Repetirlo en el texto de estado
+       («Sin conexión · 1 pendiente(s)») desbordaba la cabecera en el móvil,
+       que es justo donde se registra en campo. */
+    .sync-btn { position: relative; overflow: visible; }
+    /* La cabecera es marino en los DOS temas, así que estos colores NO se
+       invierten con el tema. Rojo #d92d20 con texto blanco da 4,8:1 (texto
+       pequeño: cumple 4.5:1) y destaca sobre el marino. No es el amarillo de
+       acción: ese significa «pulsa aquí», y aquí el número informa. */
+    :root, :root[data-theme="dark"] {
+      --sync-badge-bg: #d92d20;
+      --sync-badge-fg: #ffffff;
+    }
+    .sync-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--sync-badge-bg);
+      color: var(--sync-badge-fg);
+      /* El aro del color de la cabecera separa el número del icono */
+      box-shadow: 0 0 0 2px var(--header-bg);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .sync-badge[hidden] { display: none; }
+    /* Mientras sube, el icono gira: así se distingue "pendiente" de "subiendo" */
+    .sync-btn.sincronizando .material-symbols-outlined { animation: sync-giro 1s linear infinite; }
+    @keyframes sync-giro { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .sync-btn.sincronizando .material-symbols-outlined { animation: none; opacity: .6; }
     }
 
     /* Top AppBar (Navegación Suprema) */
@@ -191,27 +252,81 @@
       z-index: 100;
     }
 
-    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
-    /* Todo control de la cabecera hereda el blanco; sin esto 'text-primary' lo dejaría navy sobre navy */
-    .top-bar button, .top-bar .icon-btn, .top-bar .sync-indicator { color: var(--header-fg, #fff) !important; }
-    .top-bar button:hover { background: rgba(255,255,255,.10); }
-    .top-bar .sync-indicator { opacity: .92; }
-    
-    .top-bar .controls { display: flex; align-items: center; gap: 16px; }
-    
-    /* El Sync Engine Widget (Corazón de sincronía) */
-    .sync-indicator {
-      display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+    /* Nada de la cabecera puede salirse: body tiene overflow:hidden, así que
+       lo que no cabe se RECORTA (es lo que cortaba "Sincronizado" a media
+       palabra en pantallas estrechas). El título cede espacio antes que los
+       controles, que son acciones. */
+    .top-bar { max-width: 100%; min-width: 0; gap: 8px; }
+    .top-bar .title-group { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .top-bar #app-title {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
+    .top-bar .controls { flex: 0 0 auto; min-width: 0; }
+    .top-bar .title-group button { flex: 0 0 auto; }
+
+    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
+    /* Todo control de la cabecera hereda el blanco; sin esto 'text-primary' lo dejaría navy sobre navy.
+       La pastilla de estado queda fuera: su color lo decide el estado. */
+    .top-bar button, .top-bar .icon-btn { color: var(--header-fg, #fff) !important; }
+    /* Los tres controles de la cabecera, del mismo tamaño y con el mismo
+       destino táctil: menú, sincronizar y tema. */
+    .top-bar .icon-btn {
+      width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+      border: 0; background: transparent; border-radius: 10px; padding: 0;
+      transition: background .15s ease;
+    }
+    .top-bar .icon-btn .material-symbols-outlined { font-size: 22px; }
+    .top-bar button:hover { background: rgba(255,255,255,.10); }
+    .top-bar button:active { background: rgba(255,255,255,.16); }
+    .top-bar .controls { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+
+    /* ── Estado de la conexión: una pastilla, una palabra ──────────────────
+       Dice SOLO si hay enlace con el servidor. Cuántos cambios faltan lo dice
+       el número sobre el botón de sincronizar, y no se repite aquí: el texto
+       largo («Sin conexión · 1 pendiente(s)») partía la cabecera en dos
+       líneas en el móvil. */
+    .sync-indicator {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; letter-spacing: -.01em;
+      white-space: nowrap; line-height: 1;
+      border: 1px solid var(--sync-chip-bd, rgba(255,255,255,.28));
+      background: var(--sync-chip-bg, rgba(255,255,255,.08));
+      color: var(--sync-chip-fg, #fff);
+      transition: background .2s ease, border-color .2s ease, color .2s ease;
+    }
+    /* Sobre el marino de la cabecera (#162138) en los dos temas:
+       verde 7,9:1 · rojo 5,1:1 · ámbar 10,4:1. */
+    .sync-indicator.is-ok   { --sync-chip-fg: #4ade80; --sync-chip-bd: rgba(74,222,128,.42);  --sync-chip-bg: rgba(74,222,128,.12); }
+    .sync-indicator.is-off  { --sync-chip-fg: #ff8d85; --sync-chip-bd: rgba(255,141,133,.45); --sync-chip-bg: rgba(255,141,133,.14); }
+    .sync-indicator.is-warn { --sync-chip-fg: #ffc25c; --sync-chip-bd: rgba(255,194,92,.45);  --sync-chip-bg: rgba(255,194,92,.14); }
+    .sync-indicator.is-sync { --sync-chip-fg: #cfe0ff; --sync-chip-bd: rgba(207,224,255,.42); --sync-chip-bg: rgba(207,224,255,.12); }
+
     .sync-dot {
-       width: 10px; height: 10px; border-radius: 50%; background: #34A853; /* Verde x Defecto */
+       width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+       background: currentColor;   /* el punto toma el color del estado */
        transition: all 0.3s ease;
     }
-    .sync-dot.offline {
-       background: #EA4335; /* Rojo de Cola Llenándose */
-       animation: pulse 1.5s infinite;
+    .sync-dot.offline { animation: pulse 1.5s infinite; }
+
+    /* En un teléfono no caben el título largo, el botón de sincronizar, el
+       tema Y la palabra de estado. Por debajo de 480 px la pastilla se queda
+       solo con el punto de color; el texto sigue existiendo para los lectores
+       de pantalla, y el número de pendientes se ve igual sobre el botón. */
+    @media (max-width: 480px) {
+      /* El hueco entre el título y los controles no baja de 14 px: el
+         número de pendientes sobresale del botón y, con menos, roza el
+         título recortado. */
+      .top-bar { padding: 0 10px; gap: 14px; }
+      .top-bar .controls { gap: 4px; }
+      .sync-indicator { padding: 5px; gap: 0; }
+      .sync-indicator #ui-sync-text {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+      }
     }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234,67,53, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(234,67,53, 0); } 100% { box-shadow: 0 0 0 0 rgba(234,67,53, 0); } }
+
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,141,133,.45); } 70% { box-shadow: 0 0 0 8px rgba(255,141,133,0); } 100% { box-shadow: 0 0 0 0 rgba(255,141,133,0); } }
     
     .animate-spin {
       animation: spin 1s linear infinite;
@@ -1709,8 +1824,11 @@
 
     <div class="controls">
        <!-- Botón de Sincronización Global (Contextual) -->
-       <button id="ui-global-sync-btn" onclick="PWA_SKILLS.triggerGlobalSync()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-primary" title="Sincronizar Datos" aria-label="Sincronizar datos del módulo" style="display:none;">
+       <button id="ui-global-sync-btn" onclick="PWA_SKILLS.triggerGlobalSync()" class="icon-btn sync-btn" title="Sincronizar Datos" aria-label="Sincronizar datos del módulo" style="display:none;">
           <span class="material-symbols-outlined text-xl" aria-hidden="true">sync</span>
+          <!-- Cuántos cambios faltan por llegar al servidor. Sin número = todo
+               enviado. Lo mantiene updateSyncUI(); oculto cuando vale 0. -->
+          <span id="ui-sync-badge" class="sync-badge" hidden aria-hidden="true"></span>
        </button>
 
        <!-- Botón Multitema Light/Dark -->
@@ -1720,9 +1838,11 @@
        </button>
 
        <!-- Indicador Offline/Sincrónico Obligatorio -->
-       <div class="sync-indicator" title="Motor Sincronizador" role="status" aria-live="polite">
-         <div class="sync-dot" id="ui-sync-dot" aria-hidden="true"></div>
-         <span id="ui-sync-text">Online</span>
+       <!-- Pastilla de estado: SOLO dice si hay enlace con el servidor. El
+            número de cambios sin enviar vive sobre el botón de sincronizar. -->
+       <div class="sync-indicator is-ok" id="ui-sync-chip" title="Estado de la conexión" role="status" aria-live="polite">
+         <span class="sync-dot" id="ui-sync-dot" aria-hidden="true"></span>
+         <span id="ui-sync-text">Conectado</span>
        </div>
     </div>
   </header>
@@ -1800,6 +1920,10 @@
 
     <!-- Módulo 10_Charlas (Split) -->
     <?!= include('10_Charlas/subconfig_10_Charlas.js'); ?>
+
+    <!-- Módulo 11_Webs (Split): Detalle propio, ver Mod_11_Webs_Detalle.html -->
+    <?!= include('11_Webs/subconfig_11_Webs.js'); ?>
+    <?!= include('11_Webs/Mod_11_Webs_Detalle'); ?>
   </div>
 
   <!-- ====================================================================== -->
@@ -1888,11 +2012,72 @@
     // -------------------------------------------------------------
     // HELPERS VISUALES DEL MOTOR DE SINCRONIA (Llamado via Offline_Engine)
     // -------------------------------------------------------------
-    function updateSyncUI(statusText, isOffline) {
-       document.getElementById('ui-sync-text').innerText = statusText;
+    /**
+     * Estado de sincronización del Header. DOS señales, cada una en su sitio:
+     *   · la pastilla dice si hay enlace con el servidor (una palabra);
+     *   · el número sobre el botón dice cuántos cambios faltan por subir.
+     * El texto NO repite el número: con «Sin conexión · 3 pendiente(s)» la
+     * cabecera se partía en dos líneas en el móvil, que es donde se registra.
+     *
+     * @param {string}  statusText  palabra de estado (Conectado, Sin conexión…)
+     * @param {boolean} isOffline   no hay enlace con el servidor
+     * @param {number}  pendientes  cambios que AÚN no llegaron al servidor.
+     *        Sin número = todo enviado; es la señal de que ya se puede cerrar
+     *        la app tranquilo. Si no se pasa, el contador se queda como estaba
+     *        (una llamada intermedia como "Enviando…" no debe borrarlo).
+     */
+    function updateSyncUI(statusText, isOffline, pendientes) {
+       const texto = String(statusText == null ? '' : statusText);
+       const enviando = /enviando|sincroniz[aá]ndo/i.test(texto);
+       const conError = /error/i.test(texto);
+
+       const el = document.getElementById('ui-sync-text');
+       if (el) el.textContent = texto;
        const dot = document.getElementById('ui-sync-dot');
-       if(isOffline) dot.classList.add('offline');
-       else dot.classList.remove('offline');
+       if (dot) dot.classList.toggle('offline', !!isOffline && !enviando);
+
+       // Un solo estado para toda la pastilla: color del texto, del borde,
+       // del fondo y del punto. Así no hay combinaciones imposibles.
+       const chip = document.getElementById('ui-sync-chip');
+       if (chip) {
+         const estado = enviando ? 'is-sync' : conError ? 'is-warn' : isOffline ? 'is-off' : 'is-ok';
+         chip.classList.remove('is-ok', 'is-off', 'is-warn', 'is-sync');
+         chip.classList.add(estado);
+       }
+
+       const btn = document.getElementById('ui-global-sync-btn');
+       // Mientras el usuario fuerza la actualización manda su propio giro
+       // (triggerGlobalSync lo mantiene un mínimo visible): un aviso
+       // intermedio del motor no debe apagarlo antes de tiempo.
+       if (btn) {
+         if (enviando) btn.classList.add('sincronizando');
+         else if (!btn.dataset.ocupado) btn.classList.remove('sincronizando');
+       }
+
+       if (pendientes === undefined) return;
+       const badge = document.getElementById('ui-sync-badge');
+       if (!badge) return;
+       const n = Number(pendientes) || 0;
+       badge.hidden = n === 0;
+       badge.textContent = n > 99 ? '99+' : String(n);
+
+       // El botón se ve en TODA la app con sesión abierta: en los módulos y en
+       // el panel principal. Es el único control de actualización que hay, y
+       // esconderlo deja al usuario sin forma de forzar el envío ni de
+       // comprobar que todo llegó. Solo desaparece en el Login.
+       if (btn && typeof AppState !== 'undefined' && AppState.currentView !== 'Login') {
+         btn.style.display = 'flex';
+       }
+       // El número tiene que llegar también a quien usa lector de pantalla:
+       // el distintivo es decorativo, el texto accesible va en el botón.
+       if (btn) {
+         btn.setAttribute('aria-label', n
+           ? 'Sincronizar: ' + n + (n === 1 ? ' cambio pendiente' : ' cambios pendientes')
+           : 'Sincronizar datos. Todo enviado');
+         btn.title = n
+           ? n + (n === 1 ? ' cambio sin enviar' : ' cambios sin enviar') + ' · pulsa para sincronizar'
+           : 'Todo sincronizado';
+       }
     }
   </script>
 </body>

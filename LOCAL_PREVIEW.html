@@ -168,13 +168,74 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Archivo', system-ui, sans-serif; }
     
+    /* Ningún contenido puede empujar la página a lo ancho. Sin esto, una
+       tabla o un texto largo ensanchan el documento: en el navegador aparece
+       una barra horizontal y, dentro del APK, una franja en blanco al lado
+       del contenido. El ancho lo manda la pantalla, siempre. */
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      overscroll-behavior-x: none;
+    }
+
     body {
       background-color: var(--color-bg);
       color: var(--color-text);
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      /* 100dvh, no 100vh: en el WebView y en los navegadores móviles la barra
+         del sistema hace que 100vh sea MÁS alto que lo visible. */
+      height: 100dvh;
+      width: 100%;
       overflow: hidden; /* Evita arrastre del html general */
+    }
+    @supports not (height: 100dvh) {
+      body { height: 100vh; }
+    }
+
+    /* Contador de cambios que aún NO llegaron al servidor, en la esquina
+       superior del botón de sincronizar. Sin número = todo enviado: es la
+       señal que busca el trabajador antes de cerrar la app.
+       El número vive SOLO aquí. Repetirlo en el texto de estado
+       («Sin conexión · 1 pendiente(s)») desbordaba la cabecera en el móvil,
+       que es justo donde se registra en campo. */
+    .sync-btn { position: relative; overflow: visible; }
+    /* La cabecera es marino en los DOS temas, así que estos colores NO se
+       invierten con el tema. Rojo #d92d20 con texto blanco da 4,8:1 (texto
+       pequeño: cumple 4.5:1) y destaca sobre el marino. No es el amarillo de
+       acción: ese significa «pulsa aquí», y aquí el número informa. */
+    :root, :root[data-theme="dark"] {
+      --sync-badge-bg: #d92d20;
+      --sync-badge-fg: #ffffff;
+    }
+    .sync-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 4px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--sync-badge-bg);
+      color: var(--sync-badge-fg);
+      /* El aro del color de la cabecera separa el número del icono */
+      box-shadow: 0 0 0 2px var(--header-bg);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }
+    .sync-badge[hidden] { display: none; }
+    /* Mientras sube, el icono gira: así se distingue "pendiente" de "subiendo" */
+    .sync-btn.sincronizando .material-symbols-outlined { animation: sync-giro 1s linear infinite; }
+    @keyframes sync-giro { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .sync-btn.sincronizando .material-symbols-outlined { animation: none; opacity: .6; }
     }
 
     /* Top AppBar (Navegación Suprema) */
@@ -191,27 +252,81 @@
       z-index: 100;
     }
 
-    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
-    /* Todo control de la cabecera hereda el blanco; sin esto 'text-primary' lo dejaría navy sobre navy */
-    .top-bar button, .top-bar .icon-btn, .top-bar .sync-indicator { color: var(--header-fg, #fff) !important; }
-    .top-bar button:hover { background: rgba(255,255,255,.10); }
-    .top-bar .sync-indicator { opacity: .92; }
-    
-    .top-bar .controls { display: flex; align-items: center; gap: 16px; }
-    
-    /* El Sync Engine Widget (Corazón de sincronía) */
-    .sync-indicator {
-      display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500;
+    /* Nada de la cabecera puede salirse: body tiene overflow:hidden, así que
+       lo que no cabe se RECORTA (es lo que cortaba "Sincronizado" a media
+       palabra en pantallas estrechas). El título cede espacio antes que los
+       controles, que son acciones. */
+    .top-bar { max-width: 100%; min-width: 0; gap: 8px; }
+    .top-bar .title-group { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .top-bar #app-title {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
+    .top-bar .controls { flex: 0 0 auto; min-width: 0; }
+    .top-bar .title-group button { flex: 0 0 auto; }
+
+    .top-bar .title-group { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
+    /* Todo control de la cabecera hereda el blanco; sin esto 'text-primary' lo dejaría navy sobre navy.
+       La pastilla de estado queda fuera: su color lo decide el estado. */
+    .top-bar button, .top-bar .icon-btn { color: var(--header-fg, #fff) !important; }
+    /* Los tres controles de la cabecera, del mismo tamaño y con el mismo
+       destino táctil: menú, sincronizar y tema. */
+    .top-bar .icon-btn {
+      width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+      border: 0; background: transparent; border-radius: 10px; padding: 0;
+      transition: background .15s ease;
+    }
+    .top-bar .icon-btn .material-symbols-outlined { font-size: 22px; }
+    .top-bar button:hover { background: rgba(255,255,255,.10); }
+    .top-bar button:active { background: rgba(255,255,255,.16); }
+    .top-bar .controls { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; }
+
+    /* ── Estado de la conexión: una pastilla, una palabra ──────────────────
+       Dice SOLO si hay enlace con el servidor. Cuántos cambios faltan lo dice
+       el número sobre el botón de sincronizar, y no se repite aquí: el texto
+       largo («Sin conexión · 1 pendiente(s)») partía la cabecera en dos
+       líneas en el móvil. */
+    .sync-indicator {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; letter-spacing: -.01em;
+      white-space: nowrap; line-height: 1;
+      border: 1px solid var(--sync-chip-bd, rgba(255,255,255,.28));
+      background: var(--sync-chip-bg, rgba(255,255,255,.08));
+      color: var(--sync-chip-fg, #fff);
+      transition: background .2s ease, border-color .2s ease, color .2s ease;
+    }
+    /* Sobre el marino de la cabecera (#162138) en los dos temas:
+       verde 7,9:1 · rojo 5,1:1 · ámbar 10,4:1. */
+    .sync-indicator.is-ok   { --sync-chip-fg: #4ade80; --sync-chip-bd: rgba(74,222,128,.42);  --sync-chip-bg: rgba(74,222,128,.12); }
+    .sync-indicator.is-off  { --sync-chip-fg: #ff8d85; --sync-chip-bd: rgba(255,141,133,.45); --sync-chip-bg: rgba(255,141,133,.14); }
+    .sync-indicator.is-warn { --sync-chip-fg: #ffc25c; --sync-chip-bd: rgba(255,194,92,.45);  --sync-chip-bg: rgba(255,194,92,.14); }
+    .sync-indicator.is-sync { --sync-chip-fg: #cfe0ff; --sync-chip-bd: rgba(207,224,255,.42); --sync-chip-bg: rgba(207,224,255,.12); }
+
     .sync-dot {
-       width: 10px; height: 10px; border-radius: 50%; background: #34A853; /* Verde x Defecto */
+       width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+       background: currentColor;   /* el punto toma el color del estado */
        transition: all 0.3s ease;
     }
-    .sync-dot.offline {
-       background: #EA4335; /* Rojo de Cola Llenándose */
-       animation: pulse 1.5s infinite;
+    .sync-dot.offline { animation: pulse 1.5s infinite; }
+
+    /* En un teléfono no caben el título largo, el botón de sincronizar, el
+       tema Y la palabra de estado. Por debajo de 480 px la pastilla se queda
+       solo con el punto de color; el texto sigue existiendo para los lectores
+       de pantalla, y el número de pendientes se ve igual sobre el botón. */
+    @media (max-width: 480px) {
+      /* El hueco entre el título y los controles no baja de 14 px: el
+         número de pendientes sobresale del botón y, con menos, roza el
+         título recortado. */
+      .top-bar { padding: 0 10px; gap: 14px; }
+      .top-bar .controls { gap: 4px; }
+      .sync-indicator { padding: 5px; gap: 0; }
+      .sync-indicator #ui-sync-text {
+        position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+        overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+      }
     }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234,67,53, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(234,67,53, 0); } 100% { box-shadow: 0 0 0 0 rgba(234,67,53, 0); } }
+
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,141,133,.45); } 70% { box-shadow: 0 0 0 8px rgba(255,141,133,0); } 100% { box-shadow: 0 0 0 0 rgba(255,141,133,0); } }
     
     .animate-spin {
       animation: spin 1s linear infinite;
@@ -2026,8 +2141,11 @@ window.google = {
 
     <div class="controls">
        <!-- Botón de Sincronización Global (Contextual) -->
-       <button id="ui-global-sync-btn" onclick="PWA_SKILLS.triggerGlobalSync()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-variant transition-colors text-primary" title="Sincronizar Datos" aria-label="Sincronizar datos del módulo" style="display:none;">
+       <button id="ui-global-sync-btn" onclick="PWA_SKILLS.triggerGlobalSync()" class="icon-btn sync-btn" title="Sincronizar Datos" aria-label="Sincronizar datos del módulo" style="display:none;">
           <span class="material-symbols-outlined text-xl" aria-hidden="true">sync</span>
+          <!-- Cuántos cambios faltan por llegar al servidor. Sin número = todo
+               enviado. Lo mantiene updateSyncUI(); oculto cuando vale 0. -->
+          <span id="ui-sync-badge" class="sync-badge" hidden aria-hidden="true"></span>
        </button>
 
        <!-- Botón Multitema Light/Dark -->
@@ -2037,9 +2155,11 @@ window.google = {
        </button>
 
        <!-- Indicador Offline/Sincrónico Obligatorio -->
-       <div class="sync-indicator" title="Motor Sincronizador" role="status" aria-live="polite">
-         <div class="sync-dot" id="ui-sync-dot" aria-hidden="true"></div>
-         <span id="ui-sync-text">Online</span>
+       <!-- Pastilla de estado: SOLO dice si hay enlace con el servidor. El
+            número de cambios sin enviar vive sobre el botón de sincronizar. -->
+       <div class="sync-indicator is-ok" id="ui-sync-chip" title="Estado de la conexión" role="status" aria-live="polite">
+         <span class="sync-dot" id="ui-sync-dot" aria-hidden="true"></span>
+         <span id="ui-sync-text">Conectado</span>
        </div>
     </div>
   </header>
@@ -3817,7 +3937,23 @@ function loadResumen_01_Usuarios() {
                    <span class="material-symbols-outlined text-white text-3xl">photo_camera</span>
                 </div>
              </div>
+             <!-- Dos entradas: con `capture` el teléfono abre la cámara; sin
+                  él, la galería. Dentro del APK el selector de Capacitor no
+                  ofrece la cámara, así que hace falta la entrada aparte. -->
+             <input type="file" id="usr-file-camara" class="hidden" accept="image/*" capture="user" onchange="previewUserImage(this)">
              <input type="file" id="usr-file-input" class="hidden" accept="image/*" onchange="previewUserImage(this)">
+             <div class="flex gap-2 w-full mb-1">
+                <button type="button" onclick="document.getElementById('usr-file-camara').click()"
+                   aria-label="Tomar la foto de perfil con la cámara"
+                   class="flex-1 min-h-[44px] px-3 rounded-xl border border-outline-variant bg-surface text-secondary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5">
+                   <span class="material-symbols-outlined text-[16px]" aria-hidden="true">photo_camera</span>Cámara
+                </button>
+                <button type="button" onclick="document.getElementById('usr-file-input').click()"
+                   aria-label="Elegir la foto de perfil de la galería"
+                   class="flex-1 min-h-[44px] px-3 rounded-xl border border-outline-variant bg-surface text-secondary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5">
+                   <span class="material-symbols-outlined text-[16px]" aria-hidden="true">photo_library</span>Galería
+                </button>
+             </div>
              <p class="text-[10px] text-secondary font-bold uppercase text-center">Foto de Perfil<br>(Máx 2MB)</p>
 
              <!-- Captura facial: encuadra el rostro y dispara sola (Face_Capture.js) -->
@@ -7772,6 +7908,227 @@ MOTOR_HOOKS["10_Charlas"] = {
 };
 </script>
 
+
+    <!-- Módulo 11_Webs (Split): Detalle propio, ver Mod_11_Webs_Detalle.html -->
+    <script>
+/**
+ * =========================================================================
+ * ⚙️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "11_Webs"
+ * =========================================================================
+ * ARCHIVO: 11_Webs/subconfig_11_Webs.js.html
+ *
+ * Catálogo de sitios web útiles (normativa, capacitación, herramientas…).
+ * Al hacer click en un registro NO se abre el Detalle genérico: se abre el
+ * sitio dentro de la app, en una capa a pantalla completa con botón de
+ * volver. Ver 11_Webs/Mod_11_Webs_Detalle.html — ese archivo registra su
+ * propia vista "Detalle" (id="module-11_webs-detalle") y su propia función
+ * `loadDetail_11_Webs`, así que MOTOR_RENDER nunca construye un Detalle
+ * para este módulo (CLAUDE.md, «Archivo Mod_XX_Nombre_Vista.html»).
+ */
+
+var SUBCONFIG_11_WEBS = {
+
+  Config_Modular: {
+    NombreInterno: "11_Webs",
+    Titulo: "Sitios Web",
+    Card_Icon: "language",
+    Card_Image: "",                      // sin campos de imagen: solo icono
+    DRIVE_FOLDER_NAME: "11_Webs_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",
+    EMAIL_TEMPLATE_ID: "",
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "",
+    RELATIONAL_KEY: "UUID",
+    Relational_Fields: [],
+
+    // Catálogo compartido, no datos personales: todos ven todo, solo el
+    // Admin lo mantiene.
+    AdminRole:      { canCreate: true,  canRead: true, canUpdate: true,  canDelete: true,  alcance: "todos" },
+    SupervisorRole: { canCreate: false, canRead: true, canUpdate: false, canDelete: false, alcance: "todos" },
+    TrabajadorRole: { canCreate: false, canRead: true, canUpdate: false, canDelete: false, alcance: "todos" }
+  },
+
+  Variables: {
+    "UUID": { type: "Hidden_UUID", required: true, isFilter: false },
+
+    "Titulo": { type: "Text", required: true, isFilter: true, maxLength: 120, label: "Título" },
+
+    "Clasificacion": {
+      type: "Enum", required: true, isFilter: true,
+      acceptedValues: ["Normativa", "Capacitación", "Herramienta", "Institucional", "Otro"],
+      allowOtherValues: true, label: "Clasificación"
+    },
+
+    // control:"url" → teclado y validación de enlace (ver Motor_Render.js.html, attrsTipo).
+    "Link_Web": {
+      type: "Text", required: true, isFilter: false, control: "url",
+      placeholder: "https://…", label: "Enlace"
+    },
+
+    "Descripcion": { type: "Text", required: false, isFilter: false, maxLength: 300, label: "Descripción" }
+  },
+
+  Vistas: {
+    Subtitulo: "Catálogo de sitios útiles — toca uno para abrirlo dentro de la app",
+    Resumen: {
+      etiquetaCrear: "Agregar sitio", ordenPor: "Titulo",
+      columnas: [
+        { campo: "Titulo", sub: "Descripcion" },
+        { campo: "Clasificacion", tipo: "badge" }
+      ],
+      vacio: { icono: "language", titulo: "Sin sitios registrados",
+               mensaje: "Agrega el primer enlace útil para el equipo: normativa, capacitación o una herramienta.",
+               accion: "Agregar sitio" }
+    },
+    Edicion: {
+      tituloNuevo: "Agregar sitio web", tituloEditar: "Editar sitio web",
+      secciones: [
+        { titulo: "Datos del sitio", icono: "language",
+          campos: ["Titulo", "Clasificacion", "Link_Web", "Descripcion"] }
+      ]
+    },
+    Badges: {
+      Clasificacion: {
+        "Normativa":     { tono: "info", icono: "gavel" },
+        "Capacitación":  { tono: "ok",   icono: "school" },
+        "Herramienta":   { tono: "mute", icono: "build" },
+        "Institucional": { tono: "mute", icono: "apartment" },
+        "Otro":          { tono: "mute", icono: "label" }
+      }
+    }
+  }
+};
+
+console.log("✅ Subconfig 11_Webs cargada.");
+</script>
+
+    <!--
+  11_Webs — "Detalle" de excepción.
+  =========================================================================
+  Este módulo no usa el Detalle genérico de MOTOR_RENDER: al pulsar un
+  registro debe verse el sitio web DENTRO de la app, con un botón para
+  volver (pedido explícito del usuario), no el formulario de solo-lectura
+  que dibuja el motor. Es la misma excepción documentada en CLAUDE.md
+  («Archivo Mod_XX_Nombre_Vista.html») que hoy solo usan 01_Usuarios y
+  00_Admin, aplicada aquí a una sola vista (Resumen y Edición sí las sigue
+  generando MOTOR_RENDER desde el subconfig).
+
+  El router (App_Routing.js.html → showView) encuentra este nodo por su id
+  exacto ("module-11_webs-detalle") y lo usa en vez de pedirle el Detalle a
+  MOTOR_RENDER.construir(). Queda vacío a propósito: todo el contenido es la
+  capa que WEB_VIEWER.abrir() agrega sobre <body> (mismo patrón que el visor
+  del PDF en PDF_Templates.js.html → abrirVisor/cerrarVisor), y changeInternalView
+  sigue llamando a "loadDetail_11_Webs" igual que a cualquier loadDetail_X.
+-->
+<div id="module-11_webs-detalle" class="module-view" style="display:none;"></div>
+
+<script>
+var WEB_VIEWER = window.WEB_VIEWER || {
+  VISOR_ID: 'wv-visor',
+  _modulo: null,
+  _onEsc: null,
+  _onAtras: null,
+  _conHistorial: false,
+  _scrollPrevio: '',
+
+  /** Busca el registro (caché del motor → copia local → servidor) y abre la capa. */
+  abrir: async function (modulo, uuid) {
+    this.cerrar();
+    let r = null;
+    try {
+      r = ((typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER._datos[modulo]) || [])
+        .find(x => String(x.UUID) === String(uuid));
+      if (!r) {
+        const copia = (typeof MOTOR_CACHE !== 'undefined')
+          ? await MOTOR_CACHE.leerSync(modulo)
+          : (JSON.parse(localStorage.getItem('refdata_' + modulo)) || []);
+        r = (copia || []).find(x => String(x.UUID) === String(uuid));
+      }
+      if (!r && typeof DataService !== 'undefined') {
+        const res = await DataService.query(modulo, { cond: { UUID: { eq: uuid } }, limite: 1 });
+        if (res && res.status === 'OK' && Array.isArray(res.payload)) r = res.payload[0];
+      }
+    } catch (e) { r = null; }
+
+    const url = r && String(r.Link_Web || '').trim();
+    if (!url) {
+      PWA_SKILLS.toast('No se encontró el enlace de este sitio.', 'error');
+      changeInternalView(modulo, 'Resumen');
+      return;
+    }
+    this._pintar(modulo, r, url);
+  },
+
+  _pintar: function (modulo, r, url) {
+    const capa = document.createElement('div');
+    capa.id = this.VISOR_ID;
+    capa.className = 'fixed inset-0 z-[9995] flex flex-col bg-[#0b101d]/95';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.setAttribute('aria-label', 'Sitio web: ' + String(r.Titulo || ''));
+
+    capa.innerHTML =
+      '<header class="shrink-0 flex items-center gap-2 px-2 sm:px-4 py-2 bg-[#162138] text-white shadow-lg">' +
+        '<button type="button" data-cerrar aria-label="Volver a la app" ' +
+          'class="w-10 h-10 shrink-0 rounded-full hover:bg-white/10 flex items-center justify-center">' +
+          '<span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></button>' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="text-[12px] font-black leading-tight truncate">' + esc(r.Titulo || 'Sitio web') + '</p>' +
+          '<p class="text-[10px] text-white/70 leading-tight truncate">' + esc(url) + '</p>' +
+        '</div>' +
+        '<button type="button" data-externo aria-label="Abrir en el navegador" title="Abrir en el navegador" ' +
+          'class="h-10 px-3 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 whitespace-nowrap ' +
+          'border border-white/25 text-white hover:bg-white/10 transition-colors">' +
+          '<span class="material-symbols-outlined text-[18px]" aria-hidden="true">open_in_new</span>' +
+          '<span class="hidden sm:inline">Abrir en el navegador</span></button>' +
+      '</header>' +
+      // No hay forma confiable de detectar que un sitio bloqueó el iframe
+      // (X-Frame-Options/CSP del propio sitio): por eso el botón de arriba
+      // es siempre visible, no una alternativa que aparece ante el fallo.
+      '<iframe src="' + esc(url) + '" class="flex-1 w-full border-0 bg-white" ' +
+        'referrerpolicy="no-referrer" title="' + esc(r.Titulo || 'Sitio web') + '"></iframe>';
+
+    // Cerrar la capa y volver al listado del módulo — el botón que pidió el
+    // usuario. Escape y el botón físico de atrás hacen lo mismo.
+    const volver = () => { this.cerrar(); changeInternalView(modulo, 'Resumen'); };
+    capa.querySelector('[data-cerrar]').addEventListener('click', volver);
+    capa.querySelector('[data-externo]').addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+
+    this._onEsc = e => { if (e.key === 'Escape') volver(); };
+    document.addEventListener('keydown', this._onEsc);
+    document.body.appendChild(capa);
+    this._scrollPrevio = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // El botón físico de atrás cierra la capa en vez de salir de la app
+    // (mismo patrón que PDF_TEMPLATE.abrirVisor).
+    try { history.pushState({ wvVisor: true }, ''); this._conHistorial = true; } catch (e) { this._conHistorial = false; }
+    this._onAtras = () => { this._conHistorial = false; volver(); };
+    window.addEventListener('popstate', this._onAtras);
+    capa.querySelector('[data-cerrar]').focus();
+    this._modulo = modulo;
+  },
+
+  /**
+   * Quita la capa y sus listeners, SIN navegar a ningún lado. La llaman los
+   * tres cierres propios (arriba, con `volver()`) y, defensivamente,
+   * showView/changeInternalView al salir hacia otra vista — igual que
+   * PDF_TEMPLATE.cerrarVisor() — para que la capa nunca quede flotando sobre
+   * un módulo distinto.
+   */
+  cerrar: function () {
+    const capa = document.getElementById(this.VISOR_ID);
+    if (this._onEsc) { document.removeEventListener('keydown', this._onEsc); this._onEsc = null; }
+    if (this._onAtras) { window.removeEventListener('popstate', this._onAtras); this._onAtras = null; }
+    if (capa) { capa.remove(); document.body.style.overflow = this._scrollPrevio || ''; }
+    if (this._conHistorial) { this._conHistorial = false; try { history.back(); } catch (e) {} }
+    this._modulo = null;
+  }
+};
+window.WEB_VIEWER = WEB_VIEWER;
+
+window.loadDetail_11_Webs = function (uuid) { WEB_VIEWER.abrir('11_Webs', uuid); };
+</script>
+
   </div>
 
   <!-- ====================================================================== -->
@@ -7979,6 +8336,19 @@ const AppState = {
   // google.script.run y la URL se ignora. En Vercel: variable APPS_SCRIPT_URL.
   AppsScript: {
     URL: 'https://script.google.com/macros/s/AKfycbwBlrHXwyx2HouwZJniNiUJFdsS54URi-55mh4rWnK8ZdMTmpjUuxWMvIMMCXWk4KNC4A/exec'
+  },
+
+  // --- ACTUALIZACIÓN POR AIRE (app instalable) ---
+  // De aquí baja la app instalada su versión nueva, sin reinstalar el APK.
+  // Es un simple almacén de archivos (latest.json + los .zip): no tiene nada
+  // que ver con la base de datos, así que da igual el DB_PROVIDER.
+  //
+  // Son los archivos adjuntos de una publicación fija del repositorio, que
+  // debe ser PÚBLICO: el teléfono los descarga sin iniciar sesión.
+  // Se publican con `npm run ota:publish` (ver tools/ota_publish.js).
+  // En un despliegue se puede sustituir con la variable de entorno OTA_URL.
+  OTA: {
+    URL: 'https://github.com/soporteghelo/motor/releases/download/ota'
   },
 
   // --- CONFIGURACIÓN SUPABASE ---
@@ -8482,14 +8852,52 @@ const AppsScriptProvider = {
    * El PDF viaja en base64 porque google.script.run no acepta Blob.
    */
   async guardarConsentimiento({ blob, dni, empresa, folio }) {
-    const base64 = await new Promise((resolve, reject) => {
+    const base64 = await this._aBase64(blob);
+    const r = await this._call({ action: 'SAVE_CONSENT', dni, empresa, folio, pdfBase64: base64 });
+    return r.status === 'OK' ? { status: 'OK', ruta: r.ruta || r.fileId || '' } : r;
+  },
+
+  /** Blob → base64 sin cabecera: google.script.run no acepta Blob. */
+  _aBase64(blob) {
+    return new Promise((resolve, reject) => {
       const fr = new FileReader();
       fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
       fr.onerror = () => reject(new Error('No se pudo leer el PDF generado.'));
       fr.readAsDataURL(blob);
     });
-    const r = await this._call({ action: 'SAVE_CONSENT', dni, empresa, folio, pdfBase64: base64 });
-    return r.status === 'OK' ? { status: 'OK', ruta: r.ruta || r.fileId || '' } : r;
+  },
+
+  // ── Informe PDF del registro (Drive) ──
+  // DATA/<modulo>/00_Informes/<uuid>.pdf — un archivo por registro, siempre
+  // el mismo nombre: al editar el registro se sustituye, no se acumula.
+  async guardarInforme({ blob, modulo, uuid }) {
+    let base64;
+    try { base64 = await this._aBase64(blob); }
+    catch (e) { return { status: 'ERROR', msg: e.message }; }
+    const r = await this._call({ action: 'SAVE_REPORT', moduleName: modulo, uuid, pdfBase64: base64 });
+    return r.status === 'OK'
+      ? { status: 'OK', ruta: r.ruta || '', enlace: r.enlace || '', donde: 'Drive' }
+      : r;
+  },
+
+  eliminarInforme(modulo, uuid) {
+    return this._call({ action: 'DELETE_REPORT', moduleName: modulo, uuid });
+  },
+
+  /**
+   * ¿Hay informe archivado y con qué enlace?
+   * `compartir: true` (el botón de WhatsApp) pide además un enlace que el
+   * destinatario pueda abrir: Code.gs pone el archivo en "cualquiera con el
+   * enlace, solo lectura" y lo anota en la auditoría. Sin esa opción el
+   * enlace solo sirve a quien ya tiene acceso a la carpeta de Drive.
+   */
+  async infoInforme(modulo, uuid, opts) {
+    const r = await this._call({
+      action: 'GET_REPORT', moduleName: modulo, uuid, compartir: !!(opts && opts.compartir)
+    });
+    if (!r || r.status !== 'OK') return { existe: false, transitorio: !!(r && r.transitorio) };
+    return { existe: !!r.existe, enlace: r.enlace || '', ruta: r.ruta || '',
+             fecha: r.fecha || '', donde: 'Drive' };
   },
 
   async guardarConfigEmpresa(config) {
@@ -9222,6 +9630,100 @@ const SupabaseProvider = {
     return { status: 'OK', ruta };
   },
 
+  // ── Informe PDF del registro (bucket `informes`) ──
+  // Ruta: <empresa_id>/<modulo>/<uuid>/informe.pdf — la empresa va primero
+  // porque la política del bucket aísla por esa carpeta (supabase_03), y el
+  // nombre es fijo: al editar el registro se SUSTITUYE su informe, no se
+  // acumula una copia por edición.
+  //
+  // Es un bucket aparte de `evidencias`/`documentos` a propósito: ahí
+  // sobrescribir y borrar están reservados al Admin (destruir evidencia), y
+  // un informe es un documento DERIVADO que se regenera con cada cambio, así
+  // que lo reescribe quien puede editar el registro o quien lo creó.
+  BUCKET_INFORMES: 'informes',
+
+  rutaInforme(modulo, uuid) {
+    const empresa = (AppState.User || {}).EmpresaId;
+    if (!empresa || !modulo || !uuid) return '';
+    return [empresa, modulo, String(uuid), 'informe.pdf'].join('/');
+  },
+
+  async guardarInforme({ blob, modulo, uuid }, _reintentado) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { status: 'ERROR', msg: 'Tu cuenta no está asociada a una empresa.' };
+    const jwt = (AppState.User || {}).SupabaseJWT;
+    let res, cuerpo = null;
+    try {
+      res = await fetch(`${this._url}/storage/v1/object/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'POST',
+        headers: { apikey: this._key, Authorization: `Bearer ${jwt || this._key}`,
+                   'Content-Type': 'application/pdf', 'x-upsert': 'true' },
+        body: blob
+      });
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión para archivar el informe.', transitorio: true };
+    }
+    if (!res.ok) { try { cuerpo = await res.json(); } catch (e) {} }
+    const jwtVencido = res.status === 401 ||
+      /jwt|token/i.test(String((cuerpo && (cuerpo.message || cuerpo.error)) || ''));
+    if (!res.ok && jwtVencido && !_reintentado && await this._refrescarSesion()) {
+      return this.guardarInforme({ blob, modulo, uuid }, true);
+    }
+    if (!res.ok) {
+      const msg = (cuerpo && (cuerpo.message || cuerpo.error)) || ('HTTP ' + res.status);
+      return { status: 'ERROR', msg: 'No se pudo archivar el informe: ' + msg,
+               transitorio: jwtVencido || this._esTransitorio(res.status) };
+    }
+    delete this._firmas[ruta];   // el enlace firmado apuntaba al archivo viejo
+    return { status: 'OK', ruta, donde: 'Storage' };
+  },
+
+  async eliminarInforme(modulo, uuid) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { status: 'OK' };
+    const jwt = (AppState.User || {}).SupabaseJWT;
+    try {
+      const res = await fetch(`${this._url}/storage/v1/object/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'DELETE', headers: { apikey: this._key, Authorization: `Bearer ${jwt || this._key}` }
+      });
+      delete this._firmas[ruta];
+      // 404 = no había informe archivado: para el llamador es lo mismo que
+      // haberlo borrado.
+      if (!res.ok && res.status !== 404) {
+        const b = await res.json().catch(() => ({}));
+        return { status: 'ERROR', msg: b.message || b.error || ('HTTP ' + res.status),
+                 transitorio: this._esTransitorio(res.status) };
+      }
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión para borrar el informe.', transitorio: true };
+    }
+    return { status: 'OK' };
+  },
+
+  /**
+   * ¿Hay informe archivado y con qué enlace? Un enlace firmado que no se
+   * puede crear significa que el objeto no existe (o que RLS no lo deja ver).
+   * `compartir: true` (WhatsApp) lo firma por 7 días: el destinatario lo abre
+   * sin cuenta, y pasada esa semana el enlace deja de servir — a diferencia
+   * de un archivo público, que queda expuesto para siempre.
+   */
+  async infoInforme(modulo, uuid, opts) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { existe: false };
+    const segundos = (opts && opts.compartir) ? 7 * 24 * 3600 : 3600;
+    let res, body;
+    try {
+      res = await fetch(`${this._url}/storage/v1/object/sign/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'POST', headers: this._headers(), body: JSON.stringify({ expiresIn: segundos })
+      });
+      body = await res.json().catch(() => ({}));
+    } catch (e) {
+      return { existe: false, transitorio: true };
+    }
+    if (!res.ok || !body.signedURL) return { existe: false };
+    return { existe: true, ruta, donde: 'Storage', enlace: this._url + '/storage/v1' + body.signedURL };
+  },
+
   /** Guarda la configuración de la app para toda la empresa (solo Admin). */
   async guardarConfigEmpresa(config) {
     const r = await this._fetch('/rpc/guardar_config_empresa', {
@@ -9791,7 +10293,38 @@ const DataService = {
     : Promise.resolve({ status: 'ERROR', msg: 'Agregados no disponibles con este proveedor.' }),
   create:     (module, data)     => DataService.provider.create(module, data),
   update:     (module, data)     => DataService.provider.update(module, data),
-  delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
+  /**
+   * Elimina el registro principal y, con él, su informe PDF archivado.
+   * El orden importa: primero el registro, después el documento. Si se
+   * borrara antes el PDF y el servidor rechazara el borrado del registro
+   * (RLS, permiso), quedaría un registro vivo sin su informe y nada volvería
+   * a generarlo. Un informe huérfano, en cambio, sí se puede borrar después.
+   * El fallo al borrar el documento no convierte en error un borrado que el
+   * servidor ya aceptó: se avisa por consola.
+   */
+  async delete(module, uuid) {
+    const r = await DataService.provider.delete(module, uuid);
+    if (r && r.status === 'OK' && typeof PDF_TEMPLATE !== 'undefined') {
+      try {
+        const b = await PDF_TEMPLATE.borrarArchivo(module, uuid);
+        if (b && b.status !== 'OK') console.warn('[Informe PDF] no se borró el de ' + module + '/' + uuid + ': ' + b.msg);
+      } catch (e) { console.warn('[Informe PDF] no se borró el de ' + module + '/' + uuid + ':', e); }
+    }
+    return r;
+  },
+  /**
+   * Archiva el informe PDF de un registro (Drive o Storage, según proveedor).
+   * Lo llama PDF_TEMPLATE tras cada sincronización del registro.
+   * @param {{blob:Blob, modulo:string, uuid:string}} datos
+   */
+  saveReport: (datos) => DataService.provider.guardarInforme
+    ? DataService.provider.guardarInforme(datos)
+    : Promise.resolve({ status: 'ERROR', msg: 'Archivo de informes no disponible con este proveedor.' }),
+  deleteReport: (module, uuid) => DataService.provider.eliminarInforme
+    ? DataService.provider.eliminarInforme(module, uuid) : Promise.resolve({ status: 'OK' }),
+  /** { existe, enlace, ruta, donde }. Con `{compartir:true}`, enlace para enviar. */
+  reportInfo: (module, uuid, opts) => DataService.provider.infoInforme
+    ? DataService.provider.infoInforme(module, uuid, opts) : Promise.resolve({ existe: false }),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
   // Detalle (tabla hija) de un registro: lo implementan los dos proveedores
   readChildren: (module, uuid)   => DataService.provider.leerHijos
@@ -11047,7 +11580,11 @@ const PWA_SKILLS = {
       // Antes llamaba a window.syncModuleData, que no existía: no hacía nada.
       const btn = document.getElementById('ui-global-sync-btn');
       if (btn && btn.dataset.ocupado) return;
-      if (btn) { btn.dataset.ocupado = '1'; btn.classList.add('animate-spin'); }
+      // El icono gira desde el primer momento: es la señal de que SÍ se pulsó
+      // y de que se está forzando la actualización. Gira solo el icono, no el
+      // botón: con 'animate-spin' el número de pendientes daba vueltas con él.
+      const arranque = Date.now();
+      if (btn) { btn.dataset.ocupado = '1'; btn.classList.add('sincronizando'); }
 
       try {
           if (!navigator.onLine) {
@@ -11058,9 +11595,15 @@ const PWA_SKILLS = {
               ? await triggerSyncToCloud({ forzar: true, origen: 'manual' })
               : { subidos: 0, pendientes: 0, bloqueados: 0 };
 
-          // Refresco del listado aunque no hubiera nada en cola (datos de otros usuarios)
+          // Refresco de lo que se esté viendo, aunque no hubiera nada en cola
+          // (pueden haber entrado datos de otras personas).
           const mod = AppState.activeModule;
           if (mod && typeof recargarResumenActivo === 'function') recargarResumenActivo([mod]);
+          // En el panel principal no hay Resumen que recargar: lo que se
+          // actualiza son sus indicadores. Es lo que espera quien pulsa el
+          // botón estando en el inicio.
+          else if (typeof loadDashboardData === 'function' &&
+                   document.getElementById('dash-updated')) loadDashboardData(true);
 
           if (r.motivo === 'sin-sesion') {
               PWA_SKILLS.toast('Tu sesión expiró. Vuelve a iniciar sesión para subir los registros pendientes.', 'warning', 5000);
@@ -11075,7 +11618,12 @@ const PWA_SKILLS = {
           console.error('Error al sincronizar:', e);
           PWA_SKILLS.toast('No se pudo sincronizar. Se reintentará automáticamente.', 'error', 4000);
       } finally {
-          if (btn) { btn.classList.remove('animate-spin'); delete btn.dataset.ocupado; }
+          // Con buena red la subida puede durar 80 ms: sin un mínimo visible,
+          // el giro no llega a verse y parece que el botón no hizo nada.
+          const resto = Math.max(0, 650 - (Date.now() - arranque));
+          setTimeout(() => {
+            if (btn) { btn.classList.remove('sincronizando'); delete btn.dataset.ocupado; }
+          }, resto);
       }
   },
 
@@ -12014,6 +12562,66 @@ const PWA_SKILLS = {
   },
 
   /**
+   * SKILL 29: GEOLOCALIZACIÓN DEL DISPOSITIVO
+   *
+   * Captura lat/lng/precisión con la Geolocation API del navegador: funciona
+   * igual en el PWA del navegador y dentro del WebView de Capacitor (la app
+   * instalada), sin plugin nativo — `vercel.json` ya declara
+   * `Permissions-Policy: geolocation=(self)`. Ningún módulo la usa todavía;
+   * queda lista para el que la necesite (dónde ocurrió un incidente, dónde se
+   * hizo una inspección, etc.): basta llamar a
+   * `PWA_SKILLS.obtenerUbicacion()` desde un botón o un MOTOR_HOOKS propio.
+   *
+   * @param {object} [opts] - { altaPrecision (bool, por defecto true), timeoutMs (por defecto 10000) }
+   * @returns {Promise<{lat:number, lng:number, precision:number, hora:string}>}
+   *   precision va en metros; hora es ISO 8601. Rechaza con un Error cuyo
+   *   mensaje ya está listo para `PWA_SKILLS.toast(msg, 'error')`: sin
+   *   soporte del navegador, contexto inseguro (http sin TLS), permiso
+   *   denegado, GPS apagado o sin señal a tiempo.
+   */
+  obtenerUbicacion: function(opts) {
+    const o = opts || {};
+    return new Promise((resolve, reject) => {
+      if (!('geolocation' in navigator)) {
+        reject(new Error('Este dispositivo no permite compartir su ubicación.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const c = pos.coords;
+          resolve({
+            lat: c.latitude,
+            lng: c.longitude,
+            precision: Math.round(c.accuracy || 0),
+            hora: new Date(pos.timestamp).toISOString()
+          });
+        },
+        (err) => {
+          const MSG = {
+            1: 'Permiso de ubicación denegado. Actívalo en los ajustes del navegador o de la app.',
+            2: 'No se pudo obtener la ubicación: revisa que el GPS esté encendido.',
+            3: 'La ubicación tardó demasiado en llegar. Inténtalo de nuevo con mejor señal.'
+          };
+          reject(new Error((err && MSG[err.code]) || 'No se pudo obtener la ubicación.'));
+        },
+        { enableHighAccuracy: o.altaPrecision !== false, timeout: o.timeoutMs || 10000, maximumAge: 0 }
+      );
+    });
+  },
+
+  /** "lat, lng (±precisión m)" — listo para mostrar en una vista. */
+  formatoUbicacion: function(ubic) {
+    if (!ubic || ubic.lat == null || ubic.lng == null) return '';
+    return Number(ubic.lat).toFixed(6) + ', ' + Number(ubic.lng).toFixed(6) +
+      (ubic.precision ? ' (±' + ubic.precision + ' m)' : '');
+  },
+
+  /** Enlace de Google Maps a un punto: para abrirlo en una app externa. */
+  enlaceMapa: function(lat, lng) {
+    return 'https://www.google.com/maps?q=' + encodeURIComponent(lat) + ',' + encodeURIComponent(lng);
+  },
+
+  /**
    * Helper interno: filas reales de datos (excluye esqueleto / vacío / sin-resultados).
    */
   _dataRows: function(tbody) {
@@ -12717,17 +13325,65 @@ const PDF_TEMPLATE = {
     return cuerpo;
   },
 
-  /** Documento completo (con estilos de impresión) listo para imprimir */
-  documentoHTML: function(plantilla, registro, hijos, titulo) {
-    const pag = plantilla.pagina || {};
+  /**
+   * La MISMA hoja de estilos, pero acotada a un contenedor: el documento se
+   * pinta DENTRO de la app (visor y generador de PDF), no en una ventana
+   * aparte. Sin acotarla, `body { font-size:11pt }` y `.pt-tabla th` se
+   * aplicarían a toda la aplicación.
+   *
+   * La hoja es plana a propósito (una regla por selector, sin anidar), así que
+   * basta anteponer el prefijo a cada selector. `@page` se descarta: en
+   * pantalla no significa nada y la impresión la define `_cssImpresion()`.
+   */
+  _cssDocumento: function(prefijo) {
+    const reglas = [prefijo + ' { box-sizing:border-box; }'];
+    this.CSS.replace('@PAGE_RULE@', '').split('}').forEach(trozo => {
+      const corte = trozo.indexOf('{');
+      if (corte === -1) return;
+      const selector = trozo.slice(0, corte).trim();
+      const cuerpo = trozo.slice(corte + 1).trim();
+      if (!selector || !cuerpo || selector.charAt(0) === '@') return;
+      const sels = selector.split(',').map(s => s.trim()).filter(Boolean)
+        .map(s => (s === 'body' || s === 'html') ? prefijo : prefijo + ' ' + s);
+      reglas.push(sels.join(', ') + ' { ' + cuerpo + ' }');
+    });
+    return reglas.join('\n');
+  },
+
+  /**
+   * Impresión: se oculta la app y se imprime solo la hoja del visor. Antes el
+   * documento vivía en una ventana nueva —que en la app instalada y en el
+   * móvil se abría a pantalla completa SIN forma de volver atrás—.
+   */
+  _cssImpresion: function(plantilla) {
+    const pag = (plantilla && plantilla.pagina) || {};
     const orientacion = pag.orientacion === 'horizontal' ? 'landscape' : 'portrait';
     const margen = parseInt(pag.margen) || 16;
-    const reglaPagina = '@page { size: ' + (pag.tamano || 'A4') + ' ' + orientacion +
-                        '; margin: ' + margen + 'mm; }';
-    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">' +
-      '<title>' + this._esc(titulo || 'Documento') + '</title>' +
-      '<style>' + this.CSS.replace('@PAGE_RULE@', reglaPagina) + '</style>' +
-      '</head><body>' + this.renderHTML(plantilla, registro, hijos) + '</body></html>';
+    return '@media print {' +
+      '  body > *:not(#' + this.VISOR_ID + ') { display:none !important; }' +
+      '  #' + this.VISOR_ID + ' { position:static !important; inset:auto !important; background:#fff !important; overflow:visible !important; display:block !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-visor-barra, #' + this.VISOR_ID + ' .pt-visor-pie { display:none !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-visor-scroll { overflow:visible !important; padding:0 !important; display:block !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-doc { box-shadow:none !important; margin:0 !important; padding:0 !important; width:auto !important; max-width:none !important; min-height:0 !important; }' +
+      '  @page { size: ' + (pag.tamano || 'A4') + ' ' + orientacion + '; margin: ' + margen + 'mm; }' +
+      '}';
+  },
+
+  VISOR_ID: 'pt-visor',
+
+  /** Inyecta (una sola vez por formato) los estilos acotados del documento. */
+  _montarEstilos: function(plantilla) {
+    let hoja = document.getElementById('pt-estilos');
+    if (!hoja) {
+      hoja = document.createElement('style');
+      hoja.id = 'pt-estilos';
+      document.head.appendChild(hoja);
+    }
+    hoja.textContent = this._cssDocumento('.pt-doc') + '\n' +
+      '.pt-doc { background:#fff; color:#1b1b21; }' +
+      '.pt-doc img { max-width:100%; }' +
+      '.pt-doc .pt-banner, .pt-doc .pt-sev-mortal { -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
+      '\n' + this._cssImpresion(plantilla);
   },
 
   /** Hoja de estilos del formato interno de respaldo */
@@ -12775,32 +13431,130 @@ const PDF_TEMPLATE = {
       '.pt-salto { break-after:page; page-break-after:always; }',
 
   // -----------------------------------------------------------------------
-  // SALIDA
+  // SALIDA · VISOR DENTRO DE LA APP
   // -----------------------------------------------------------------------
   /**
-   * Abre el diálogo de impresión (Guardar como PDF).
-   * Parte del HTML-plantilla guardado —el mismo que vive en la base de datos—
-   * y solo sustituye marcadores. Así el documento impreso es exactamente el
-   * que el administrador aprobó, no una nueva interpretación de los bloques.
+   * Muestra el documento en una capa sobre la app, con su propia cabecera:
+   * volver, imprimir (Guardar como PDF del sistema), descargar y enviar por
+   * WhatsApp.
+   *
+   * POR QUÉ NO UNA VENTANA NUEVA
+   * Antes se abría con `window.open()`. En el móvil y dentro de la app
+   * instalada eso es una pestaña a pantalla completa sin barra de direcciones:
+   * el PDF tapaba la app y no había forma de regresar al registro. Ahora el
+   * documento es una vista más de la app: se cierra con el botón de volver,
+   * con Escape y con el botón físico de atrás del teléfono.
+   *
+   * @param {object} doc  { registro, hijos, plantilla, titulo, modulo, uuid }
    */
-  exportar: function(modulo, registro, hijos, titulo, ventana) {
-    const html = this.documentoHTML(this.plantillaBase(modulo), registro, hijos, titulo || modulo);
-    const win = ventana || window.open('', '_blank');
-    if (!win) {
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('El navegador bloqueó la ventana. Permite las ventanas emergentes.', 'error', 5000);
-      }
-      return false;
-    }
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    // Se espera a que carguen las imágenes (fotos/firmas firmadas). Si la
-    // ventana venía abierta de antes, el load puede haber ocurrido ya.
-    const imprimir = function() { win.focus(); win.print(); };
-    if (win.document.readyState === 'complete') setTimeout(imprimir, 400);
-    else win.onload = imprimir;
+  abrirVisor: function(doc) {
+    this.cerrarVisor();
+    this._montarEstilos(doc.plantilla);
+
+    const capa = document.createElement('div');
+    capa.id = this.VISOR_ID;
+    capa.className = 'fixed inset-0 z-[9995] flex flex-col bg-[#0b101d]/95';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.setAttribute('aria-label', 'Informe: ' + String(doc.titulo || ''));
+
+    // Acciones de la barra. Cada icono va como literal en su propia línea
+    // porque tools/vendor_cdn.js saca de aquí la lista de iconos que empaqueta:
+    // un icono que no detecte se vería como la palabra "print" en la pantalla.
+    const acciones = [
+      { accion: 'imprimir',  icono: 'print',    etiqueta: 'Imprimir',
+        clases: 'bg-[#ffd53f] text-[#162138] hover:brightness-105' },
+      { accion: 'descargar', icono: 'download', etiqueta: 'Descargar',
+        clases: 'border border-white/25 text-white hover:bg-white/10' },
+      { accion: 'whatsapp',  icono: 'share',    etiqueta: 'Enviar',
+        clases: 'border border-white/25 text-white hover:bg-white/10' }
+    ];
+    const boton = a =>
+      '<button type="button" data-' + a.accion + ' aria-label="' + this._esc(a.etiqueta) + '" title="' + this._esc(a.etiqueta) + '" ' +
+        'class="h-10 min-w-[2.5rem] px-2.5 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 ' +
+        'whitespace-nowrap transition-colors ' + a.clases + '">' +
+        '<span class="material-symbols-outlined text-[18px]" aria-hidden="true">' + a.icono + '</span>' +
+        '<span class="hidden sm:inline">' + this._esc(a.etiqueta) + '</span></button>';
+
+    capa.innerHTML =
+      '<header class="pt-visor-barra shrink-0 flex items-center gap-2 px-2 sm:px-4 py-2 bg-[#162138] text-white shadow-lg">' +
+        '<button type="button" data-cerrar aria-label="Volver al registro" ' +
+          'class="w-10 h-10 shrink-0 rounded-full hover:bg-white/10 flex items-center justify-center">' +
+          '<span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></button>' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="text-[12px] font-black leading-tight truncate">' + this._esc(doc.titulo || 'Informe') + '</p>' +
+          '<p class="text-[10px] text-white/70 leading-tight truncate" data-estado>Documento generado desde el registro</p>' +
+        '</div>' +
+        acciones.map(boton).join('') +
+      '</header>' +
+      '<div class="pt-visor-scroll flex-1 overflow-auto p-2 sm:p-6">' +
+        '<div class="pt-doc mx-auto shadow-2xl" style="width:100%;max-width:210mm;padding:14mm 12mm;min-height:60vh;">' +
+          this.renderHTML(doc.plantilla, doc.registro, doc.hijos) +
+        '</div>' +
+      '</div>';
+
+    const cerrar = () => this.cerrarVisor();
+    capa.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    capa.querySelector('[data-imprimir]').addEventListener('click', () => this.imprimirVisor());
+    capa.querySelector('[data-descargar]').addEventListener('click', e =>
+      this.descargar(doc.modulo, doc.uuid, e.currentTarget));
+    capa.querySelector('[data-whatsapp]').addEventListener('click', e =>
+      this.enviarPorWhatsApp(doc.modulo, doc.uuid, doc.titulo, e.currentTarget));
+
+    this._onEsc = e => { if (e.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', this._onEsc);
+    document.body.appendChild(capa);
+    // El documento se desplaza dentro del visor; la app de debajo, quieta
+    this._scrollPrevio = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // El botón físico de atrás del teléfono cierra el visor en vez de salir
+    // de la app o de saltarse la vista del registro.
+    try { history.pushState({ ptVisor: true }, ''); this._conHistorial = true; } catch (e) { this._conHistorial = false; }
+    this._onAtras = () => { this._conHistorial = false; this.cerrarVisor(); };
+    window.addEventListener('popstate', this._onAtras);
+    capa.querySelector('[data-cerrar]').focus();
+
+    this._visor = doc;
+    if (doc.uuid) this._mostrarEstadoArchivo(doc.modulo, doc.uuid);
     return true;
+  },
+
+  cerrarVisor: function() {
+    const capa = document.getElementById(this.VISOR_ID);
+    if (this._onEsc) { document.removeEventListener('keydown', this._onEsc); this._onEsc = null; }
+    if (this._onAtras) { window.removeEventListener('popstate', this._onAtras); this._onAtras = null; }
+    if (capa) capa.remove();
+    if (capa) document.body.style.overflow = this._scrollPrevio || '';
+    if (this._conHistorial) { this._conHistorial = false; try { history.back(); } catch (e) {} }
+    this._visor = null;
+  },
+
+  imprimirVisor: function() {
+    if (!document.getElementById(this.VISOR_ID)) return false;
+    window.print();
+    return true;
+  },
+
+  /** Línea de estado de la cabecera: dónde está archivado el documento. */
+  _mostrarEstadoArchivo: async function(modulo, uuid) {
+    const linea = () => {
+      const capa = document.getElementById(this.VISOR_ID);
+      return capa ? capa.querySelector('[data-estado]') : null;
+    };
+    const el = linea();
+    if (!el) return;
+    let info = { existe: false };
+    try { info = (await DataService.reportInfo(modulo, uuid)) || { existe: false }; } catch (e) {}
+    const el2 = linea();
+    if (!el2) return;
+    if (info.existe) {
+      el2.textContent = 'Archivado en ' + (info.donde || 'el servidor') +
+        (info.fecha ? ' · ' + String(info.fecha).slice(0, 10) : '');
+    } else if (this._pendiente(modulo, uuid)) {
+      el2.textContent = 'Se archivará en cuanto haya conexión';
+    } else {
+      el2.textContent = 'Documento generado desde el registro';
+    }
   },
 
   /**
@@ -12861,55 +13615,424 @@ const PDF_TEMPLATE = {
     return copia;
   },
 
-  async exportarRegistro(modulo, uuid, titulo) {
-    // La ventana se abre YA, dentro del clic: si se abre después de los
-    // await (hijos, firmas de URL), el bloqueador de emergentes la frena.
-    const ventana = window.open('', '_blank');
-    if (ventana) {
-      ventana.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#454652">Generando documento…</p>');
-    }
-    let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
-    let hijos = [];
+  /**
+   * Reúne todo lo que necesita el documento de UN registro: la fila, sus filas
+   * hijas y las fotos/firmas ya firmadas (en Storage la columna guarda la ruta
+   * de un bucket privado). Lo usan el visor, el PDF descargable y el archivo
+   * automático: una sola forma de armar el documento, un solo resultado.
+   *
+   * @param {string} modulo
+   * @param {string} [uuid]  sin uuid = vista previa del formato (datos de ejemplo)
+   * @returns {Promise<{registro, hijos, plantilla, titulo, modulo, uuid, ejemplo, falta}>}
+   */
+  async prepararDocumento(modulo, uuid, titulo) {
+    const plantilla = this.plantillaBase(modulo);
+    const base = { modulo: modulo, uuid: uuid ? String(uuid) : '', plantilla: plantilla, hijos: [],
+                   titulo: titulo || (this._tituloModulo(modulo) + (uuid ? '' : ' · formato')) };
 
-    // No esta en la copia local: se pide ESE registro al servidor.
+    let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
+
+    // No está en la copia local: se pide ESE registro al servidor (no la tabla).
     if (!registro && uuid && typeof DataService !== 'undefined' && DataService.query) {
       try {
         const res = await DataService.query(modulo, { cond: { UUID: { eq: String(uuid) } }, limite: 1 });
         if (res && res.status === 'OK' && Array.isArray(res.payload) && res.payload[0]) registro = res.payload[0];
-      } catch (e) { /* sin red: se avisa abajo */ }
+      } catch (e) { /* sin red: se resuelve abajo */ }
     }
 
-    if (!registro && uuid) {
-      // NUNCA un PDF con datos inventados cuando se pidio un registro
-      // concreto: un documento de seguridad con aspecto oficial y contenido
-      // de ejemplo es peor que no tener documento. (La vista previa del
-      // formato, que llama sin uuid, si usa el registro de ejemplo.)
-      if (ventana) {
-        ventana.document.body.innerHTML =
-          '<div style="font-family:Arial,sans-serif;padding:32px;color:#162138;max-width:520px">' +
-          '<h2 style="margin:0 0 8px">No se pudo generar el documento</h2>' +
-          '<p style="color:#4f5c78;line-height:1.5">No se encontro el registro en este dispositivo y no fue ' +
-          'posible pedirlo al servidor. Conectate y vuelve a abrir el registro antes de exportarlo.</p></div>';
-      }
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('No se encontró el registro: no se exporta un PDF con datos de ejemplo.', 'error', 5000);
-      }
-      return null;
-    }
+    // NUNCA un documento con datos inventados cuando se pidió un registro
+    // concreto: un papel de seguridad con aspecto oficial y contenido de
+    // ejemplo es peor que no tener documento.
+    if (!registro && uuid) return Object.assign(base, { registro: null, falta: true });
 
     if (!registro) {
       const ej = this.registroEjemplo(modulo);
-      registro = ej.registro; hijos = ej.hijos;
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('Vista previa del formato con datos de ejemplo.', 'info', 3200);
-      }
-    } else if (this.tieneTablaHija(modulo) && uuid && typeof DataService !== 'undefined' && DataService.readChildren) {
-      // Igual que en Edición y Detalle: READ_DB solo trae el padre, así que
-      // las filas hijas del PDF hay que pedirlas aparte o la tabla sale vacía.
+      return Object.assign(base, { registro: ej.registro, hijos: ej.hijos, ejemplo: true });
+    }
+
+    let hijos = [];
+    if (this.tieneTablaHija(modulo) && typeof DataService !== 'undefined' && DataService.readChildren) {
+      // Igual que en Edición y Detalle: la lectura del padre no trae el
+      // detalle, así que las filas hijas se piden aparte o la tabla sale vacía.
       try { hijos = await DataService.readChildren(modulo, uuid); } catch (e) { hijos = []; }
     }
-    registro = await this._conMediaResuelta(modulo, registro);
-    return this.exportar(modulo, registro, hijos, titulo || (modulo + ' ' + (uuid || '')), ventana);
+    return Object.assign(base, { registro: await this._conMediaResuelta(modulo, registro), hijos: hijos });
+  },
+
+  _tituloModulo: function(modulo) {
+    const t = (typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER.titulo) ? MOTOR_RENDER.titulo(modulo) : '';
+    return t || String(modulo).replace(/^\d+_/, '').replace(/_/g, ' ');
+  },
+
+  /** Nombre del archivo PDF de un registro. */
+  nombreArchivo: function(modulo, uuid) {
+    return 'Informe_' + String(modulo).replace(/[^\w-]/g, '') +
+           (uuid ? '_' + String(uuid).replace(/[^\w-]/g, '').slice(0, 12) : '') + '.pdf';
+  },
+
+  /**
+   * Punto de entrada del botón "PDF" de cada Detalle. Mismo nombre que antes
+   * —lo llama MOTOR_RENDER—, pero ahora abre el visor dentro de la app en vez
+   * de una ventana nueva sin retorno.
+   */
+  async exportarRegistro(modulo, uuid, titulo) {
+    const doc = await this.prepararDocumento(modulo, uuid, titulo);
+    if (doc.falta) {
+      if (typeof PWA_SKILLS !== 'undefined') {
+        PWA_SKILLS.toast('No se encontró el registro en este dispositivo ni en el servidor: ' +
+          'conéctate y vuelve a abrirlo antes de exportarlo.', 'error', 5500);
+      }
+      return null;
+    }
+    if (doc.ejemplo && typeof PWA_SKILLS !== 'undefined') {
+      PWA_SKILLS.toast('Vista previa del formato con datos de ejemplo.', 'info', 3200);
+    }
+    return this.abrirVisor(doc);
+  },
+
+  // -----------------------------------------------------------------------
+  // ARCHIVO PDF DEL REGISTRO (Drive / Storage)
+  // -----------------------------------------------------------------------
+  // El informe se archiva solo cuando el registro llega al servidor, y se
+  // vuelve a generar con CADA cambio: lo que está archivado es siempre la
+  // última versión del registro. Al eliminar el registro se borra su informe.
+  //
+  // Dónde queda, según el proveedor activo:
+  //   appscript → Drive:   DATA/<modulo>/00_Informes/<uuid>.pdf
+  //   supabase  → Storage: informes/<empresa_id>/<modulo>/<uuid>/informe.pdf
+  //
+  // El nombre de un registro es SIEMPRE el mismo: "actualizar" es sustituir
+  // ese archivo, no acumular una copia por edición (en una fiscalización
+  // nadie sabría cuál de las siete es la vigente).
+
+  CLAVE_PENDIENTES: 'pdf_informes_pendientes',
+  MAX_PENDIENTES: 300,
+  MAX_INTENTOS: 3,
+
+  /** El archivo automático se puede desactivar por empresa o por dispositivo. */
+  archivoAutomatico: function() {
+    const cfg = ((typeof AppState !== 'undefined' && AppState.User) || {}).EmpresaConfig || {};
+    if (cfg.Informe_PDF_Auto === false || cfg.Informe_PDF_Auto === 'false') return false;
+    const s = (typeof AppState !== 'undefined' && AppState.Settings) || {};
+    return s.InformePDFAuto !== false;
+  },
+
+  /**
+   * Carga el generador de PDF (html2pdf = html2canvas + jsPDF).
+   * PRIMERO la copia local de /vendor: la CSP del proyecto solo permite
+   * scripts del propio origen, y dentro del APK no hay internet garantizado.
+   * El CDN queda como respaldo para PROD_INDEX.html (Apps Script), que es un
+   * único HTML y no tiene archivos sueltos que referenciar.
+   */
+  CDN_PDF: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+  SRI_PDF: 'sha384-Yv5O+t3uE3hunW8uyrbpPW3iw6/5/Y7HitWJBLgqfMoA36NogMmy+8wWZMpn3HWc',
+  LOCAL_PDF: '/vendor/html2pdf.bundle.min.js',
+
+  cargarGenerador: function() {
+    if (window.html2pdf) return Promise.resolve(true);
+    if (this._libPdf) return this._libPdf;
+    const self = this;
+    const intentar = (src, sri) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      if (sri) { s.integrity = sri; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer'; }
+      s.onload = () => window.html2pdf ? resolve(true) : reject(new Error('html2pdf no quedó disponible'));
+      s.onerror = () => reject(new Error('no se pudo cargar ' + src));
+      document.head.appendChild(s);
+    });
+    this._libPdf = intentar(this.LOCAL_PDF, '')
+      .catch(() => intentar(self.CDN_PDF, self.SRI_PDF))
+      .catch(e => { self._libPdf = null; throw new Error('No se pudo cargar el generador de PDF. ' + e.message); });
+    return this._libPdf;
+  },
+
+  /**
+   * Hoja de 210 mm fuera de la vista: html2canvas necesita medidas reales,
+   * así que el documento se renderiza de verdad, pero donde no se ve ni
+   * desplaza la app.
+   */
+  _hostOculto: function(doc) {
+    this._montarEstilos(doc.plantilla);
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;';
+    host.innerHTML = '<div class="pt-doc" style="width:210mm;padding:14mm 12mm;">' +
+      this.renderHTML(doc.plantilla, doc.registro, doc.hijos) + '</div>';
+    document.body.appendChild(host);
+    return host;
+  },
+
+  /** Documento → Blob PDF (A4). Es el archivo que se archiva y el que se adjunta. */
+  async pdfBlob(doc) {
+    await this.cargarGenerador();
+    if (!window.html2pdf) throw new Error('No se pudo cargar el generador de PDF.');
+    const pag = doc.plantilla.pagina || {};
+    const host = this._hostOculto(doc);
+    try {
+      return await window.html2pdf().set({
+        margin: 0,
+        filename: this.nombreArchivo(doc.modulo, doc.uuid),
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+        pagebreak: { mode: ['css', 'legacy'], avoid: '.pt-no-cortar' },
+        jsPDF: { unit: 'mm', format: String(pag.tamano || 'a4').toLowerCase(),
+                 orientation: pag.orientacion === 'horizontal' ? 'landscape' : 'portrait' }
+      }).from(host.firstElementChild).outputPdf('blob');
+    } finally {
+      host.remove();
+    }
+  },
+
+  /** Descarga el PDF en el dispositivo (botón del visor). */
+  async descargar(modulo, uuid, boton) {
+    const fin = this._ocupado(boton, 'Generando…');
+    try {
+      const doc = (this._visor && this._visor.uuid === String(uuid || ''))
+        ? this._visor : await this.prepararDocumento(modulo, uuid);
+      if (doc.falta) throw new Error('No se encontró el registro.');
+      const blob = await this.pdfBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = this.nombreArchivo(modulo, uuid);
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return true;
+    } catch (e) {
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast(e.message, 'error', 5000);
+      return false;
+    } finally { fin(); }
+  },
+
+  /** Desactiva un botón mientras dura una tarea larga (y lo deja como estaba). */
+  _ocupado: function(boton, texto) {
+    if (!boton) return function () {};
+    const antes = boton.innerHTML;
+    boton.disabled = true;
+    boton.classList.add('opacity-60', 'pointer-events-none');
+    boton.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin" aria-hidden="true">progress_activity</span>' +
+                      '<span class="hidden sm:inline">' + this._esc(texto || 'Un momento…') + '</span>';
+    return function () {
+      boton.disabled = false;
+      boton.classList.remove('opacity-60', 'pointer-events-none');
+      boton.innerHTML = antes;
+    };
+  },
+
+  /**
+   * Genera el informe de un registro y lo archiva en el servidor.
+   * Silencioso a propósito: es una consecuencia del guardado, no una acción
+   * del usuario. Si falla por red, el registro sigue en la lista de pendientes.
+   */
+  async archivar(modulo, uuid) {
+    if (!modulo || !uuid) return { status: 'ERROR', msg: 'Falta el módulo o el UUID.' };
+    if (typeof DataService === 'undefined' || !DataService.saveReport) {
+      return { status: 'ERROR', msg: 'El proveedor activo no archiva informes.' };
+    }
+    let doc;
+    try { doc = await this.prepararDocumento(modulo, uuid); }
+    catch (e) { return { status: 'ERROR', msg: e.message, transitorio: true }; }
+    // Sin el registro no se archiva nada: un informe vacío con aspecto
+    // oficial es peor que la falta de informe.
+    if (!doc.registro || doc.falta) return { status: 'ERROR', msg: 'No se pudo leer el registro.', transitorio: true };
+
+    let blob;
+    try { blob = await this.pdfBlob(doc); }
+    catch (e) { return { status: 'ERROR', msg: e.message, transitorio: true }; }
+
+    try {
+      const r = await DataService.saveReport({ blob: blob, modulo: modulo, uuid: uuid });
+      return (r && r.status === 'OK') ? r : (r || { status: 'ERROR', msg: 'Respuesta vacía del servidor.' });
+    } catch (e) {
+      return { status: 'ERROR', msg: e.message, transitorio: true };
+    }
+  },
+
+  /** Borra el informe archivado (lo llama DataService.delete al eliminar el registro). */
+  async borrarArchivo(modulo, uuid) {
+    this.olvidarPendiente(modulo, uuid);
+    if (typeof DataService === 'undefined' || !DataService.deleteReport) return { status: 'OK' };
+    try { return await DataService.deleteReport(modulo, uuid); }
+    catch (e) { return { status: 'ERROR', msg: e.message }; }
+  },
+
+  // ── Lista de pendientes ────────────────────────────────────────────────
+  // Un registro guardado sin señal no puede archivar su PDF: no hay dónde
+  // subirlo. Se apunta aquí (módulo + uuid, unos bytes) y se archiva en cuanto
+  // el registro llega al servidor. La lista sobrevive al cierre de la app, así
+  // que un turno entero sin cobertura no deja informes sin generar.
+  _pendientes: function() {
+    try {
+      const l = JSON.parse(localStorage.getItem(this.CLAVE_PENDIENTES) || '[]');
+      return Array.isArray(l) ? l : [];
+    } catch (e) { return []; }
+  },
+  _guardarPendientes: function(lista) {
+    try { localStorage.setItem(this.CLAVE_PENDIENTES, JSON.stringify(lista.slice(-this.MAX_PENDIENTES))); }
+    catch (e) { /* almacenamiento lleno: se archivará al próximo guardado */ }
+  },
+  _pendiente: function(modulo, uuid) {
+    return this._pendientes().some(p => p.m === modulo && p.u === String(uuid));
+  },
+
+  /** Apunta uno o varios registros para archivar su informe. */
+  encolarArchivo: function(modulo, uuids) {
+    if (!this.archivoAutomatico()) return 0;
+    const lista = this._pendientes();
+    let nuevos = 0;
+    [].concat(uuids || []).filter(Boolean).forEach(u => {
+      const uuid = String(u);
+      const i = lista.findIndex(p => p.m === modulo && p.u === uuid);
+      // Si ya estaba, se reinician los intentos: el registro volvió a cambiar
+      // y lo que haya archivado quedó viejo.
+      if (i !== -1) lista.splice(i, 1);
+      lista.push({ m: modulo, u: uuid, n: 0 });
+      nuevos++;
+    });
+    this._guardarPendientes(lista);
+    return nuevos;
+  },
+
+  olvidarPendiente: function(modulo, uuid) {
+    this._guardarPendientes(this._pendientes().filter(p => !(p.m === modulo && p.u === String(uuid))));
+  },
+
+  /**
+   * Archiva los pendientes, de uno en uno. Un fallo transitorio (sin red,
+   * sesión caducada) deja el registro en la lista y detiene la pasada: no se
+   * gastan intentos cuando el problema es la señal. Un rechazo real se
+   * reintenta MAX_INTENTOS veces y luego se descarta, para que un registro
+   * imposible no bloquee la lista entera.
+   */
+  async procesarPendientes(opciones) {
+    opciones = opciones || {};
+    if (this._drenando) return { archivados: 0, pendientes: this._pendientes().length, motivo: 'en-curso' };
+    if (!this.archivoAutomatico()) return { archivados: 0, pendientes: 0, motivo: 'desactivado' };
+    const sesion = (typeof AppState !== 'undefined' && AppState.User) || {};
+    if (!sesion.DNI) return { archivados: 0, pendientes: this._pendientes().length, motivo: 'sin-sesion' };
+    // navigator.onLine no es de fiar dentro del APK (el WebView no lo
+    // actualiza): ahí se intenta siempre y el fallo de red es transitorio.
+    if (!navigator.onLine && !(typeof enAppInstalada === 'function' && enAppInstalada())) {
+      return { archivados: 0, pendientes: this._pendientes().length, motivo: 'sin-red' };
+    }
+
+    this._drenando = true;
+    let archivados = 0;
+    try {
+      // Tope por pasada: generar un PDF cuesta ~1 s de CPU. Con 40 registros
+      // subidos de golpe tras un turno sin señal, hacerlos todos seguidos
+      // congelaría la app; el resto sale en la pasada siguiente.
+      const tope = Math.max(1, parseInt(opciones.tope, 10) || 6);
+      for (let k = 0; k < tope; k++) {
+        const lista = this._pendientes();
+        if (!lista.length) break;
+        const item = lista[0];
+        const r = await this.archivar(item.m, item.u);
+        const actual = this._pendientes();
+        const i = actual.findIndex(p => p.m === item.m && p.u === item.u);
+        if (i === -1) continue;                      // lo quitaron mientras tanto (registro eliminado)
+        if (r && r.status === 'OK') {
+          actual.splice(i, 1);
+          archivados++;
+        } else if (r && r.transitorio) {
+          this._guardarPendientes(actual);           // se reintenta luego, sin gastar intentos
+          break;
+        } else {
+          actual[i].n = (actual[i].n || 0) + 1;
+          actual[i].error = String((r && r.msg) || 'error');
+          if (actual[i].n >= this.MAX_INTENTOS) {
+            console.warn('[Informe PDF] se descarta ' + item.m + '/' + item.u + ': ' + actual[i].error);
+            actual.splice(i, 1);
+          }
+        }
+        this._guardarPendientes(actual);
+        await new Promise(sigue => setTimeout(sigue, 150));   // la interfaz respira entre documentos
+      }
+    } finally { this._drenando = false; }
+    return { archivados: archivados, pendientes: this._pendientes().length };
+  },
+
+  // -----------------------------------------------------------------------
+  // ENVÍO POR WHATSAPP
+  // -----------------------------------------------------------------------
+  /**
+   * Manda el informe por WhatsApp. Dos caminos, en este orden:
+   *   1. El PDF como ADJUNTO (Web Share API): el documento llega al chat y se
+   *      puede reenviar, abrir y guardar. Es lo que la gente espera.
+   *   2. Si el dispositivo no sabe compartir archivos —el WebView de Android,
+   *      dentro del APK, no implementa Web Share—, el ENLACE del documento
+   *      archivado (Drive o Storage).
+   * Si no hay ninguno de los dos se explica por qué, en vez de abrir WhatsApp
+   * con un mensaje sin documento.
+   */
+  async enviarPorWhatsApp(modulo, uuid, titulo, boton) {
+    const fin = this._ocupado(boton, 'Preparando…');
+    try {
+      if (!uuid) {
+        if (typeof PWA_SKILLS !== 'undefined') {
+          PWA_SKILLS.toast('Esta es la vista previa del formato: no hay registro que enviar.', 'info', 4000);
+        }
+        return false;
+      }
+      const doc = (this._visor && this._visor.uuid === String(uuid))
+        ? this._visor : await this.prepararDocumento(modulo, uuid, titulo);
+      if (doc.falta) throw new Error('No se encontró el registro: conéctate y vuelve a abrirlo.');
+
+      const nombre = this.nombreArchivo(modulo, uuid);
+      const encabezado = this._tituloModulo(modulo) + ' · ' + (doc.titulo || uuid);
+
+      // 1 · Adjunto
+      if (navigator.share && typeof File === 'function') {
+        let archivo = null;
+        try {
+          const blob = await this.pdfBlob(doc);
+          archivo = new File([blob], nombre, { type: 'application/pdf' });
+        } catch (e) { archivo = null; }
+        if (archivo && (!navigator.canShare || navigator.canShare({ files: [archivo] }))) {
+          try {
+            await navigator.share({ files: [archivo], title: encabezado, text: this._mensaje(encabezado) });
+            return true;
+          } catch (e) {
+            // Selector cerrado por el usuario: no es un fallo que explicar
+            if (e && (e.name === 'AbortError' || /abort|cancel/i.test(e.message || ''))) return false;
+          }
+        }
+      }
+
+      // 2 · Enlace del documento archivado
+      let info = null;
+      try { info = await DataService.reportInfo(modulo, uuid, { compartir: true }); } catch (e) { info = null; }
+      if (!info || !info.existe || !info.enlace) {
+        // Todavía no estaba archivado (se guardó sin señal): se archiva ahora
+        const r = await this.archivar(modulo, uuid);
+        if (r && r.status === 'OK') {
+          this.olvidarPendiente(modulo, uuid);
+          try { info = await DataService.reportInfo(modulo, uuid, { compartir: true }); } catch (e) { info = null; }
+        }
+      }
+      if (info && info.enlace) {
+        PWA_SKILLS.abrirWhatsApp('', this._mensaje(encabezado, info.enlace));
+        return true;
+      }
+
+      throw new Error('Este dispositivo no puede adjuntar archivos y el informe aún no está en el servidor. ' +
+                      'Conéctate, espera a que se sincronice y vuelve a intentarlo.');
+    } catch (e) {
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast(e.message, 'error', 6000);
+      return false;
+    } finally { fin(); }
+  },
+
+  /** Texto que acompaña al documento en WhatsApp. */
+  _mensaje: function(encabezado, enlace) {
+    const u = (typeof AppState !== 'undefined' && AppState.User) || {};
+    const pila = ['📄 *' + encabezado + '*', ''];
+    pila.push('Informe del sistema de Seguridad y Salud en el Trabajo' +
+              (u.EmpresaNombre ? ' de *' + u.EmpresaNombre + '*' : '') + '.');
+    if (enlace) {
+      pila.push('', '🔗 Documento:', enlace, '',
+                '⚠️ El enlace abre el documento a cualquiera que lo reciba: no lo reenvíes fuera de la empresa.');
+    }
+    if (u.Nombre) pila.push('', 'Enviado por ' + u.Nombre + (u.DNI ? ' (DNI ' + u.DNI + ')' : '') + '.');
+    return pila.join('\n');
   },
 
   /** Registro de ejemplo para la vista previa del editor */
@@ -13864,8 +14987,20 @@ const CONSENTIMIENTO = {
   // =======================================================================
   // 5 · PLANTILLA DEL PDF
   // =======================================================================
+  /**
+   * El generador de PDF lo carga PDF_TEMPLATE.cargarGenerador(), que prueba
+   * primero la copia local de /vendor y solo después el CDN.
+   *
+   * Antes esto cargaba el CDN directamente, y la CSP del proyecto
+   * (`script-src 'self' … https://cdn.jsdelivr.net`) no permite cdnjs: en
+   * dist/ y dentro del APK el script quedaba bloqueado y nadie podía firmar
+   * su constancia. Un solo cargador, un solo sitio donde arreglarlo.
+   */
   _cargarLibreria() {
     if (window.html2pdf) return Promise.resolve(true);
+    if (typeof PDF_TEMPLATE !== 'undefined' && PDF_TEMPLATE.cargarGenerador) {
+      return PDF_TEMPLATE.cargarGenerador();
+    }
     if (this._libPromesa) return this._libPromesa;
     const self = this;
     this._libPromesa = new Promise((resolve, reject) => {
@@ -14122,6 +15257,7 @@ const MOTOR_RENDER = {
     if (/^hora|_hora|hora_/i.test(nombre))                                   return 'time';
     if (/(^|_)(email|correo)(_|$)/i.test(nombre))                            return 'email';
     if (/(^|_)(celular|telefono|tel|movil|whatsapp)(_|$)/i.test(nombre))     return 'tel';
+    if (/(^|_)(link|url|sitio_web|website)(_|$)/i.test(nombre))              return 'url';
     // Un campo que guarda una cantidad no debe aceptar letras: «Días de
     // descanso» con «dsdsds» dentro no es un error del usuario, es un campo
     // mal declarado. Lo seguro es `control: "number"` en el subconfig; esta
@@ -14709,6 +15845,10 @@ const MOTOR_RENDER = {
       pon('autocomplete', 'tel');
       // Dígitos, espacios y los signos de un teléfono; nada de letras
       pon('pattern', def.pattern || '[0-9+()\s-]{6,20}');
+    } else if (ctl === 'url') {
+      pon('inputmode', 'url');
+      pon('autocomplete', 'url');
+      pon('pattern', def.pattern || 'https?://.+');
     } else if (ctl === 'text' || ctl === 'textarea') {
       pon('maxlength', def.maxLength);
     }
@@ -14758,21 +15898,49 @@ const MOTOR_RENDER = {
     } else if (ctl === 'imagen' || ctl === 'archivo') {
       const multiple = (def.type === 'Image_Collection') ? ' multiple' : '';
       const accept = (ctl === 'imagen') ? 'image/*' : '';
-      control = '<div class="flex items-center gap-3 flex-wrap">' +
-          '<button type="button" onclick="document.getElementById(\'' + esc(id) + '\').click()" ' +
-            'aria-label="Agregar ' + esc(lbl) + '" ' +
+      const datos = 'data-campo="' + esc(nombre) + '" data-modulo="' + esc(this._mod(modulo)) + '" ' +
+                    'onchange="MOTOR_RENDER.tomarArchivos(this)"';
+      // Botón cuadrado de 80px: muy por encima del área táctil mínima y con
+      // el mismo aspecto que ya tenían estos campos.
+      const tecla = (destino, icono, texto, etiquetaAria) =>
+          '<button type="button" onclick="document.getElementById(\'' + esc(destino) + '\').click()" ' +
+            'aria-label="' + esc(etiquetaAria) + '" ' +
             'class="w-20 h-20 rounded-xl border-2 border-dashed border-outline-variant bg-surface flex flex-col items-center justify-center cursor-pointer hover:bg-surface-container transition-all text-secondary">' +
-            '<span class="material-symbols-outlined text-2xl" aria-hidden="true">' + (ctl === 'imagen' ? 'add_a_photo' : 'upload_file') + '</span>' +
-            '<span class="text-[12px] font-bold mt-0.5 uppercase">' + (ctl === 'imagen' ? 'Foto' : 'Archivo') + '</span></button>' +
-          '<input type="file" id="' + esc(id) + '"' + multiple + (accept ? ' accept="' + accept + '"' : '') + ' style="display:none;" ' +
-            'data-campo="' + esc(nombre) + '" data-modulo="' + esc(this._mod(modulo)) + '" ' +
-            'onchange="MOTOR_RENDER.tomarArchivos(this)">' +
-          '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+            '<span class="material-symbols-outlined text-2xl" aria-hidden="true">' + icono + '</span>' +
+            '<span class="text-[12px] font-bold mt-0.5 uppercase">' + texto + '</span></button>';
+
+      if (ctl === 'imagen') {
+        // DOS entradas, no una. `capture="environment"` abre la cámara trasera
+        // directamente; sin ese atributo se abre el selector de archivos.
+        //
+        // Hace falta separarlas porque dentro del APK el selector de Capacitor
+        // NO ofrece la cámara: solo con `capture` lanza ACTION_IMAGE_CAPTURE
+        // (ver BridgeWebChromeClient). Y no se puede poner `capture` en la
+        // única entrada, porque entonces se pierde el acceso a la galería:
+        // a veces la foto ya está tomada.
+        //
+        // La cámara va primero: en campo es lo que se usa casi siempre.
+        control = '<div class="flex items-center gap-3 flex-wrap">' +
+            tecla(id + '-cam', 'photo_camera', 'Cámara', 'Tomar foto de ' + lbl + ' con la cámara') +
+            tecla(id, 'photo_library', 'Galería', 'Elegir ' + lbl + ' de la galería') +
+            // La cámara entrega una foto cada vez: nunca lleva `multiple`.
+            '<input type="file" id="' + esc(id) + '-cam" accept="image/*" capture="environment" ' +
+              'style="display:none;" ' + datos + '>' +
+            '<input type="file" id="' + esc(id) + '"' + multiple + ' accept="image/*" ' +
+              'style="display:none;" ' + datos + '>' +
+            '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+      } else {
+        control = '<div class="flex items-center gap-3 flex-wrap">' +
+            tecla(id, 'upload_file', 'Archivo', 'Agregar ' + lbl) +
+            '<input type="file" id="' + esc(id) + '"' + multiple + (accept ? ' accept="' + accept + '"' : '') +
+              ' style="display:none;" ' + datos + '>' +
+            '<div id="' + esc(id) + '-preview" class="flex gap-2 flex-wrap"></div></div>';
+      }
 
     } else {
       const tipo = (ctl === 'date') ? 'date' : (ctl === 'time') ? 'time'
                  : (ctl === 'number') ? 'number' : (ctl === 'password') ? 'password'
-                 : (ctl === 'email') ? 'email' : (ctl === 'tel') ? 'tel' : 'text';
+                 : (ctl === 'email') ? 'email' : (ctl === 'tel') ? 'tel' : (ctl === 'url') ? 'url' : 'text';
       // DNI: máximo 8 caracteres (ver attrsDNI en Global_Config)
       const dni = (tipo === 'text') ? attrsDNI(nombre, def.label) : '';
       control = '<input type="' + tipo + '" id="' + esc(id) + '"' + dni +
@@ -15206,6 +16374,11 @@ const MOTOR_RENDER = {
           '<button id="' + esc(s) + '-det-pdf" ' +
             'class="h-7 px-3 rounded-lg border border-outline-variant bg-white text-[9px] font-bold text-on-surface hover:bg-surface-container transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">' +
             '<span class="material-symbols-outlined text-[14px]" aria-hidden="true">picture_as_pdf</span>PDF</button>' +
+          // El informe archivado se envía por WhatsApp: adjunto si el
+          // dispositivo sabe compartir archivos, y si no su enlace.
+          '<button id="' + esc(s) + '-det-enviar" ' +
+            'class="h-7 px-3 rounded-lg border border-outline-variant bg-white text-[9px] font-bold text-on-surface hover:bg-surface-container transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">' +
+            '<span class="material-symbols-outlined text-[14px]" aria-hidden="true">share</span>Enviar</button>' +
         '</div></header>' +
       '<div class="max-w-4xl mx-auto space-y-3 sm:space-y-5">' +
         '<div id="' + esc(s) + '-det-extra"></div>' + secciones + hijos + galeria +
@@ -15248,8 +16421,8 @@ const MOTOR_RENDER = {
       if (tit) tit.textContent = 'Registro no encontrado';
       // Sin registro no hay nada que editar ni que imprimir: dejar los
       // botones activos llevaba a exportar un PDF con datos de ejemplo.
-      const sinDatos = q(s + '-det-editar'), sinPdf = q(s + '-det-pdf');
-      [sinDatos, sinPdf].forEach(b => { if (b) b.classList.add('hidden'); });
+      const sinDatos = q(s + '-det-editar'), sinPdf = q(s + '-det-pdf'), sinEnviar = q(s + '-det-enviar');
+      [sinDatos, sinPdf, sinEnviar].forEach(b => { if (b) b.classList.add('hidden'); });
       const cuerpo = root.querySelector('#' + CSS.escape(s + '-det-cuerpo')) || root;
       const aviso = document.createElement('div');
       aviso.id = s + '-det-aviso';
@@ -15267,13 +16440,18 @@ const MOTOR_RENDER = {
     // Registro encontrado: por si se venia de uno que no existia
     const avisoPrevio = root.querySelector('#' + CSS.escape(s + '-det-aviso'));
     if (avisoPrevio) avisoPrevio.remove();
-    [q(s + '-det-editar'), q(s + '-det-pdf')].forEach(b => { if (b) b.classList.remove('hidden'); });
+    [q(s + '-det-editar'), q(s + '-det-pdf'), q(s + '-det-enviar')].forEach(b => { if (b) b.classList.remove('hidden'); });
 
     // Acciones de la cabecera (sin interpolar el UUID en onclick)
     const btnEd = q(s + '-det-editar');
     if (btnEd) btnEd.onclick = () => changeInternalView(modulo, 'Edicion', r.UUID);
+    // Título del documento: lo que la persona lee en la cabecera del Detalle,
+    // no el UUID (en el PDF y en WhatsApp un UUID no le dice nada a nadie).
+    const tituloDoc = String(r[V.Detalle.titulo] || '').trim() || this.titulo(modulo);
     const btnPdf = q(s + '-det-pdf');
-    if (btnPdf) btnPdf.onclick = () => PDF_TEMPLATE.exportarRegistro(modulo, r.UUID, this.titulo(modulo) + ' ' + r.UUID);
+    if (btnPdf) btnPdf.onclick = () => PDF_TEMPLATE.exportarRegistro(modulo, r.UUID, tituloDoc);
+    const btnEnviar = q(s + '-det-enviar');
+    if (btnEnviar) btnEnviar.onclick = e => PDF_TEMPLATE.enviarPorWhatsApp(modulo, r.UUID, tituloDoc, e.currentTarget);
 
     if (tit) tit.textContent = r[V.Detalle.titulo] || this.titulo(modulo);
 
@@ -15772,6 +16950,47 @@ let _syncEnCurso = null;        // promesa de la sincronización activa
 let _syncRepetir = null;        // opciones de una llamada que llegó durante otra
 let _syncTimeout = null;
 
+/**
+ * ¿El mensaje de error dice "no se pudo preguntar" en vez de "el servidor dijo
+ * que no"? Es la última red de seguridad por si un proveedor olvida marcar
+ * `transitorio`: confundir ambas cosas bloquea registros que estaban bien.
+ */
+/** ¿Corre dentro del APK (Capacitor) y no en un navegador? */
+function enAppInstalada() {
+    return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' &&
+              window.Capacitor.isNativePlatform());
+}
+
+const RED_CAIDA = /sin conexi[oó]n|failed to fetch|networkerror|load failed|net::|err_internet|err_network|timeout|tiempo de espera|HTTP 5\d\d|servidor ocupado/i;
+function esFalloDeRed(msg) {
+    return RED_CAIDA.test(String(msg || ''));
+}
+
+/**
+ * Desbloquea lo que se bloqueó por quedarse sin señal, no por un rechazo real.
+ *
+ * Antes, un fallo de red contaba como rechazo: cinco reintentos sin cobertura
+ * y el registro quedaba bloqueado para siempre del envío automático. Esto
+ * recupera los que ya están así en el dispositivo; sin ello, los registros
+ * atrapados por ese error seguirían sin subir aunque el fallo esté corregido.
+ */
+async function rehabilitarBloqueadosPorRed() {
+    if (!localDB) return 0;
+    let items = [];
+    try { items = await readAllPendings(); } catch (e) { return 0; }
+    const recuperables = items.filter(it => it.bloqueado && esFalloDeRed(it.ultimoError));
+    if (!recuperables.length) return 0;
+    await new Promise((resolve) => {
+        const tx = localDB.transaction([OFFLINE_STORE_NAME], 'readwrite');
+        const store = tx.objectStore(OFFLINE_STORE_NAME);
+        recuperables.forEach(it => { it.bloqueado = false; it.rechazos = 0; store.put(it); });
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+    });
+    console.log('[Sync] ' + recuperables.length + ' registro(s) bloqueados por falta de señal vuelven a la cola.');
+    return recuperables.length;
+}
+
 /** Solo se sube con una sesión real: sin JWT, RLS rechazaría todo y se contarían rechazos falsos. */
 function sesionListaParaSync() {
     // AppState es un `const` global: NO cuelga de window, se consulta con typeof
@@ -15813,14 +17032,18 @@ async function _sincronizarCola(opciones) {
     if (!localDB) { try { await initOfflineDB(); } catch (e) { return Object.assign(resumen, { motivo: 'sin-db' }); } }
 
     const todos = await readAllPendings();
-    if (!navigator.onLine)       { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-red' }); }
+    // En el navegador, navigator.onLine es fiable y ahorra un intento inútil.
+    // Dentro del APK NO lo es (el WebView de Android no lo actualiza sin el
+    // plugin de red), así que ahí se intenta siempre: si no hay señal el fallo
+    // es transitorio y no cuenta. Confiar en él aquí dejaría la cola parada.
+    if (!navigator.onLine && !enAppInstalada()) { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-red' }); }
     if (!sesionListaParaSync())  { await actualizarIndicadorSync(); return Object.assign(resumen, { pendientes: todos.length, motivo: 'sin-sesion' }); }
 
     const aSubir = opciones.forzar ? todos : todos.filter(it => !it.bloqueado);
     if (aSubir.length === 0) { await actualizarIndicadorSync(); return finalizarResumen(resumen); }
 
     console.log(`📡 Sync de ${aSubir.length} transacciones pendientes...`);
-    if (window.updateSyncUI) updateSyncUI('Sincronizando…', false);
+    if (window.updateSyncUI) updateSyncUI('Enviando…', false);
 
     const byModule = {};
     aSubir.forEach(item => {
@@ -15856,6 +17079,14 @@ async function _sincronizarCola(opciones) {
           await clearQueueAfterSync(hechos);
           resumen.subidos += hechos.length;
           modulosConCambios.push(moduleName);
+          // El informe PDF del registro se archiva cuando el registro ya está
+          // en el servidor, nunca antes: sin señal no hay dónde subirlo. Aquí
+          // solo se apunta (es inmediato); generarlos es lo que viene después,
+          // fuera de este bucle, para no retrasar el resto de la cola.
+          if (typeof PDF_TEMPLATE !== 'undefined' && PDF_TEMPLATE.encolarArchivo) {
+            try { PDF_TEMPLATE.encolarArchivo(moduleName, hechos.map(it => it.payload && it.payload.UUID)); }
+            catch (e) { console.warn('[Informe PDF] no se pudo encolar:', e); }
+          }
           // Ya viajaron: se les quita el distintivo "Por subir" de la copia
           // local, aunque su Resumen no esté abierto para repintarse.
           if (typeof MOTOR_CACHE !== 'undefined' && MOTOR_CACHE.marcarSubidos) {
@@ -15868,7 +17099,14 @@ async function _sincronizarCola(opciones) {
         if (result && Array.isArray(result.fallos)) {
           result.fallos.forEach(f => { fallos[f.id] = f; });
         } else if (result && result.status !== 'OK') {
-          const transitorio = result.status === 'INVALID_TOKEN';
+          // Transitorio = el registro NO fue rechazado, es que no se pudo
+          // preguntar. No debe sumar rechazos: a los SYNC_MAX_RECHAZOS el
+          // registro se bloquea y deja de subir solo, y un trabajador sin
+          // señal acumularía esos intentos hasta perder el envío automático.
+          // El proveedor ya lo clasifica (`transitorio`): hay que respetarlo.
+          const transitorio = !!result.transitorio ||
+                              result.status === 'INVALID_TOKEN' ||
+                              esFalloDeRed(result.msg);
           batch.forEach(it => { if (okIds.indexOf(it.localQueueId) === -1) fallos[it.localQueueId] = { msg: result.msg, transitorio }; });
         }
 
@@ -15887,7 +17125,26 @@ async function _sincronizarCola(opciones) {
     }
 
     await actualizarIndicadorSync();
+    // Informes PDF de lo que acaba de subir. Va al final y sin await: generar
+    // un PDF cuesta ~1 s de CPU y la persona ya está viendo su Resumen; el
+    // retraso evita que el guardado se sienta lento. Lo que no alcance queda
+    // apuntado y sale en la pasada siguiente.
+    archivarInformesPendientes();
     return finalizarResumen(resumen);
+}
+
+/**
+ * Lanza el archivado de informes PDF sin bloquear a quien lo llama.
+ * Es seguro invocarla de más: PDF_TEMPLATE.procesarPendientes() ignora las
+ * llamadas que se solapan y no hace nada si la lista está vacía.
+ */
+let _informesTimer = null;
+function archivarInformesPendientes(retraso) {
+    if (typeof PDF_TEMPLATE === 'undefined' || !PDF_TEMPLATE.procesarPendientes) return;
+    clearTimeout(_informesTimer);
+    _informesTimer = setTimeout(() => {
+        PDF_TEMPLATE.procesarPendientes().catch(e => console.warn('[Informe PDF]', e));
+    }, retraso == null ? 1500 : retraso);
 }
 
 async function finalizarResumen(resumen) {
@@ -15947,14 +17204,23 @@ async function actualizarIndicadorSync() {
     try { if (localDB) items = await readAllPendings(); } catch (e) {}
     const bloqueados = items.filter(it => it.bloqueado).length;
     const pendientes = items.length - bloqueados;
-    if (!navigator.onLine) {
-        updateSyncUI(items.length ? `Sin conexión · ${items.length} pendiente(s)` : 'Sin conexión', true);
+    // El distintivo del botón cuenta TODO lo que no ha llegado al servidor,
+    // con error o sin él: para el trabajador la pregunta es "¿ya se envió?".
+    const sinEnviar = items.length;
+    // navigator.onLine solo se cree en el navegador: en el APK vale siempre
+    // true y diría "Sincronizado" estando sin señal.
+    // La pastilla dice UNA palabra: si hay enlace con el servidor. Cuántos
+    // cambios faltan lo dice el número sobre el botón de sincronizar, y no se
+    // repite aquí: «Sin conexión · 3 pendiente(s)» partía la cabecera en dos
+    // líneas en el móvil, justo donde se registra en campo.
+    if (!navigator.onLine && !enAppInstalada()) {
+        updateSyncUI('Sin conexión', true, sinEnviar);
     } else if (bloqueados) {
-        updateSyncUI(`${bloqueados} con error` + (pendientes ? ` · ${pendientes} pendiente(s)` : ''), true);
+        updateSyncUI('Con error', true, sinEnviar);
     } else if (pendientes) {
-        updateSyncUI(`${pendientes} pendiente(s)`, true);
+        updateSyncUI('Por enviar', true, sinEnviar);
     } else {
-        updateSyncUI('Sincronizado', false);
+        updateSyncUI('Conectado', false, 0);
     }
 }
 
@@ -15995,19 +17261,28 @@ function pseudoGenerateUUID() {
 window.addEventListener("load", () => {
    // Sin .catch(), un navegador que niega IndexedDB (ventana privada,
    // almacenamiento bloqueado) dejaba una promesa rechazada sin atender.
-   initOfflineDB().then(()=> {
+   initOfflineDB().then(async ()=> {
+      // Rescata lo que se bloqueó por falta de señal antes de intentar subir
+      await rehabilitarBloqueadosPorRed();
       // Sube lo que quedó pendiente de la última vez
       triggerSyncToCloud({ origen: 'inicio' });
+      // Y archiva los informes que quedaron sin generar (app cerrada a medias,
+      // dispositivo sin señal todo el turno): la lista vive en localStorage.
+      archivarInformesPendientes(6000);
    }).catch(() => { /* ya se avisó al usuario desde initApp */ });
 });
 
 window.addEventListener('online',  () => programarSync({ origen: 'red' }));
 window.addEventListener('offline', () => { actualizarIndicadorSync(); });
 
-// Reintento periódico: el evento 'online' no basta si el primer intento
-// falla (wifi sin salida real, servidor caído). Solo con la app a la vista.
+// Reintento periódico: el evento 'online' no basta si el primer intento falla
+// (wifi sin salida real, servidor caído) y, sobre todo, porque dentro del
+// WebView de Android `navigator.onLine` NO es de fiar: sin el plugin de red
+// vale siempre true y el evento 'online' no llega nunca. Por eso aquí NO se
+// consulta: se intenta y, si no hay señal, el fallo es transitorio y no
+// cuenta como rechazo. Solo con la app a la vista, para no gastar batería.
 setInterval(() => {
-   if (document.visibilityState === 'visible' && navigator.onLine) triggerSyncToCloud({ origen: 'reintento' });
+   if (document.visibilityState === 'visible') triggerSyncToCloud({ origen: 'reintento' });
 }, SYNC_REINTENTO_MS);
 
 document.addEventListener('visibilitychange', () => {
@@ -16312,6 +17587,10 @@ function showView(viewID, options) {
   options = options || {};
   // Salir de una vista nunca debe dejar la cámara encendida
   if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+  // Ni el visor del PDF tapando la vista nueva
+  if (typeof PDF_TEMPLATE !== 'undefined') PDF_TEMPLATE.cerrarVisor();
+  // Ni la capa de un sitio web (11_Webs) flotando sobre el módulo nuevo
+  if (typeof WEB_VIEWER !== 'undefined') WEB_VIEWER.cerrar();
   // El filtro de botones por permiso es del módulo que se deja: se suelta
   // aquí y aplicarVista() instala el del módulo nuevo.
   if (typeof PERMISOS !== 'undefined' && PERMISOS._observador) {
@@ -16347,11 +17626,14 @@ function showView(viewID, options) {
     const activeFilterSlot = container.querySelector('#ui-filter-slot');
     if (activeFilterSlot) activeFilterSlot.innerHTML = '';
 
+    // El boton de sincronizar se ve en TODA la app con sesion abierta, tambien
+    // en el panel principal: es el unico control de actualizacion que hay, y
+    // esconderlo fuera de un modulo dejaba al usuario sin forma de forzar el
+    // envio (ni de ver que todo habia llegado) justo en la pantalla de inicio.
+    if (syncBtn) syncBtn.style.display = (viewID === 'Login') ? 'none' : 'flex';
     if (viewID !== 'Login' && viewID !== 'Menu') {
-        if (syncBtn) syncBtn.style.display = 'flex';
         if (footer) footer.style.display = 'grid';
     } else {
-        if (syncBtn) syncBtn.style.display = 'none';
         if (footer) footer.style.display = (viewID === 'Menu' ? 'grid' : 'none');
         AppState.activeModule = null;
     }
@@ -16440,8 +17722,11 @@ function showView(viewID, options) {
 function changeInternalView(moduleID, viewType, recordID = null) {
   try {
     // Igual que showView: si se venía de una Edición con captura facial,
-    // se apaga la cámara antes de pintar la vista nueva.
+    // se apaga la cámara antes de pintar la vista nueva, y el visor del PDF
+    // se cierra para no quedar sobre la vista que se abre.
     if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+    if (typeof PDF_TEMPLATE !== 'undefined') PDF_TEMPLATE.cerrarVisor();
+    if (typeof WEB_VIEWER !== 'undefined') WEB_VIEWER.cerrar();
     console.log(`🔄 Cambiando vista interna: ${moduleID} -> ${viewType}`);
     const modLower = moduleID.toLowerCase();
     // Normalización de nombres de vistas (Soporte Multi-idioma Detail/Detalle)
@@ -16705,14 +17990,29 @@ function agregarTarjetasModulosNuevos(container) {
   const grid = container.querySelector('#dash-grp-otros-grid');
   if (!grid) return;
   const conTarjeta = new Set(Array.from(container.querySelectorAll('.mnu-card[data-modulo]')).map(b => b.getAttribute('data-modulo')));
+  // Antes se comprobaba que ya existiera "#module-<id>-resumen" en el DOM
+  // para descartar módulos "sin vistas registradas". Esa vista la construye
+  // MOTOR_RENDER de forma perezosa, solo cuando el módulo se ABRE por primera
+  // vez — nunca antes, estando todavía en el Menú — así que la comprobación
+  // nunca era cierta y ningún módulo sin tarjeta manual en MENU_GRUPOS llegaba
+  // a mostrarse aquí. PERMISOS.modulos() ya solo lista módulos con subconfig
+  // válido (Config_Modular + NombreInterno), que es la garantía que hace falta.
   PERMISOS.modulos().forEach(m => {
     if (conTarjeta.has(m.id)) return;
-    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;   // sin vistas registradas
     grid.insertAdjacentHTML('beforeend', tarjetaModuloMenu({
       id: m.id, titulo: m.titulo, icono: m.icono || 'apps', acento: 'slate',
       sub: m.id.replace(/^(\d+)_.*/, 'Módulo $1')
     }));
   });
+  // El grupo «Más módulos» nace oculto (MENU_GRUPOS.otros.modulos está vacío
+  // a propósito: lo llenan solo los módulos sin tarjeta propia). Si se agregó
+  // alguno, hay que mostrarlo y poner al día su contador.
+  const seccion = container.querySelector('#dash-grp-otros');
+  if (seccion && grid.children.length) {
+    seccion.hidden = false;
+    const contador = seccion.querySelector('.mnu-group-n');
+    if (contador) contador.textContent = String(grid.children.length);
+  }
 }
 
 /** Igual que las tarjetas: enlace genérico en el menú lateral para un módulo nuevo. */
@@ -16722,7 +18022,6 @@ function agregarEnlacesDrawerModulosNuevos() {
   if (!extra) return;
   PERMISOS.modulos().forEach(m => {
     if (document.querySelector('.drawer-nav-link[data-modulo="' + CSS.escape(m.id) + '"]')) return;
-    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'drawer-nav-link w-full text-left';
@@ -16913,15 +18212,6 @@ function renderMenu() {
 .mnu-updated { display:inline; font-size:11px; font-weight:600; color:var(--mnu-hero-muted); }
 .mnu-updated:empty { display:none; }
 .mnu-updated::before { content:"·"; margin:0 6px 0 2px; }
-/* Actualizar: arriba a la derecha, en el hueco que deja el texto */
-.mnu-refresh {
-  position:relative; z-index:1; flex-shrink:0; align-self:flex-start;
-  display:inline-flex; align-items:center; justify-content:center; gap:6px; height:40px; padding:0 14px; border-radius:12px; border:0;
-  background:var(--mnu-yellow); color:var(--mnu-on-yellow); font-size:12px; font-weight:800; cursor:pointer;
-  transition:transform 150ms var(--ds-ease), box-shadow 150ms var(--ds-ease);
-}
-.mnu-refresh:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(255,213,63,0.35); }
-.mnu-refresh .material-symbols-outlined { font-size:17px; }
 
 /* ── Grupos ── */
 .mnu-group { margin-bottom:20px; }
@@ -16994,17 +18284,12 @@ function renderMenu() {
   .mnu-hero-top { gap:12px; }
   .mnu-hello { margin-top:2px; }
   .mnu-date { margin-top:3px; }
-  .mnu-updated { display:none; }   /* en móvil la hora cede su línea; el giro del botón confirma */
   .mnu-stats { margin-top:10px; gap:6px; }
   .mnu-stat-l { margin-top:1px; }
   .mnu-hello { font-size:17px; }
   .mnu-avatar { width:46px; height:46px; border-radius:14px; font-size:17px; }
   .mnu-stat { padding:8px 10px; border-radius:12px; }
   .mnu-stat-v { font-size:17px; height:20px; }
-  /* En móvil solo el icono: el nombre del usuario conserva el ancho */
-  .mnu-refresh { width:44px; height:44px; padding:0; }
-  .mnu-refresh .mnu-refresh-tx { display:none; }
-  .mnu-refresh .material-symbols-outlined { font-size:21px; }
   .mnu-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
   .mnu-card { flex-direction:column; align-items:flex-start; gap:10px; padding:14px 12px 16px 14px; min-height:128px; }
   .mnu-card::before { top:auto; bottom:0; left:14px; right:auto; width:28px; height:4px; border-radius:4px 4px 0 0; transition:width 200ms var(--ds-ease); }
@@ -17037,10 +18322,9 @@ function renderMenu() {
           <span id="dash-updated" class="mnu-updated"></span>
         </p>
       </div>
-      <button type="button" class="mnu-refresh" onclick="loadDashboardData(true)" aria-label="Actualizar indicadores del panel" title="Actualizar">
-        <span class="material-symbols-outlined" id="dash-refresh-ico" aria-hidden="true">refresh</span>
-        <span class="mnu-refresh-tx">Actualizar</span>
-      </button>
+      <!-- Sin boton propio de actualizar: el de la cabecera es el unico
+           control de sincronizacion de la app (y ahora tambien se ve aqui).
+           Dos botones que hacen lo mismo en la misma pantalla confunden. -->
     </div>
 
     <div class="mnu-stats">
@@ -17072,15 +18356,12 @@ function renderMenu() {
  * NOTA TÉCNICA: los <script> insertados con innerHTML NO se ejecutan, por eso
  * esta es una función real que showView() invoca después de inyectar el HTML.
  *
- * @param {boolean} manual - true si la disparó el usuario (muestra realimentación)
+ * @param {boolean} manual - true si la disparó el usuario. La realimentación
+ *        la da el botón de la cabecera (gira mientras trabaja); aquí solo se
+ *        conserva el parámetro porque distingue el refresco automático del
+ *        pedido a mano.
  */
 function loadDashboardData(manual) {
-  const ico = document.getElementById('dash-refresh-ico');
-  if (manual && ico) {
-    ico.classList.add('animate-spin');
-    setTimeout(() => ico.classList.remove('animate-spin'), 700);
-  }
-
   actualizarGruposMenu();
 
   // Conexión del dispositivo
@@ -17807,6 +19088,196 @@ function navigateWithFilter(moduleID, filterField, filterValue) {
 
 </script>
 
+  <script>
+/**
+ * OTA_Updater.js.html — actualización por aire de la app instalada
+ * =========================================================================
+ * Solo actúa dentro de la app empaquetada con Capacitor (Android/iOS). En el
+ * navegador y en Apps Script no hace NADA: ahí la actualización ya la da el
+ * despliegue (Vercel) o el service worker.
+ *
+ * QUÉ ES UN "BUNDLE"
+ *   Dentro de la app, el dist/ vive como una carpeta de archivos que lee el
+ *   WebView. Actualizar = descargar otra carpeta y decirle al WebView que la
+ *   próxima vez arranque desde ahí. El APK no se reinstala.
+ *
+ * FLUJO (el otro lado está en tools/ota_publish.js)
+ *   1. notifyAppReady() — confirma que el bundle actual arrancó bien. Si no
+ *      se llama antes de appReadyTimeout, el plugin REVIERTE al anterior por
+ *      su cuenta. Es la red de seguridad contra publicar un bundle roto.
+ *   2. Se lee <OTA_URL>/latest.json sin caché.
+ *   3. Si la versión difiere y la app nativa alcanza, se descarga el zip. El
+ *      plugin comprueba su SHA-256 EN NATIVO y rechaza el archivo si no
+ *      cuadra: nadie puede colar otro bundle.
+ *   4. next() — se activa en el SIGUIENTE arranque, nunca ahora. Recargar en
+ *      caliente borraría el formulario que alguien esté llenando en campo.
+ *
+ * No se envía nada a terceros: updateUrl y statsUrl van vacíos en
+ * capacitor.config.json, así que el plugin solo habla con tu Supabase.
+ * =========================================================================
+ */
+window.MOTOR_OTA = (function () {
+  'use strict';
+
+  var API = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
+  var nativo = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+  var env = window.__MOTOR_ENV__ || {};
+
+  var estado = {
+    activo: nativo && !!API,
+    versionActual: '',
+    versionNativa: '',
+    disponible: null,      // versión ya descargada, lista para el próximo arranque
+    ultimaRevision: null,
+    motivo: ''
+  };
+
+  /**
+   * Base donde viven latest.json y los zips.
+   *
+   * Orden: OTA_URL del build → AppState.OTA.URL de Global_Config.js.html.
+   * El segundo importa: el build se hace a menudo sin .env, y entonces la URL
+   * buena es la del archivo de configuración, no la del entorno.
+   */
+  function base() {
+    var u = String(env.OTA_URL || '').trim() ||
+            (window.AppState && AppState.OTA && String(AppState.OTA.URL || '').trim()) || '';
+    return u.replace(/\/+$/, '');
+  }
+
+  /** Compara "1.2.3" o "1.2.3-abc". Devuelve -1, 0 o 1. El sufijo se ignora. */
+  function comparar(a, b) {
+    var pa = String(a || '0').split('-')[0].split('.').map(Number);
+    var pb = String(b || '0').split('-')[0].split('.').map(Number);
+    for (var i = 0; i < 3; i++) {
+      var x = pa[i] || 0, y = pb[i] || 0;
+      if (x !== y) return x < y ? -1 : 1;
+    }
+    return 0;
+  }
+
+  function avisar(msg, tipo, ms) {
+    try {
+      if (window.PWA_SKILLS && PWA_SKILLS.toast) PWA_SKILLS.toast(msg, tipo || 'info', ms || 5000);
+      else console.log('[OTA] ' + msg);
+    } catch (e) { console.log('[OTA] ' + msg); }
+  }
+
+  /**
+   * Confirma que este bundle funciona. Hasta que esto corre, el plugin tiene
+   * un cronómetro en marcha para revertir. Se llama lo antes posible.
+   */
+  function confirmarArranque() {
+    if (!estado.activo) return Promise.resolve();
+    return API.notifyAppReady()
+      .then(function (r) {
+        if (r && r.bundle) {
+          estado.versionActual = r.bundle.version || '';
+          console.log('[OTA] bundle confirmado: ' + (estado.versionActual || '(del APK)'));
+        }
+      })
+      .catch(function (e) { console.warn('[OTA] notifyAppReady falló: ' + (e && e.message)); });
+  }
+
+  /** Versión en uso: la del bundle descargado o, si es el del APK, la del build. */
+  function versionEnUso(bundle) {
+    var v = bundle && bundle.version;
+    return (v && v !== 'builtin') ? v : (env.OTA_VERSION || '');
+  }
+
+  /**
+   * Busca una actualización y la deja lista para el próximo arranque.
+   * @param {boolean} manual true si lo pidió el usuario. En automático se
+   *        calla: sin señal esto falla a diario y la app sigue funcionando.
+   */
+  function buscar(manual) {
+    if (!estado.activo) {
+      estado.motivo = 'La actualización por aire solo existe en la app instalada.';
+      if (manual) avisar(estado.motivo, 'info');
+      return Promise.resolve(null);
+    }
+    var raiz = base();
+    if (!raiz) {
+      estado.motivo = 'Falta OTA_URL (o SUPABASE_URL) en la configuración del build.';
+      if (manual) avisar(estado.motivo, 'error');
+      return Promise.resolve(null);
+    }
+
+    estado.ultimaRevision = new Date().toISOString();
+    var info = null;
+
+    return API.current()
+      .then(function (actual) {
+        estado.versionActual = versionEnUso(actual && actual.bundle);
+        estado.versionNativa = (actual && actual.native) || '';
+        return fetch(raiz + '/latest.json?t=' + Date.now(), { cache: 'no-store' });
+      })
+      .then(function (r) {
+        if (!r.ok) throw new Error('latest.json respondió HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (j) {
+        info = j || {};
+        if (!info.version || !info.url || !info.sha256) {
+          throw new Error('latest.json incompleto: faltan version, url o sha256.');
+        }
+        if (info.version === estado.versionActual) {
+          estado.motivo = 'Ya tienes la última versión.';
+          if (manual) avisar(estado.motivo, 'success', 3000);
+          return null;
+        }
+        // Un bundle que necesita código nativo nuevo (un plugin, un permiso) NO
+        // se puede aplicar sobre un APK viejo: eso solo se arregla reinstalando.
+        if (info.minNativa && estado.versionNativa && comparar(estado.versionNativa, info.minNativa) < 0) {
+          estado.motivo = 'Hay una versión nueva que requiere reinstalar la app. Pide el instalador al administrador.';
+          avisar(estado.motivo, 'warning', 9000);
+          return null;
+        }
+        console.log('[OTA] descargando ' + info.version + ' (' + (info.bytes || '?') + ' bytes)');
+        return API.download({ url: info.url, version: info.version, checksum: info.sha256 });
+      })
+      .then(function (bundle) {
+        if (!bundle) return null;
+        // next(): se activa al próximo arranque. Nunca en caliente: alguien
+        // puede estar a mitad de un PETAR sin conexión.
+        return API.next({ id: bundle.id }).then(function () {
+          estado.disponible = info.version;
+          estado.motivo = 'Actualización lista: se aplicará al reabrir la app.';
+          avisar(estado.motivo, 'success', 7000);
+          return info.version;
+        });
+      })
+      .catch(function (e) {
+        var m = (e && e.message) || String(e);
+        estado.motivo = m;
+        console.warn('[OTA] sin actualizar: ' + m);
+        if (manual) avisar('No se pudo buscar la actualización: ' + m, 'error', 7000);
+        return null;
+      });
+  }
+
+  if (nativo && API) {
+    // 1) Confirmar cuanto antes. 2) Buscar sin estorbar el arranque.
+    confirmarArranque().then(function () {
+      setTimeout(function () { buscar(false); }, 8000);
+    });
+
+    // Al volver del fondo, si pasó más de una hora, se vuelve a mirar.
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') return;
+      var t = estado.ultimaRevision ? Date.parse(estado.ultimaRevision) : 0;
+      if (Date.now() - t > 3600000) buscar(false);
+    });
+  }
+
+  return {
+    estado: function () { return JSON.parse(JSON.stringify(estado)); },
+    buscar: function () { return buscar(true); },
+    activo: function () { return estado.activo; }
+  };
+})();
+</script>
+
 
   <script>
     // -------------------------------------------------------------
@@ -17879,11 +19350,72 @@ function navigateWithFilter(moduleID, filterField, filterValue) {
     // -------------------------------------------------------------
     // HELPERS VISUALES DEL MOTOR DE SINCRONIA (Llamado via Offline_Engine)
     // -------------------------------------------------------------
-    function updateSyncUI(statusText, isOffline) {
-       document.getElementById('ui-sync-text').innerText = statusText;
+    /**
+     * Estado de sincronización del Header. DOS señales, cada una en su sitio:
+     *   · la pastilla dice si hay enlace con el servidor (una palabra);
+     *   · el número sobre el botón dice cuántos cambios faltan por subir.
+     * El texto NO repite el número: con «Sin conexión · 3 pendiente(s)» la
+     * cabecera se partía en dos líneas en el móvil, que es donde se registra.
+     *
+     * @param {string}  statusText  palabra de estado (Conectado, Sin conexión…)
+     * @param {boolean} isOffline   no hay enlace con el servidor
+     * @param {number}  pendientes  cambios que AÚN no llegaron al servidor.
+     *        Sin número = todo enviado; es la señal de que ya se puede cerrar
+     *        la app tranquilo. Si no se pasa, el contador se queda como estaba
+     *        (una llamada intermedia como "Enviando…" no debe borrarlo).
+     */
+    function updateSyncUI(statusText, isOffline, pendientes) {
+       const texto = String(statusText == null ? '' : statusText);
+       const enviando = /enviando|sincroniz[aá]ndo/i.test(texto);
+       const conError = /error/i.test(texto);
+
+       const el = document.getElementById('ui-sync-text');
+       if (el) el.textContent = texto;
        const dot = document.getElementById('ui-sync-dot');
-       if(isOffline) dot.classList.add('offline');
-       else dot.classList.remove('offline');
+       if (dot) dot.classList.toggle('offline', !!isOffline && !enviando);
+
+       // Un solo estado para toda la pastilla: color del texto, del borde,
+       // del fondo y del punto. Así no hay combinaciones imposibles.
+       const chip = document.getElementById('ui-sync-chip');
+       if (chip) {
+         const estado = enviando ? 'is-sync' : conError ? 'is-warn' : isOffline ? 'is-off' : 'is-ok';
+         chip.classList.remove('is-ok', 'is-off', 'is-warn', 'is-sync');
+         chip.classList.add(estado);
+       }
+
+       const btn = document.getElementById('ui-global-sync-btn');
+       // Mientras el usuario fuerza la actualización manda su propio giro
+       // (triggerGlobalSync lo mantiene un mínimo visible): un aviso
+       // intermedio del motor no debe apagarlo antes de tiempo.
+       if (btn) {
+         if (enviando) btn.classList.add('sincronizando');
+         else if (!btn.dataset.ocupado) btn.classList.remove('sincronizando');
+       }
+
+       if (pendientes === undefined) return;
+       const badge = document.getElementById('ui-sync-badge');
+       if (!badge) return;
+       const n = Number(pendientes) || 0;
+       badge.hidden = n === 0;
+       badge.textContent = n > 99 ? '99+' : String(n);
+
+       // El botón se ve en TODA la app con sesión abierta: en los módulos y en
+       // el panel principal. Es el único control de actualización que hay, y
+       // esconderlo deja al usuario sin forma de forzar el envío ni de
+       // comprobar que todo llegó. Solo desaparece en el Login.
+       if (btn && typeof AppState !== 'undefined' && AppState.currentView !== 'Login') {
+         btn.style.display = 'flex';
+       }
+       // El número tiene que llegar también a quien usa lector de pantalla:
+       // el distintivo es decorativo, el texto accesible va en el botón.
+       if (btn) {
+         btn.setAttribute('aria-label', n
+           ? 'Sincronizar: ' + n + (n === 1 ? ' cambio pendiente' : ' cambios pendientes')
+           : 'Sincronizar datos. Todo enviado');
+         btn.title = n
+           ? n + (n === 1 ? ' cambio sin enviar' : ' cambios sin enviar') + ' · pulsa para sincronizar'
+           : 'Todo sincronizado';
+       }
     }
   </script>
 </body>

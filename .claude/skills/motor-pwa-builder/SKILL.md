@@ -122,10 +122,35 @@ afinar el orden, los grupos y los colores de estado.
 | Alcance por rol antes de pintar, botones por permiso | La matriz de roles en `Config_Modular` |
 | Tabla hija: alta, precarga al editar y lista en el Detalle | Columnas en `Relational_Fields`, textos en `Vistas.Hijos` |
 | Subida de archivos, galerías y firmas | Nada |
-| PDF del registro | Nada |
+| PDF del registro: visor dentro de la app, archivo automático en Drive/Storage con cada cambio, borrado al eliminar el registro y envío por WhatsApp | Nada |
 
 Campos como `Registrado_Por` o `Fecha_Registro` los rellena el motor al
 guardar y nunca se piden en el formulario.
+
+## El informe PDF: ya está hecho
+
+Cada módulo recibe, sin declarar nada, el informe PDF de sus registros: se ve
+en un visor **dentro de la app** (el botón **PDF** del Detalle), se archiva
+solo en `DATA/<modulo>/00_Informes/<uuid>.pdf` (Drive) o en
+`informes/<empresa>/<modulo>/<uuid>/informe.pdf` (Storage) cuando el registro
+llega al servidor —y **se vuelve a archivar en cada cambio**, siempre en el
+mismo archivo—, se borra al eliminar el registro y se envía por WhatsApp
+(adjunto, o su enlace si el dispositivo no sabe compartir archivos).
+
+Qué implica al crear o cambiar un módulo:
+
+- El documento sale de `Variables` y de `Relational_Fields`: un campo nuevo
+  aparece en el informe sin tocar nada. Para un formato propio (como el Flash
+  Report de `05_Incidentes`) se añade una rama en `plantillaBase()`.
+- Un **módulo nuevo** entra en las políticas del bucket al ejecutar
+  `node tools/gen_supabase.js` y aplicar `supabase_03_storage.sql`.
+- No llames a `window.open()` ni a `window.print()` desde un módulo para
+  mostrar un documento: usa `PDF_TEMPLATE.exportarRegistro(modulo, uuid, titulo)`.
+  La ventana nueva fue justo el fallo que se corrigió — en el móvil tapaba la
+  app sin forma de volver al registro.
+
+Contrato completo y las trampas que no se ven:
+`.claude/skills/motor-pwa-runtime/references/informes.md`.
 
 ## Lo propio del módulo: ganchos
 
@@ -196,6 +221,7 @@ prefiere sobre el motor. Hoy solo lo usan `01_Usuarios` (crea cuentas por
 ```bash
 node generate_preview.js    # LOCAL_PREVIEW.html + PROD_INDEX.html
 npm test                    # RLS + Apps Script + vistas generadas (jsdom)
+npm run test:informes       # informe PDF: visor, archivo, borrado y envío
 ```
 
 `npm run test:render` carga el bundle real en un DOM y recorre las tres vistas

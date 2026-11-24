@@ -109,6 +109,11 @@ create index if not exists idx_charlas_expositor_txt on charlas using gin (expos
 create index if not exists idx_charlas_estado on charlas (empresa_id, estado);
 create index if not exists idx_charlas_asistentes_empresa on charlas_asistentes (empresa_id);
 
+-- ── 11_Webs ───────────────────────────────────────────────────────
+create index if not exists idx_webs_pagina on webs (empresa_id, creado_en desc);
+create index if not exists idx_webs_titulo_txt on webs using gin (titulo gin_trgm_ops);
+create index if not exists idx_webs_clasificacion on webs (empresa_id, clasificacion);
+
 -- ── Conteos y sumas en la base, no en el navegador ────────────────────
 --
 -- Un KPI NO puede contar sobre las filas cargadas: con la tabla paginada
@@ -219,7 +224,7 @@ security invoker
 set search_path = public
 as $fn$
 declare
-  v_tablas text[] := array['reportes', 'inspecciones', 'actos_condiciones', 'incidentes', 'capacitaciones', 'iperc', 'petar', 'epp', 'charlas'];
+  v_tablas text[] := array['reportes', 'inspecciones', 'actos_condiciones', 'incidentes', 'capacitaciones', 'iperc', 'petar', 'epp', 'charlas', 'webs'];
   v_expr   text;
   v_sql    text;
   v_res    text;
@@ -263,3 +268,4 @@ analyze iperc;
 analyze petar;
 analyze epp;
 analyze charlas;
+analyze webs;

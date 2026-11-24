@@ -2,7 +2,7 @@
 
 | Habilidad | Uso |
 |---|---|
-| `motor-pwa-runtime` | Funciones compartidas: filtros, tablas, exportación, firmas, multimedia, sincronización y estados de carga. |
+| `motor-pwa-runtime` | Funciones compartidas: filtros, tablas, exportación, firmas, multimedia, sincronización, estados de carga y el informe PDF de cada registro (`references/informes.md`: visor, archivo en Drive/Storage, borrado y envío por WhatsApp). |
 | `motor-pwa-design` | Diseño Data-Dense, tarjetas, diseño adaptable, navegación, temas y accesibilidad. Incluye `references/anchos.md`: auditoría para que nada se salga de la pantalla. Fusionada con `portal-pwa-design` (NOELY_own). |
 | `motor-pwa-recorrido` | Recorrido guiado de la primera visita. **Aún sin implementar**: la skill es la especificación. Adaptada de `recorrido` (PLATAFORMA_ELEARNING). |
 | `motor-pwa-builder` | Creación y mantenimiento de módulos. **Un módulo = un subconfig**; las tres vistas las genera `MOTOR_RENDER`. |

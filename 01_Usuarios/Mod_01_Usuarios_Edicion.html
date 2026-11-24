@@ -40,7 +40,23 @@
                    <span class="material-symbols-outlined text-white text-3xl">photo_camera</span>
                 </div>
              </div>
+             <!-- Dos entradas: con `capture` el teléfono abre la cámara; sin
+                  él, la galería. Dentro del APK el selector de Capacitor no
+                  ofrece la cámara, así que hace falta la entrada aparte. -->
+             <input type="file" id="usr-file-camara" class="hidden" accept="image/*" capture="user" onchange="previewUserImage(this)">
              <input type="file" id="usr-file-input" class="hidden" accept="image/*" onchange="previewUserImage(this)">
+             <div class="flex gap-2 w-full mb-1">
+                <button type="button" onclick="document.getElementById('usr-file-camara').click()"
+                   aria-label="Tomar la foto de perfil con la cámara"
+                   class="flex-1 min-h-[44px] px-3 rounded-xl border border-outline-variant bg-surface text-secondary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5">
+                   <span class="material-symbols-outlined text-[16px]" aria-hidden="true">photo_camera</span>Cámara
+                </button>
+                <button type="button" onclick="document.getElementById('usr-file-input').click()"
+                   aria-label="Elegir la foto de perfil de la galería"
+                   class="flex-1 min-h-[44px] px-3 rounded-xl border border-outline-variant bg-surface text-secondary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5">
+                   <span class="material-symbols-outlined text-[16px]" aria-hidden="true">photo_library</span>Galería
+                </button>
+             </div>
              <p class="text-[10px] text-secondary font-bold uppercase text-center">Foto de Perfil<br>(Máx 2MB)</p>
 
              <!-- Captura facial: encuadra el rostro y dispara sola (Face_Capture.js) -->

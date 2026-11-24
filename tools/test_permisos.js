@@ -37,7 +37,7 @@ const sesion = (u) => { ctx.AppState = { User: u }; vm.runInContext('var AppStat
 
 sesion({ Rol: 'Admin', DNI: '1' });
 const mods = P.modulos().map(m => m.id);
-log(mods.length === 9 && mods.indexOf('01_Usuarios') === -1 && mods.indexOf('04_Configuraciones') === -1,
+log(mods.length === 10 && mods.indexOf('01_Usuarios') === -1 && mods.indexOf('04_Configuraciones') === -1,
   'Registro automático: ' + mods.length + ' módulos de trabajo, sin transversales');
 log(P.modulos().find(m => m.id === '07_IPERC').usadoPor.indexOf('Permisos de Alto Riesgo') !== -1, 'Detecta que PETAR usa IPERC (REF)');
 

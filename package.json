@@ -16,7 +16,7 @@
     "test:appscript": "node tools/gen_appscript.js && node tools/test_appscript.js",
     "test:render": "node build_web.js && node tools/test_render.mjs",
     "test:rostro": "node build_web.js && node tools/test_rostro.mjs",
-    "test": "npm run test:rls && npm run test:appscript && npm run test:seed && npm run test:empresas && npm run test:render && npm run test:rostro && npm run test:consentimiento && npm run test:permisos && npm run test:ota",
+    "test": "npm run test:rls && npm run test:appscript && npm run test:seed && npm run test:empresas && npm run test:render && npm run test:rostro && npm run test:consentimiento && npm run test:permisos && npm run test:ota && npm run test:sync && npm run test:informes",
     "test:permisos": "node tools/test_permisos.js .",
     "test:seed": "node tools/gen_appscript.js && node tools/test_seed.js",
     "test:empresas": "node tools/gen_appscript.js && node tools/test_empresas.js",
@@ -26,7 +26,10 @@
     "ota:publish": "node tools/ota_publish.js",
     "ota:dry": "npm run build && node tools/ota_publish.js --dry-run",
     "deploy": "npm run build && node tools/ota_publish.js",
-    "test:ota": "node build_web.js && node tools/test_ota.mjs"
+    "test:ota": "node build_web.js && node tools/test_ota.mjs",
+    "vendor": "node tools/vendor_cdn.js",
+    "test:sync": "node tools/test_sync.mjs",
+    "test:informes": "node build_web.js && node tools/test_informes.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",

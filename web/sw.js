@@ -15,12 +15,18 @@ const SHELL   = 'motor-shell-' + VERSION;
 const CDN     = 'motor-cdn-v2';
 
 const PRECACHE = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon.svg',
-                  '/icons/icon-192.png', '/icons/icon-512.png'];
+                  '/icons/icon-192.png', '/icons/icon-512.png']
+                 // Tailwind, fuentes, iconos y SheetJS ya no vienen de un CDN:
+                 // viven en /vendor. La lista la escribe build_web.js leyendo
+                 // web/vendor/, para que no se quede vieja al cambiar una
+                 // fuente (sus nombres llevan un hash del contenido).
+                 .concat(__VENDOR__);
 
-// Librerías de terceros que la app necesita para pintarse sin red
-// cdn.jsdelivr.net: modelo de detección facial (MediaPipe). Se cachea tras el
-// primer uso, así la captura automática también funciona sin red.
-const CDN_HOSTS = ['cdn.tailwindcss.com', 'fonts.googleapis.com', 'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
+// El único tercero que queda: el modelo de detección facial de MediaPipe. Son
+// varios MB, no se empaqueta, y Face_Capture degrada solo a "Usa la cámara del
+// teléfono" si no está. Se cachea tras el primer uso, así la captura
+// automática también funciona sin red después.
+const CDN_HOSTS = ['cdn.jsdelivr.net'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting()));

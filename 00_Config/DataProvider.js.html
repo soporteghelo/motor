@@ -422,14 +422,52 @@ const AppsScriptProvider = {
    * El PDF viaja en base64 porque google.script.run no acepta Blob.
    */
   async guardarConsentimiento({ blob, dni, empresa, folio }) {
-    const base64 = await new Promise((resolve, reject) => {
+    const base64 = await this._aBase64(blob);
+    const r = await this._call({ action: 'SAVE_CONSENT', dni, empresa, folio, pdfBase64: base64 });
+    return r.status === 'OK' ? { status: 'OK', ruta: r.ruta || r.fileId || '' } : r;
+  },
+
+  /** Blob → base64 sin cabecera: google.script.run no acepta Blob. */
+  _aBase64(blob) {
+    return new Promise((resolve, reject) => {
       const fr = new FileReader();
       fr.onload = () => resolve(String(fr.result).split(',')[1] || '');
       fr.onerror = () => reject(new Error('No se pudo leer el PDF generado.'));
       fr.readAsDataURL(blob);
     });
-    const r = await this._call({ action: 'SAVE_CONSENT', dni, empresa, folio, pdfBase64: base64 });
-    return r.status === 'OK' ? { status: 'OK', ruta: r.ruta || r.fileId || '' } : r;
+  },
+
+  // ── Informe PDF del registro (Drive) ──
+  // DATA/<modulo>/00_Informes/<uuid>.pdf — un archivo por registro, siempre
+  // el mismo nombre: al editar el registro se sustituye, no se acumula.
+  async guardarInforme({ blob, modulo, uuid }) {
+    let base64;
+    try { base64 = await this._aBase64(blob); }
+    catch (e) { return { status: 'ERROR', msg: e.message }; }
+    const r = await this._call({ action: 'SAVE_REPORT', moduleName: modulo, uuid, pdfBase64: base64 });
+    return r.status === 'OK'
+      ? { status: 'OK', ruta: r.ruta || '', enlace: r.enlace || '', donde: 'Drive' }
+      : r;
+  },
+
+  eliminarInforme(modulo, uuid) {
+    return this._call({ action: 'DELETE_REPORT', moduleName: modulo, uuid });
+  },
+
+  /**
+   * ¿Hay informe archivado y con qué enlace?
+   * `compartir: true` (el botón de WhatsApp) pide además un enlace que el
+   * destinatario pueda abrir: Code.gs pone el archivo en "cualquiera con el
+   * enlace, solo lectura" y lo anota en la auditoría. Sin esa opción el
+   * enlace solo sirve a quien ya tiene acceso a la carpeta de Drive.
+   */
+  async infoInforme(modulo, uuid, opts) {
+    const r = await this._call({
+      action: 'GET_REPORT', moduleName: modulo, uuid, compartir: !!(opts && opts.compartir)
+    });
+    if (!r || r.status !== 'OK') return { existe: false, transitorio: !!(r && r.transitorio) };
+    return { existe: !!r.existe, enlace: r.enlace || '', ruta: r.ruta || '',
+             fecha: r.fecha || '', donde: 'Drive' };
   },
 
   async guardarConfigEmpresa(config) {
@@ -1162,6 +1200,100 @@ const SupabaseProvider = {
     return { status: 'OK', ruta };
   },
 
+  // ── Informe PDF del registro (bucket `informes`) ──
+  // Ruta: <empresa_id>/<modulo>/<uuid>/informe.pdf — la empresa va primero
+  // porque la política del bucket aísla por esa carpeta (supabase_03), y el
+  // nombre es fijo: al editar el registro se SUSTITUYE su informe, no se
+  // acumula una copia por edición.
+  //
+  // Es un bucket aparte de `evidencias`/`documentos` a propósito: ahí
+  // sobrescribir y borrar están reservados al Admin (destruir evidencia), y
+  // un informe es un documento DERIVADO que se regenera con cada cambio, así
+  // que lo reescribe quien puede editar el registro o quien lo creó.
+  BUCKET_INFORMES: 'informes',
+
+  rutaInforme(modulo, uuid) {
+    const empresa = (AppState.User || {}).EmpresaId;
+    if (!empresa || !modulo || !uuid) return '';
+    return [empresa, modulo, String(uuid), 'informe.pdf'].join('/');
+  },
+
+  async guardarInforme({ blob, modulo, uuid }, _reintentado) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { status: 'ERROR', msg: 'Tu cuenta no está asociada a una empresa.' };
+    const jwt = (AppState.User || {}).SupabaseJWT;
+    let res, cuerpo = null;
+    try {
+      res = await fetch(`${this._url}/storage/v1/object/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'POST',
+        headers: { apikey: this._key, Authorization: `Bearer ${jwt || this._key}`,
+                   'Content-Type': 'application/pdf', 'x-upsert': 'true' },
+        body: blob
+      });
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión para archivar el informe.', transitorio: true };
+    }
+    if (!res.ok) { try { cuerpo = await res.json(); } catch (e) {} }
+    const jwtVencido = res.status === 401 ||
+      /jwt|token/i.test(String((cuerpo && (cuerpo.message || cuerpo.error)) || ''));
+    if (!res.ok && jwtVencido && !_reintentado && await this._refrescarSesion()) {
+      return this.guardarInforme({ blob, modulo, uuid }, true);
+    }
+    if (!res.ok) {
+      const msg = (cuerpo && (cuerpo.message || cuerpo.error)) || ('HTTP ' + res.status);
+      return { status: 'ERROR', msg: 'No se pudo archivar el informe: ' + msg,
+               transitorio: jwtVencido || this._esTransitorio(res.status) };
+    }
+    delete this._firmas[ruta];   // el enlace firmado apuntaba al archivo viejo
+    return { status: 'OK', ruta, donde: 'Storage' };
+  },
+
+  async eliminarInforme(modulo, uuid) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { status: 'OK' };
+    const jwt = (AppState.User || {}).SupabaseJWT;
+    try {
+      const res = await fetch(`${this._url}/storage/v1/object/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'DELETE', headers: { apikey: this._key, Authorization: `Bearer ${jwt || this._key}` }
+      });
+      delete this._firmas[ruta];
+      // 404 = no había informe archivado: para el llamador es lo mismo que
+      // haberlo borrado.
+      if (!res.ok && res.status !== 404) {
+        const b = await res.json().catch(() => ({}));
+        return { status: 'ERROR', msg: b.message || b.error || ('HTTP ' + res.status),
+                 transitorio: this._esTransitorio(res.status) };
+      }
+    } catch (e) {
+      return { status: 'ERROR', msg: 'Sin conexión para borrar el informe.', transitorio: true };
+    }
+    return { status: 'OK' };
+  },
+
+  /**
+   * ¿Hay informe archivado y con qué enlace? Un enlace firmado que no se
+   * puede crear significa que el objeto no existe (o que RLS no lo deja ver).
+   * `compartir: true` (WhatsApp) lo firma por 7 días: el destinatario lo abre
+   * sin cuenta, y pasada esa semana el enlace deja de servir — a diferencia
+   * de un archivo público, que queda expuesto para siempre.
+   */
+  async infoInforme(modulo, uuid, opts) {
+    const ruta = this.rutaInforme(modulo, uuid);
+    if (!ruta) return { existe: false };
+    const segundos = (opts && opts.compartir) ? 7 * 24 * 3600 : 3600;
+    let res, body;
+    try {
+      res = await fetch(`${this._url}/storage/v1/object/sign/${this.BUCKET_INFORMES}/${ruta}`, {
+        method: 'POST', headers: this._headers(), body: JSON.stringify({ expiresIn: segundos })
+      });
+      body = await res.json().catch(() => ({}));
+    } catch (e) {
+      return { existe: false, transitorio: true };
+    }
+    if (!res.ok || !body.signedURL) return { existe: false };
+    return { existe: true, ruta, donde: 'Storage', enlace: this._url + '/storage/v1' + body.signedURL };
+  },
+
   /** Guarda la configuración de la app para toda la empresa (solo Admin). */
   async guardarConfigEmpresa(config) {
     const r = await this._fetch('/rpc/guardar_config_empresa', {
@@ -1731,7 +1863,38 @@ const DataService = {
     : Promise.resolve({ status: 'ERROR', msg: 'Agregados no disponibles con este proveedor.' }),
   create:     (module, data)     => DataService.provider.create(module, data),
   update:     (module, data)     => DataService.provider.update(module, data),
-  delete:     (module, uuid)     => DataService.provider.delete(module, uuid),
+  /**
+   * Elimina el registro principal y, con él, su informe PDF archivado.
+   * El orden importa: primero el registro, después el documento. Si se
+   * borrara antes el PDF y el servidor rechazara el borrado del registro
+   * (RLS, permiso), quedaría un registro vivo sin su informe y nada volvería
+   * a generarlo. Un informe huérfano, en cambio, sí se puede borrar después.
+   * El fallo al borrar el documento no convierte en error un borrado que el
+   * servidor ya aceptó: se avisa por consola.
+   */
+  async delete(module, uuid) {
+    const r = await DataService.provider.delete(module, uuid);
+    if (r && r.status === 'OK' && typeof PDF_TEMPLATE !== 'undefined') {
+      try {
+        const b = await PDF_TEMPLATE.borrarArchivo(module, uuid);
+        if (b && b.status !== 'OK') console.warn('[Informe PDF] no se borró el de ' + module + '/' + uuid + ': ' + b.msg);
+      } catch (e) { console.warn('[Informe PDF] no se borró el de ' + module + '/' + uuid + ':', e); }
+    }
+    return r;
+  },
+  /**
+   * Archiva el informe PDF de un registro (Drive o Storage, según proveedor).
+   * Lo llama PDF_TEMPLATE tras cada sincronización del registro.
+   * @param {{blob:Blob, modulo:string, uuid:string}} datos
+   */
+  saveReport: (datos) => DataService.provider.guardarInforme
+    ? DataService.provider.guardarInforme(datos)
+    : Promise.resolve({ status: 'ERROR', msg: 'Archivo de informes no disponible con este proveedor.' }),
+  deleteReport: (module, uuid) => DataService.provider.eliminarInforme
+    ? DataService.provider.eliminarInforme(module, uuid) : Promise.resolve({ status: 'OK' }),
+  /** { existe, enlace, ruta, donde }. Con `{compartir:true}`, enlace para enviar. */
+  reportInfo: (module, uuid, opts) => DataService.provider.infoInforme
+    ? DataService.provider.infoInforme(module, uuid, opts) : Promise.resolve({ existe: false }),
   syncQueue:  (module, items)    => DataService.provider.syncQueue(module, items),
   // Detalle (tabla hija) de un registro: lo implementan los dos proveedores
   readChildren: (module, uuid)   => DataService.provider.leerHijos

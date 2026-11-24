@@ -1,0 +1,91 @@
+<script>
+/**
+ * =========================================================================
+ * ⚙️ SUBCONFIGURACIÓN MAESTRA DEL MÓDULO: "11_Webs"
+ * =========================================================================
+ * ARCHIVO: 11_Webs/subconfig_11_Webs.js.html
+ *
+ * Catálogo de sitios web útiles (normativa, capacitación, herramientas…).
+ * Al hacer click en un registro NO se abre el Detalle genérico: se abre el
+ * sitio dentro de la app, en una capa a pantalla completa con botón de
+ * volver. Ver 11_Webs/Mod_11_Webs_Detalle.html — ese archivo registra su
+ * propia vista "Detalle" (id="module-11_webs-detalle") y su propia función
+ * `loadDetail_11_Webs`, así que MOTOR_RENDER nunca construye un Detalle
+ * para este módulo (CLAUDE.md, «Archivo Mod_XX_Nombre_Vista.html»).
+ */
+
+var SUBCONFIG_11_WEBS = {
+
+  Config_Modular: {
+    NombreInterno: "11_Webs",
+    Titulo: "Sitios Web",
+    Card_Icon: "language",
+    Card_Image: "",                      // sin campos de imagen: solo icono
+    DRIVE_FOLDER_NAME: "11_Webs_DB",
+    GOOGLE_DOC_TEMPLATE_ID: "",
+    EMAIL_TEMPLATE_ID: "",
+    PARENT_TABLE: "MAIN",
+    CHILD_TABLE: "",
+    RELATIONAL_KEY: "UUID",
+    Relational_Fields: [],
+
+    // Catálogo compartido, no datos personales: todos ven todo, solo el
+    // Admin lo mantiene.
+    AdminRole:      { canCreate: true,  canRead: true, canUpdate: true,  canDelete: true,  alcance: "todos" },
+    SupervisorRole: { canCreate: false, canRead: true, canUpdate: false, canDelete: false, alcance: "todos" },
+    TrabajadorRole: { canCreate: false, canRead: true, canUpdate: false, canDelete: false, alcance: "todos" }
+  },
+
+  Variables: {
+    "UUID": { type: "Hidden_UUID", required: true, isFilter: false },
+
+    "Titulo": { type: "Text", required: true, isFilter: true, maxLength: 120, label: "Título" },
+
+    "Clasificacion": {
+      type: "Enum", required: true, isFilter: true,
+      acceptedValues: ["Normativa", "Capacitación", "Herramienta", "Institucional", "Otro"],
+      allowOtherValues: true, label: "Clasificación"
+    },
+
+    // control:"url" → teclado y validación de enlace (ver Motor_Render.js.html, attrsTipo).
+    "Link_Web": {
+      type: "Text", required: true, isFilter: false, control: "url",
+      placeholder: "https://…", label: "Enlace"
+    },
+
+    "Descripcion": { type: "Text", required: false, isFilter: false, maxLength: 300, label: "Descripción" }
+  },
+
+  Vistas: {
+    Subtitulo: "Catálogo de sitios útiles — toca uno para abrirlo dentro de la app",
+    Resumen: {
+      etiquetaCrear: "Agregar sitio", ordenPor: "Titulo",
+      columnas: [
+        { campo: "Titulo", sub: "Descripcion" },
+        { campo: "Clasificacion", tipo: "badge" }
+      ],
+      vacio: { icono: "language", titulo: "Sin sitios registrados",
+               mensaje: "Agrega el primer enlace útil para el equipo: normativa, capacitación o una herramienta.",
+               accion: "Agregar sitio" }
+    },
+    Edicion: {
+      tituloNuevo: "Agregar sitio web", tituloEditar: "Editar sitio web",
+      secciones: [
+        { titulo: "Datos del sitio", icono: "language",
+          campos: ["Titulo", "Clasificacion", "Link_Web", "Descripcion"] }
+      ]
+    },
+    Badges: {
+      Clasificacion: {
+        "Normativa":     { tono: "info", icono: "gavel" },
+        "Capacitación":  { tono: "ok",   icono: "school" },
+        "Herramienta":   { tono: "mute", icono: "build" },
+        "Institucional": { tono: "mute", icono: "apartment" },
+        "Otro":          { tono: "mute", icono: "label" }
+      }
+    }
+  }
+};
+
+console.log("✅ Subconfig 11_Webs cargada.");
+</script>

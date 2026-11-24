@@ -86,7 +86,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['reportes', 'inspecciones', 'actos_condiciones', 'incidentes', 'capacitaciones', 'iperc', 'petar', 'epp', 'charlas'] loop
+  foreach t in array array['reportes', 'inspecciones', 'actos_condiciones', 'incidentes', 'capacitaciones', 'iperc', 'petar', 'epp', 'charlas', 'webs'] loop
     if to_regclass('public.' || t) is null then continue; end if;
     execute format('alter table %I add column if not exists actualizado_en timestamptz not null default now()', t);
     execute format('create index if not exists %I on %I (empresa_id, actualizado_en)', 'idx_' || t || '_actualizado', t);
@@ -316,7 +316,7 @@ select
   o.owner                                            as subido_por,
   o.created_at                                       as subido_en
 from storage.objects o
-where o.bucket_id in ('evidencias', 'documentos', 'publico')
+where o.bucket_id in ('evidencias', 'documentos', 'informes', 'publico')
   and auth_rol() in ('admin', 'superadmin');
 grant select on archivos to authenticated;
 

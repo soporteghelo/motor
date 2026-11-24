@@ -95,7 +95,7 @@ Vistas: {
   },
 
   Detalle: {
-    titulo: "Campo",                 // da el encabezado
+    titulo: "Campo",                 // da el encabezado (y titula el informe PDF)
     subtitulo: ["Area", "Fecha"],    // texto junto a los distintivos
     secciones: [ { titulo, campos: [...] } ],
     galeria: ["Foto", "Firma"]       // por defecto, los campos de archivo sueltos
@@ -115,6 +115,13 @@ Vistas: {
 
 Un campo que aparece en `Badges` se pinta como distintivo en toda la app,
 aunque la columna no declare `tipo: "badge"`.
+
+La cabecera del Detalle trae tres acciones, puestas por el motor:
+**Editar** (`data-permiso="editar"`), **PDF** —abre el informe en el visor
+dentro de la app— y **Enviar** —lo manda por WhatsApp, adjunto o por enlace—.
+Las tres se ocultan si el registro no existe. El informe se archiva solo y se
+borra con el registro; nada de eso se declara por módulo (ver
+`../../motor-pwa-runtime/references/informes.md`).
 
 ## Ganchos (`MOTOR_HOOKS[modulo]`)
 

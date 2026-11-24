@@ -136,7 +136,7 @@ log(!!MR, 'MOTOR_RENDER está disponible en la página');
 log(typeof w.esc === 'function', 'esc() global disponible para el escapado');
 
 const MODULOS = PERMISOS.modulos().map(m => m.id);
-log(MODULOS.length === 9, 'Se descubren los 9 módulos de trabajo (' + MODULOS.length + ')');
+log(MODULOS.length === 10, 'Se descubren los 10 módulos de trabajo (' + MODULOS.length + ')');
 
 // Una fila de ejemplo por módulo, con valores en todos los campos visibles
 for (const mod of MODULOS) {
@@ -229,6 +229,48 @@ log(q('#' + slug + '-f-Firma_Expositor') && q('#' + slug + '-f-Firma_Expositor')
   'Edición: Signature → pizarra de firma');
 log(!!q('#' + slug + '-f-Foto_Charla') && q('#' + slug + '-f-Foto_Charla').multiple,
   'Edición: Image_Collection → selector de varias imágenes');
+
+// ── Cámara en todo campo de imagen ────────────────────────────────────────
+// Dentro del APK el selector de archivos de Capacitor NO ofrece la cámara:
+// solo la abre una entrada con `capture`. Sin ella, en el teléfono únicamente
+// se podría elegir de la galería, que es justo lo que había que arreglar.
+// Esto vale para los módulos de hoy y para los que se añadan: el control lo
+// genera MOTOR_RENDER en un solo sitio.
+const camara = q('#' + slug + '-f-Foto_Charla-cam');
+log(!!camara, 'Edición: todo campo de imagen trae una entrada de cámara');
+log(camara && camara.getAttribute('capture') === 'environment',
+  'Edición: la cámara usa la trasera (capture="environment")');
+log(camara && camara.accept === 'image/*' && !camara.multiple,
+  'Edición: la cámara entrega una foto cada vez');
+log(!!q('#' + slug + '-f-Foto_Charla') && !q('#' + slug + '-f-Foto_Charla').hasAttribute('capture'),
+  'Edición: la galería sigue disponible (su entrada no lleva capture)');
+log(camara && camara.dataset.campo === 'Foto_Charla' && camara.dataset.modulo,
+  'Edición: la foto de cámara entra por el mismo camino que la de galería');
+
+// Todos los campos de imagen de TODOS los módulos, no solo el de esta prueba.
+// Se pide el HTML del campo directamente a MOTOR_RENDER (solo se construye en
+// el DOM el módulo abierto, así que mirar la pantalla no bastaría).
+{
+  const sinCamara = [], sinGaleria = [];
+  let revisados = 0;
+  MODULOS.forEach(mod => {
+    const vars = MR.variables(mod) || {};
+    Object.keys(vars).forEach(campo => {
+      if (!/^Image(_Collection)?$/.test(vars[campo].type || '')) return;
+      revisados++;
+      const html = MR.campoHTML(mod, campo, vars[campo]);
+      if (!/capture="environment"/.test(html)) sinCamara.push(mod + '.' + campo);
+      // Tiene que quedar también una entrada SIN capture: con `capture` el
+      // teléfono va directo a la cámara y se perdería la galería.
+      if (!/<input type="file"(?![^>]*capture=)[^>]*accept="image\/\*"/.test(html)) sinGaleria.push(mod + '.' + campo);
+    });
+  });
+  log(revisados > 0, 'Hay campos de imagen que revisar (' + revisados + ')');
+  log(sinCamara.length === 0,
+    'Ningún campo de imagen se queda sin cámara' + (sinCamara.length ? ' — faltan: ' + sinCamara.join(', ') : ''));
+  log(sinGaleria.length === 0,
+    'Ningún campo de imagen pierde la galería' + (sinGaleria.length ? ' — faltan: ' + sinGaleria.join(', ') : ''));
+}
 log(!q('#' + slug + '-f-Firma_Expositor_ID') && !q('#' + slug + '-f-UUID'),
   'Edición: los campos ocultos (_ID, _Path, UUID) no se pintan');
 
@@ -419,7 +461,7 @@ for (const mod of MODULOS) {
   w.changeInternalView(mod, 'Detalle', mod + '-1');
   await esperar(180);
 }
-log(errores.length === 0, 'Recorrer las tres vistas de los 9 módulos no lanza errores' +
+log(errores.length === 0, 'Recorrer las tres vistas de los 10 módulos no lanza errores' +
   (errores.length ? ': ' + errores[0] : ''));
 
 // =========================================================================

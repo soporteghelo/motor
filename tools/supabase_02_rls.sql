@@ -860,3 +860,30 @@ create policy charlas_asistentes_del on charlas_asistentes for delete using (
                )))
   )
 );
+
+-- ── webs ────────────────────────────────────────────────────────
+alter table webs enable row level security;
+drop policy if exists webs_sel on webs;
+create policy webs_sel on webs for select using (
+      auth_rol() = 'superadmin'
+   or (empresa_id = auth_empresa() and (select modulo_habilitado('11_Webs')) and (
+          auth_rol() in ('admin', 'supervisor', 'trabajador')
+      ))
+);
+drop policy if exists webs_ins on webs;
+create policy webs_ins on webs for insert with check (
+  auth_rol() = 'superadmin' or (empresa_id = auth_empresa() and (select modulo_habilitado('11_Webs')) and auth_rol() in ('admin'))
+);
+drop policy if exists webs_upd on webs;
+create policy webs_upd on webs for update using (
+      auth_rol() = 'superadmin'
+   or (empresa_id = auth_empresa() and (select modulo_habilitado('11_Webs')) and (auth_rol() = 'admin'))
+) with check (
+      auth_rol() = 'superadmin'
+   or (empresa_id = auth_empresa() and (select modulo_habilitado('11_Webs')) and (auth_rol() = 'admin'))
+);
+drop policy if exists webs_del on webs;
+create policy webs_del on webs for delete using (
+      auth_rol() = 'superadmin'
+   or (empresa_id = auth_empresa() and (select modulo_habilitado('11_Webs')) and (auth_rol() = 'admin'))
+);

@@ -57,6 +57,7 @@ Mínimo 12 px en cualquier texto visible; **campos de formulario a 16 px** (evit
 ## 3. Componentes
 
 - **Cabecera global:** marino con **filete inferior amarillo de 3 px**; todos sus controles heredan el blanco.
+  Lleva dos señales de sincronía y no se mezclan: el **número de cambios sin enviar sobre el botón de sincronizar** (distintivo rojo, `#ui-sync-badge`) y una **pastilla de estado de una palabra** (`#ui-sync-chip`: Conectado / Sin conexión / Con error / Enviando…). El texto de estado nunca lleva cifras: duplicarlas parte la cabecera en dos líneas en el móvil.
 - **Botón principal:** `button/a.bg-primary` se pinta solo en amarillo con texto marino (regla global en `Index.html`, §8). No hay que añadir clases.
 - **Campos:** borde `outline-variant`; al enfocar, **borde marino + halo amarillo de 3 px** (en oscuro, borde amarillo).
 - **Tarjetas:** `rounded-2xl`, borde 1 px, sombra suave (`--ds-shadow`).

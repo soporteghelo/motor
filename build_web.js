@@ -107,7 +107,105 @@ const buildId = crypto.createHash('sha1').update(html + JSON.stringify(env)).dig
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 env.OTA_VERSION = pkg.version + '-' + buildId;
 
+// ── Librerías locales en vez de CDN ───────────────────────────────────────
+// La app instalada NO lleva service worker (serviría caché vieja tras aplicar
+// un bundle OTA). Si Tailwind, las fuentes o los iconos vinieran de internet,
+// el primer arranque sin señal dejaría la pantalla sin estilos y los iconos
+// como texto — justo el caso del trabajador que baja a interior mina.
+//
+// 00_Config/Index.html SIGUE apuntando al CDN: PROD_INDEX.html (Apps Script)
+// se sirve como un único HTML y allí no hay archivos sueltos que referenciar.
+// La sustitución ocurre solo aquí, en lo que va a Vercel y al APK.
+//
+// Los archivos los baja `npm run vendor` a web/vendor/ con versión fija.
+// MediaPipe (cdn.jsdelivr.net) se queda en línea a propósito: son varios MB y
+// Face_Capture ya degrada solo a "Usa la cámara del teléfono".
+const LOCALES = [
+  { nombre: 'Tailwind',         re: /<script\s+src="https:\/\/cdn\.tailwindcss\.com[^"]*"\s*><\/script>/i,
+    por: '<script src="/vendor/tailwind.js"></script>', archivo: 'vendor/tailwind.js' },
+  { nombre: 'fuente Archivo',   re: /<link\s+href="https:\/\/fonts\.googleapis\.com\/css2\?family=Archivo[^"]*"\s+rel="stylesheet"\s*\/?>/i,
+    por: '<link rel="stylesheet" href="/vendor/archivo.css">', archivo: 'vendor/archivo.css' },
+  { nombre: 'Material Symbols', re: /<link\s+rel="stylesheet"\s+href="https:\/\/fonts\.googleapis\.com\/css2\?family=Material\+Symbols[^"]*"\s*\/?>/i,
+    por: '<link rel="stylesheet" href="/vendor/simbolos.css">', archivo: 'vendor/simbolos.css' },
+  // Se quitan integrity y crossorigin: eran para el CDN. El archivo ahora es
+  // del propio origen y lo valida el build, no el navegador.
+  { nombre: 'SheetJS (xlsx)',   re: /<script\s+src="https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/xlsx\/[^"]*"[^>]*><\/script>/i,
+    por: '<script src="/vendor/xlsx.full.min.js"></script>', archivo: 'vendor/xlsx.full.min.js' }
+];
+
+LOCALES.forEach(l => {
+  if (!fs.existsSync(path.join(WEB, l.archivo))) {
+    console.error('❌ Falta web/' + l.archivo + ' (' + l.nombre + '). Ejecuta: npm run vendor');
+    process.exit(1);
+  }
+  if (!l.re.test(html)) {
+    console.error('❌ No encontré la etiqueta de ' + l.nombre + ' en Index.html.');
+    console.error('   Si cambió, actualiza LOCALES en build_web.js: sin esto la app');
+    console.error('   instalada se quedaría sin ' + l.nombre + ' al abrirse sin señal.');
+    process.exit(1);
+  }
+  html = html.replace(l.re, l.por);
+});
+
+// Nada externo puede quedar en el HTML salvo MediaPipe, que se carga en
+// caliente desde Face_Capture y no como etiqueta.
+const externosVivos = (html.match(/<(?:script|link)[^>]+(?:src|href)="https:\/\/[^"]+"/gi) || [])
+  .filter(t => !/cdn\.jsdelivr\.net/.test(t));
+if (externosVivos.length) {
+  console.error('❌ Quedan recursos externos en el HTML; sin señal no cargarían:');
+  externosVivos.forEach(t => console.error('   ' + t.slice(0, 110)));
+  console.error('   Añádelos a tools/vendor_cdn.js y a LOCALES, o quítalos.');
+  process.exit(1);
+}
+
+// ── CSP como <meta> (lo único que protege a la app instalada) ─────────────
+// Fuente única: la cabecera Content-Security-Policy de vercel.json. Se deriva
+// de ahí para que no puedan divergir: añadir un CDN en un solo sitio basta.
+//
+//   Vercel      → se aplican la cabecera Y la meta (la efectiva es la
+//                 intersección, y son la misma política).
+//   Capacitor   → NO hay cabeceras HTTP: los archivos los sirve el WebView
+//                 desde el propio APK. Esta meta es la ÚNICA CSP que tiene
+//                 la app instalada, y es lo que impide que un XSS se lleve
+//                 el token de sesión de localStorage.
+//   Apps Script → PROD_INDEX.html lo genera generate_preview.js, que no pasa
+//                 por aquí: ahí no se inyecta nada y el iframe de Google
+//                 sigue funcionando como siempre.
+//
+// frame-ancestors, report-uri, report-to y sandbox se descartan: el estándar
+// los ignora en una meta y el navegador avisaría por consola en cada carga.
+// Contra el clickjacking sigue valiendo la cabecera de Vercel.
+const DIRECTIVAS_SOLO_CABECERA = ['frame-ancestors', 'report-uri', 'report-to', 'sandbox'];
+
+function cspDesdeVercel() {
+  let csp = '';
+  try {
+    const vj = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+    (vj.headers || []).forEach(regla => (regla.headers || []).forEach(h => {
+      if (String(h.key || '').toLowerCase() === 'content-security-policy') csp = String(h.value || '');
+    }));
+  } catch (e) {
+    console.error('❌ No se pudo leer la CSP de vercel.json: ' + e.message);
+    process.exit(1);
+  }
+  if (!csp.trim()) {
+    console.error('❌ vercel.json no define Content-Security-Policy. La app instalada quedaría sin CSP.');
+    process.exit(1);
+  }
+  const directivas = csp.split(';').map(d => d.trim()).filter(Boolean)
+    .filter(d => DIRECTIVAS_SOLO_CABECERA.indexOf(d.split(/\s+/)[0].toLowerCase()) === -1);
+  // Una meta con comillas dobles dentro rompería el atributo.
+  const valor = directivas.join('; ');
+  if (valor.includes('"')) {
+    console.error('❌ La CSP contiene comillas dobles: no cabe en un atributo HTML.');
+    process.exit(1);
+  }
+  return valor;
+}
+
+const csp = cspDesdeVercel();
 const cabeza = `
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <script>window.__MOTOR_ENV__ = ${JSON.stringify(env).replace(/</g, '\\u003c')};</script>
   <meta name="theme-color" content="#1a237e">
   <meta name="description" content="Gestión SSOMA para minería: inspecciones, incidentes, IPERC, PETAR, EPP, capacitaciones y charlas.">
@@ -164,9 +262,22 @@ const copiar = (src, dst) => {
 };
 copiar(WEB, DIST);
 
-// La versión del SW cambia con cada build: así el navegador renueva la caché
+// La versión del SW cambia con cada build: así el navegador renueva la caché.
+// __VENDOR__ se sustituye por los archivos reales de /vendor, para que la PWA
+// del navegador también abra sin red ahora que no hay CDN que cachear.
+const listarVendor = (dir, base) => fs.readdirSync(dir).flatMap(n => {
+  const p = path.join(dir, n);
+  return fs.statSync(p).isDirectory() ? listarVendor(p, base + n + '/') : [base + n];
+});
+const vendorDist = path.join(DIST, 'vendor');
+// iconos.txt es solo para la prueba de regresión: no lo necesita el navegador.
+const vendor = fs.existsSync(vendorDist)
+  ? listarVendor(vendorDist, '/vendor/').filter(f => !f.endsWith('iconos.txt')).sort()
+  : [];
 const swPath = path.join(DIST, 'sw.js');
-fs.writeFileSync(swPath, fs.readFileSync(swPath, 'utf8').replace(/__BUILD_ID__/g, buildId));
+fs.writeFileSync(swPath, fs.readFileSync(swPath, 'utf8')
+  .replace(/__BUILD_ID__/g, buildId)
+  .replace(/__VENDOR__/g, JSON.stringify(vendor)));
 
 // Marca de versión del bundle: la lee tools/ota_publish.js y queda servida
 // en /ota-version.json para poder comprobar qué versión hay desplegada.
@@ -177,6 +288,8 @@ fs.writeFileSync(path.join(DIST, 'ota-version.json'),
 
 const kb = n => (n / 1024).toFixed(0) + ' KB';
 console.log('✅ dist/ generado (build ' + buildId + ')');
+console.log('   Librerías   ' + LOCALES.length + ' locales en /vendor (la app abre sin señal)');
+console.log('   CSP         ' + csp.split(';').length + ' directivas (meta, derivada de vercel.json)');
 console.log('   index.html  ' + kb(fs.statSync(path.join(DIST, 'index.html')).size));
 console.log('   Base datos  ' + (env.DB_PROVIDER || '(Global_Config.js.html)') +
             (env.DB_PROVIDER === 'appscript' ? ' → ' + env.APPS_SCRIPT_URL : ' → ' + (env.SUPABASE_URL || '(Global_Config.js.html)')));

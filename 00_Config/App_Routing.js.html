@@ -78,6 +78,10 @@ function showView(viewID, options) {
   options = options || {};
   // Salir de una vista nunca debe dejar la cámara encendida
   if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+  // Ni el visor del PDF tapando la vista nueva
+  if (typeof PDF_TEMPLATE !== 'undefined') PDF_TEMPLATE.cerrarVisor();
+  // Ni la capa de un sitio web (11_Webs) flotando sobre el módulo nuevo
+  if (typeof WEB_VIEWER !== 'undefined') WEB_VIEWER.cerrar();
   // El filtro de botones por permiso es del módulo que se deja: se suelta
   // aquí y aplicarVista() instala el del módulo nuevo.
   if (typeof PERMISOS !== 'undefined' && PERMISOS._observador) {
@@ -113,11 +117,14 @@ function showView(viewID, options) {
     const activeFilterSlot = container.querySelector('#ui-filter-slot');
     if (activeFilterSlot) activeFilterSlot.innerHTML = '';
 
+    // El boton de sincronizar se ve en TODA la app con sesion abierta, tambien
+    // en el panel principal: es el unico control de actualizacion que hay, y
+    // esconderlo fuera de un modulo dejaba al usuario sin forma de forzar el
+    // envio (ni de ver que todo habia llegado) justo en la pantalla de inicio.
+    if (syncBtn) syncBtn.style.display = (viewID === 'Login') ? 'none' : 'flex';
     if (viewID !== 'Login' && viewID !== 'Menu') {
-        if (syncBtn) syncBtn.style.display = 'flex';
         if (footer) footer.style.display = 'grid';
     } else {
-        if (syncBtn) syncBtn.style.display = 'none';
         if (footer) footer.style.display = (viewID === 'Menu' ? 'grid' : 'none');
         AppState.activeModule = null;
     }
@@ -206,8 +213,11 @@ function showView(viewID, options) {
 function changeInternalView(moduleID, viewType, recordID = null) {
   try {
     // Igual que showView: si se venía de una Edición con captura facial,
-    // se apaga la cámara antes de pintar la vista nueva.
+    // se apaga la cámara antes de pintar la vista nueva, y el visor del PDF
+    // se cierra para no quedar sobre la vista que se abre.
     if (typeof FACE_CAPTURE !== 'undefined') FACE_CAPTURE.detenerTodas();
+    if (typeof PDF_TEMPLATE !== 'undefined') PDF_TEMPLATE.cerrarVisor();
+    if (typeof WEB_VIEWER !== 'undefined') WEB_VIEWER.cerrar();
     console.log(`🔄 Cambiando vista interna: ${moduleID} -> ${viewType}`);
     const modLower = moduleID.toLowerCase();
     // Normalización de nombres de vistas (Soporte Multi-idioma Detail/Detalle)
@@ -471,14 +481,29 @@ function agregarTarjetasModulosNuevos(container) {
   const grid = container.querySelector('#dash-grp-otros-grid');
   if (!grid) return;
   const conTarjeta = new Set(Array.from(container.querySelectorAll('.mnu-card[data-modulo]')).map(b => b.getAttribute('data-modulo')));
+  // Antes se comprobaba que ya existiera "#module-<id>-resumen" en el DOM
+  // para descartar módulos "sin vistas registradas". Esa vista la construye
+  // MOTOR_RENDER de forma perezosa, solo cuando el módulo se ABRE por primera
+  // vez — nunca antes, estando todavía en el Menú — así que la comprobación
+  // nunca era cierta y ningún módulo sin tarjeta manual en MENU_GRUPOS llegaba
+  // a mostrarse aquí. PERMISOS.modulos() ya solo lista módulos con subconfig
+  // válido (Config_Modular + NombreInterno), que es la garantía que hace falta.
   PERMISOS.modulos().forEach(m => {
     if (conTarjeta.has(m.id)) return;
-    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;   // sin vistas registradas
     grid.insertAdjacentHTML('beforeend', tarjetaModuloMenu({
       id: m.id, titulo: m.titulo, icono: m.icono || 'apps', acento: 'slate',
       sub: m.id.replace(/^(\d+)_.*/, 'Módulo $1')
     }));
   });
+  // El grupo «Más módulos» nace oculto (MENU_GRUPOS.otros.modulos está vacío
+  // a propósito: lo llenan solo los módulos sin tarjeta propia). Si se agregó
+  // alguno, hay que mostrarlo y poner al día su contador.
+  const seccion = container.querySelector('#dash-grp-otros');
+  if (seccion && grid.children.length) {
+    seccion.hidden = false;
+    const contador = seccion.querySelector('.mnu-group-n');
+    if (contador) contador.textContent = String(grid.children.length);
+  }
 }
 
 /** Igual que las tarjetas: enlace genérico en el menú lateral para un módulo nuevo. */
@@ -488,7 +513,6 @@ function agregarEnlacesDrawerModulosNuevos() {
   if (!extra) return;
   PERMISOS.modulos().forEach(m => {
     if (document.querySelector('.drawer-nav-link[data-modulo="' + CSS.escape(m.id) + '"]')) return;
-    if (!document.getElementById('module-' + m.id.toLowerCase() + '-resumen')) return;
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'drawer-nav-link w-full text-left';
@@ -679,15 +703,6 @@ function renderMenu() {
 .mnu-updated { display:inline; font-size:11px; font-weight:600; color:var(--mnu-hero-muted); }
 .mnu-updated:empty { display:none; }
 .mnu-updated::before { content:"·"; margin:0 6px 0 2px; }
-/* Actualizar: arriba a la derecha, en el hueco que deja el texto */
-.mnu-refresh {
-  position:relative; z-index:1; flex-shrink:0; align-self:flex-start;
-  display:inline-flex; align-items:center; justify-content:center; gap:6px; height:40px; padding:0 14px; border-radius:12px; border:0;
-  background:var(--mnu-yellow); color:var(--mnu-on-yellow); font-size:12px; font-weight:800; cursor:pointer;
-  transition:transform 150ms var(--ds-ease), box-shadow 150ms var(--ds-ease);
-}
-.mnu-refresh:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(255,213,63,0.35); }
-.mnu-refresh .material-symbols-outlined { font-size:17px; }
 
 /* ── Grupos ── */
 .mnu-group { margin-bottom:20px; }
@@ -760,17 +775,12 @@ function renderMenu() {
   .mnu-hero-top { gap:12px; }
   .mnu-hello { margin-top:2px; }
   .mnu-date { margin-top:3px; }
-  .mnu-updated { display:none; }   /* en móvil la hora cede su línea; el giro del botón confirma */
   .mnu-stats { margin-top:10px; gap:6px; }
   .mnu-stat-l { margin-top:1px; }
   .mnu-hello { font-size:17px; }
   .mnu-avatar { width:46px; height:46px; border-radius:14px; font-size:17px; }
   .mnu-stat { padding:8px 10px; border-radius:12px; }
   .mnu-stat-v { font-size:17px; height:20px; }
-  /* En móvil solo el icono: el nombre del usuario conserva el ancho */
-  .mnu-refresh { width:44px; height:44px; padding:0; }
-  .mnu-refresh .mnu-refresh-tx { display:none; }
-  .mnu-refresh .material-symbols-outlined { font-size:21px; }
   .mnu-grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
   .mnu-card { flex-direction:column; align-items:flex-start; gap:10px; padding:14px 12px 16px 14px; min-height:128px; }
   .mnu-card::before { top:auto; bottom:0; left:14px; right:auto; width:28px; height:4px; border-radius:4px 4px 0 0; transition:width 200ms var(--ds-ease); }
@@ -803,10 +813,9 @@ function renderMenu() {
           <span id="dash-updated" class="mnu-updated"></span>
         </p>
       </div>
-      <button type="button" class="mnu-refresh" onclick="loadDashboardData(true)" aria-label="Actualizar indicadores del panel" title="Actualizar">
-        <span class="material-symbols-outlined" id="dash-refresh-ico" aria-hidden="true">refresh</span>
-        <span class="mnu-refresh-tx">Actualizar</span>
-      </button>
+      <!-- Sin boton propio de actualizar: el de la cabecera es el unico
+           control de sincronizacion de la app (y ahora tambien se ve aqui).
+           Dos botones que hacen lo mismo en la misma pantalla confunden. -->
     </div>
 
     <div class="mnu-stats">
@@ -838,15 +847,12 @@ function renderMenu() {
  * NOTA TÉCNICA: los <script> insertados con innerHTML NO se ejecutan, por eso
  * esta es una función real que showView() invoca después de inyectar el HTML.
  *
- * @param {boolean} manual - true si la disparó el usuario (muestra realimentación)
+ * @param {boolean} manual - true si la disparó el usuario. La realimentación
+ *        la da el botón de la cabecera (gira mientras trabaja); aquí solo se
+ *        conserva el parámetro porque distingue el refresco automático del
+ *        pedido a mano.
  */
 function loadDashboardData(manual) {
-  const ico = document.getElementById('dash-refresh-ico');
-  if (manual && ico) {
-    ico.classList.add('animate-spin');
-    setTimeout(() => ico.classList.remove('animate-spin'), 700);
-  }
-
   actualizarGruposMenu();
 
   // Conexión del dispositivo

@@ -1,0 +1,126 @@
+<!--
+  11_Webs — "Detalle" de excepción.
+  =========================================================================
+  Este módulo no usa el Detalle genérico de MOTOR_RENDER: al pulsar un
+  registro debe verse el sitio web DENTRO de la app, con un botón para
+  volver (pedido explícito del usuario), no el formulario de solo-lectura
+  que dibuja el motor. Es la misma excepción documentada en CLAUDE.md
+  («Archivo Mod_XX_Nombre_Vista.html») que hoy solo usan 01_Usuarios y
+  00_Admin, aplicada aquí a una sola vista (Resumen y Edición sí las sigue
+  generando MOTOR_RENDER desde el subconfig).
+
+  El router (App_Routing.js.html → showView) encuentra este nodo por su id
+  exacto ("module-11_webs-detalle") y lo usa en vez de pedirle el Detalle a
+  MOTOR_RENDER.construir(). Queda vacío a propósito: todo el contenido es la
+  capa que WEB_VIEWER.abrir() agrega sobre <body> (mismo patrón que el visor
+  del PDF en PDF_Templates.js.html → abrirVisor/cerrarVisor), y changeInternalView
+  sigue llamando a "loadDetail_11_Webs" igual que a cualquier loadDetail_X.
+-->
+<div id="module-11_webs-detalle" class="module-view" style="display:none;"></div>
+
+<script>
+var WEB_VIEWER = window.WEB_VIEWER || {
+  VISOR_ID: 'wv-visor',
+  _modulo: null,
+  _onEsc: null,
+  _onAtras: null,
+  _conHistorial: false,
+  _scrollPrevio: '',
+
+  /** Busca el registro (caché del motor → copia local → servidor) y abre la capa. */
+  abrir: async function (modulo, uuid) {
+    this.cerrar();
+    let r = null;
+    try {
+      r = ((typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER._datos[modulo]) || [])
+        .find(x => String(x.UUID) === String(uuid));
+      if (!r) {
+        const copia = (typeof MOTOR_CACHE !== 'undefined')
+          ? await MOTOR_CACHE.leerSync(modulo)
+          : (JSON.parse(localStorage.getItem('refdata_' + modulo)) || []);
+        r = (copia || []).find(x => String(x.UUID) === String(uuid));
+      }
+      if (!r && typeof DataService !== 'undefined') {
+        const res = await DataService.query(modulo, { cond: { UUID: { eq: uuid } }, limite: 1 });
+        if (res && res.status === 'OK' && Array.isArray(res.payload)) r = res.payload[0];
+      }
+    } catch (e) { r = null; }
+
+    const url = r && String(r.Link_Web || '').trim();
+    if (!url) {
+      PWA_SKILLS.toast('No se encontró el enlace de este sitio.', 'error');
+      changeInternalView(modulo, 'Resumen');
+      return;
+    }
+    this._pintar(modulo, r, url);
+  },
+
+  _pintar: function (modulo, r, url) {
+    const capa = document.createElement('div');
+    capa.id = this.VISOR_ID;
+    capa.className = 'fixed inset-0 z-[9995] flex flex-col bg-[#0b101d]/95';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.setAttribute('aria-label', 'Sitio web: ' + String(r.Titulo || ''));
+
+    capa.innerHTML =
+      '<header class="shrink-0 flex items-center gap-2 px-2 sm:px-4 py-2 bg-[#162138] text-white shadow-lg">' +
+        '<button type="button" data-cerrar aria-label="Volver a la app" ' +
+          'class="w-10 h-10 shrink-0 rounded-full hover:bg-white/10 flex items-center justify-center">' +
+          '<span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></button>' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="text-[12px] font-black leading-tight truncate">' + esc(r.Titulo || 'Sitio web') + '</p>' +
+          '<p class="text-[10px] text-white/70 leading-tight truncate">' + esc(url) + '</p>' +
+        '</div>' +
+        '<button type="button" data-externo aria-label="Abrir en el navegador" title="Abrir en el navegador" ' +
+          'class="h-10 px-3 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 whitespace-nowrap ' +
+          'border border-white/25 text-white hover:bg-white/10 transition-colors">' +
+          '<span class="material-symbols-outlined text-[18px]" aria-hidden="true">open_in_new</span>' +
+          '<span class="hidden sm:inline">Abrir en el navegador</span></button>' +
+      '</header>' +
+      // No hay forma confiable de detectar que un sitio bloqueó el iframe
+      // (X-Frame-Options/CSP del propio sitio): por eso el botón de arriba
+      // es siempre visible, no una alternativa que aparece ante el fallo.
+      '<iframe src="' + esc(url) + '" class="flex-1 w-full border-0 bg-white" ' +
+        'referrerpolicy="no-referrer" title="' + esc(r.Titulo || 'Sitio web') + '"></iframe>';
+
+    // Cerrar la capa y volver al listado del módulo — el botón que pidió el
+    // usuario. Escape y el botón físico de atrás hacen lo mismo.
+    const volver = () => { this.cerrar(); changeInternalView(modulo, 'Resumen'); };
+    capa.querySelector('[data-cerrar]').addEventListener('click', volver);
+    capa.querySelector('[data-externo]').addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+
+    this._onEsc = e => { if (e.key === 'Escape') volver(); };
+    document.addEventListener('keydown', this._onEsc);
+    document.body.appendChild(capa);
+    this._scrollPrevio = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // El botón físico de atrás cierra la capa en vez de salir de la app
+    // (mismo patrón que PDF_TEMPLATE.abrirVisor).
+    try { history.pushState({ wvVisor: true }, ''); this._conHistorial = true; } catch (e) { this._conHistorial = false; }
+    this._onAtras = () => { this._conHistorial = false; volver(); };
+    window.addEventListener('popstate', this._onAtras);
+    capa.querySelector('[data-cerrar]').focus();
+    this._modulo = modulo;
+  },
+
+  /**
+   * Quita la capa y sus listeners, SIN navegar a ningún lado. La llaman los
+   * tres cierres propios (arriba, con `volver()`) y, defensivamente,
+   * showView/changeInternalView al salir hacia otra vista — igual que
+   * PDF_TEMPLATE.cerrarVisor() — para que la capa nunca quede flotando sobre
+   * un módulo distinto.
+   */
+  cerrar: function () {
+    const capa = document.getElementById(this.VISOR_ID);
+    if (this._onEsc) { document.removeEventListener('keydown', this._onEsc); this._onEsc = null; }
+    if (this._onAtras) { window.removeEventListener('popstate', this._onAtras); this._onAtras = null; }
+    if (capa) { capa.remove(); document.body.style.overflow = this._scrollPrevio || ''; }
+    if (this._conHistorial) { this._conHistorial = false; try { history.back(); } catch (e) {} }
+    this._modulo = null;
+  }
+};
+window.WEB_VIEWER = WEB_VIEWER;
+
+window.loadDetail_11_Webs = function (uuid) { WEB_VIEWER.abrir('11_Webs', uuid); };
+</script>

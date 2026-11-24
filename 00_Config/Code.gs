@@ -28,6 +28,9 @@
   *     └── DATA/
   *          ├── 01_Usuarios/2026/11/20/…  fotos y firmas del personal
   *          ├── 05_Incidentes/2026/11/20/…
+  *          │   └── 00_Informes/<uuid>.pdf   informe del registro (uno por
+  *          │                                registro; se sustituye en cada
+  *          │                                cambio y se retira al eliminarlo)
   *          └── …                         (subcarpetas automáticas por fecha)
   *
   *  ESQUEMA
@@ -78,7 +81,7 @@
   // =========================================================================
   // <<<ESQUEMA-INICIO>>>
 const ESQUEMA = {
-  "version": "65a60962e2",
+  "version": "4883ba02a6",
   "usuarios": {
     "id": "01_Usuarios",
     "hoja": "01_Usuarios",
@@ -345,6 +348,24 @@ const ESQUEMA = {
       },
       "emailTemplateId": "",
       "validarAprobacion": false
+    },
+    "11_Webs": {
+      "hoja": "11_Webs",
+      "hojaHija": "",
+      "campos": ["UUID","Titulo","Clasificacion","Link_Web","Descripcion","Empresa","Creado_Por_DNI","Creado_En","Actualizado_En"],
+      "columnaEmpresa": "Empresa",
+      "camposHijo": [],
+      "archivos": [],
+      "tipos": {},
+      "clases": {"Clasificacion":"enum"},
+      "responsables": [],
+      "roles": {
+        "admin": {"crear":true,"leer":true,"editar":true,"eliminar":true,"alcance":"todos"},
+        "supervisor": {"crear":false,"leer":true,"editar":false,"eliminar":false,"alcance":"todos"},
+        "trabajador": {"crear":false,"leer":true,"editar":false,"eliminar":false,"alcance":"todos"}
+      },
+      "emailTemplateId": "",
+      "validarAprobacion": false
     }
   }
 };
@@ -454,7 +475,16 @@ const ESQUEMA = {
     SAVE_CONFIG:        { escritura: true, fn: (req, s) => accGuardarConfig_(req, s) },
     CREATE_USER:        { escritura: true, fn: (req, s) => accCrearUsuario_(req, s) },
     CHANGE_PASSWORD:    { escritura: true, fn: (req, s) => accCambiarPassword_(req, s) },
-  SAVE_CONSENT:       { escritura: true, fn: (req, s) => accGuardarConsentimiento_(req, s) },
+    SAVE_CONSENT:       { escritura: true, fn: (req, s) => accGuardarConsentimiento_(req, s) },
+    // El informe se serializa a propósito, aunque solo escriba en Drive: son
+    // "crear el nuevo y retirar el anterior" sobre un nombre de archivo fijo.
+    // Sin lock, dos guardados del mismo registro a la vez pueden dejar dos
+    // PDF con el mismo nombre, y entonces nadie sabe cuál es el vigente.
+    SAVE_REPORT:        { escritura: true, fn: (req, s) => accGuardarInforme_(req, s) },
+    DELETE_REPORT:      { escritura: true, fn: (req, s) => accEliminarInforme_(req, s) },
+    // Solo consulta. Con `compartir: true` cambia el permiso del archivo en
+    // Drive, que es idempotente: no necesita serializarse.
+    GET_REPORT:         { fn: (req, s) => accInforme_(req, s) },
     VERIFICAR_PROYECTO: { fn: (req, s) => accVerificar_(req, s) }
   };
 
@@ -984,6 +1014,10 @@ function accDelta_(req, s) {
       borrarFilas_(th, filasHijas);
     }
     borrarFilas_(t, borrar.map(b => b.fila));
+    // El informe PDF se va con el registro: un documento con sello oficial no
+    // debe sobrevivir al registro del que salió (va a la papelera de Drive,
+    // así que es recuperable 30 días si el borrado fue un error).
+    borrar.forEach(b => { try { borrarInforme_(id, b.uuid); } catch (e) { console.warn('Informe no retirado: ' + e.message); } });
     borrar.forEach(b => auditar_(s.dni, 'ELIMINAR', id, b.uuid, ''));
     if (!borrar.length) return { status: 'ERROR', msg: 'No se eliminó nada: ' + rechazados.join(', ') };
     return { status: rechazados.length ? 'PARTIAL' : 'OK', eliminados: borrar.length,
@@ -1052,6 +1086,194 @@ function limpiarNombreCarpeta_(nombre) {
   const n = String(nombre || '').replace(/[\\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
   return n.slice(0, 80) || 'Sin empresa';
 }
+
+// =========================================================================
+//  INFORME PDF DE CADA REGISTRO
+//  DATA/<modulo>/00_Informes/<uuid>.pdf
+// =========================================================================
+//  El PDF lo genera la app (PDF_Templates.js.html) y lo manda aquí cada vez
+//  que el registro llega al servidor: al crearlo y en CADA cambio. El nombre
+//  depende solo del UUID, así que "actualizar" es sustituir ese archivo y no
+//  acumular una copia por edición — en una fiscalización, siete versiones del
+//  mismo informe sin saber cuál rige son peor que ninguna.
+//
+//  El anterior se manda a la papelera (no se destruye): si alguien archivó un
+//  informe equivocado, Drive lo conserva 30 días.
+//
+//  Al eliminar el registro principal (DELETE_ROWS) su informe se retira en la
+//  misma operación: un documento con sello oficial no debe sobrevivir al
+//  registro del que salió.
+// =========================================================================
+const CARPETA_INFORMES = '00_Informes';
+
+function nombreInforme_(uuid) { return String(uuid).replace(/[^\w-]/g, '_') + '.pdf'; }
+
+/** La carpeta de informes del módulo, creándola si hace falta. */
+function carpetaInformes_(modId) {
+  return subcarpeta_(subcarpeta_(carpetaData_(), modId), CARPETA_INFORMES);
+}
+
+/** La carpeta de informes SOLO si ya existe (no la crea al consultar). */
+function carpetaInformesSi_(modId) {
+  try {
+    const mod = carpetaData_().getFoldersByName(modId);
+    if (!mod.hasNext()) return null;
+    const inf = mod.next().getFoldersByName(CARPETA_INFORMES);
+    return inf.hasNext() ? inf.next() : null;
+  } catch (e) { return null; }
+}
+
+function buscarInforme_(modId, uuid) {
+  const carpeta = carpetaInformesSi_(modId);
+  if (!carpeta) return null;
+  const it = carpeta.getFilesByName(nombreInforme_(uuid));
+  return it.hasNext() ? it.next() : null;
+}
+
+/** Manda a la papelera el informe de un registro. Devuelve cuántos retiró. */
+function borrarInforme_(modId, uuid) {
+  const carpeta = carpetaInformesSi_(modId);
+  if (!carpeta) return 0;
+  const it = carpeta.getFilesByName(nombreInforme_(uuid));
+  let n = 0;
+  while (it.hasNext()) { it.next().setTrashed(true); n++; }
+  return n;
+}
+
+/**
+ * Quién archiva el informe de un registro: quien puede editarlo y, además, su
+ * autor. Lo segundo hace falta porque hay roles que crean pero no editan (un
+ * Trabajador en 02_Reportes): sin eso, justo el registro que acaba de hacer
+ * se quedaría sin su informe.
+ */
+function puedeArchivarInforme_(s, id, fila) {
+  return puedeEscribir_(s, id, 'editar', fila) || (esPropio_(s, fila) && puedeLeer_(s, id, fila));
+}
+
+function accGuardarInforme_(req, s) {
+  const id = req.moduleName;
+  const m = moduloOError_(id);
+  const uuid = String(req.uuid || '').trim();
+  if (!uuid) throw errorUsuario_('Falta el UUID del registro.');
+
+  const fila = buscarRegistro_(m, uuid);
+  // Sin registro no se archiva: un documento con aspecto oficial que no
+  // corresponde a ningún registro es un papel falso.
+  if (!fila) throw errorUsuario_('El registro no existe: no se archiva un informe sin registro.');
+  if (!puedeArchivarInforme_(s, id, fila)) throw errorUsuario_('No tienes permiso para archivar el informe de este registro.');
+
+  const b64 = String(req.pdfBase64 || '');
+  if (!b64) throw errorUsuario_('El informe llegó vacío.');
+  const tope = (CONFIG.MAX_FILE_MB || 10) * 1024 * 1024;
+  // base64 pesa 4/3 del binario: se descarta antes de decodificar
+  if (b64.length > Math.ceil(tope * 1.4)) throw errorUsuario_('El informe supera el tamaño permitido.');
+  let bytes;
+  try { bytes = Utilities.base64Decode(b64); }
+  catch (e) { throw errorUsuario_('El informe no se pudo decodificar.'); }
+  if (bytes.length > tope) throw errorUsuario_('El informe supera ' + (CONFIG.MAX_FILE_MB || 10) + ' MB.');
+  // Utilities.base64Decode es permisivo: ante texto con caracteres fuera del
+  // alfabeto base64 no lanza, los ignora y devuelve bytes de todos modos. Sin
+  // esto, un error de codificación en el cliente (o cualquier otra cosa en
+  // pdfBase64) se archivaba igual como si fuera válido, PISANDO el informe
+  // bueno anterior con un archivo que después no abre nadie.
+  if (bytes.length < 5 || bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46) {
+    throw errorUsuario_('El archivo recibido no es un PDF válido.');
+  }
+
+  const carpeta = carpetaInformes_(id);
+  const nombre = nombreInforme_(uuid);
+  // Se apunta lo que hay ANTES de crear, se crea, y solo entonces se retira
+  // lo viejo — el mismo orden que reemplazarHijos_. Al revés, si createFile
+  // falla (cuota de Drive, archivo inválido) el registro se quedaría sin
+  // ningún informe, y es justo cuando nadie lo va a notar.
+  const previos = [];
+  const it = carpeta.getFilesByName(nombre);
+  while (it.hasNext()) previos.push(it.next());
+
+  const file = carpeta.createFile(Utilities.newBlob(bytes, 'application/pdf', nombre));
+  previos.forEach(f => { try { f.setTrashed(true); } catch (e) { console.warn('Informe anterior no retirado: ' + e.message); } });
+  // Igual que las evidencias: la descripción dice a qué registro pertenece,
+  // y además de qué empresa, que es lo único que queda cuando el registro ya
+  // no está (informe huérfano).
+  file.setDescription(['MOTOR', id, uuid, 'Informe', s.empresa || ''].join('|'));
+  auditar_(s.dni, 'INFORME', id, uuid, nombre);
+
+  return { status: 'OK', fileId: file.getId(), existe: true,
+           ruta: 'drive:' + file.getId() + '/' + nombre, enlace: file.getUrl() };
+}
+
+function accEliminarInforme_(req, s) {
+  const id = req.moduleName;
+  const m = moduloOError_(id);
+  const uuid = String(req.uuid || '').trim();
+  if (!uuid) throw errorUsuario_('Falta el UUID del registro.');
+
+  const file = buscarInforme_(id, uuid);
+  // No hay nada archivado (lo normal: DELETE_ROWS ya lo retiró con el
+  // registro). Sin archivo no hay nada que autorizar ni que hacer.
+  if (!file) return { status: 'OK', borrados: 0 };
+
+  const fila = buscarRegistro_(m, uuid);
+  if (fila) {
+    if (!(puedeEscribir_(s, id, 'eliminar', fila) || puedeEscribir_(s, id, 'editar', fila))) {
+      throw errorUsuario_('No tienes permiso para borrar el informe de este registro.');
+    }
+  } else {
+    // Informe huérfano: la empresa se lee de la descripción del archivo, que
+    // es lo único que sobrevive al registro. Así nadie limpia los informes de
+    // otra contratista conociendo un UUID.
+    const meta = String(file.getDescription() || '').split('|');
+    const suya = claveEmpresa_(meta[4] || '');
+    if (!esAdmin_(s) && !(suya && suya === claveEmpresa_(s.empresa))) {
+      throw errorUsuario_('El registro ya no existe y este informe no es de tu empresa.');
+    }
+  }
+
+  const n = borrarInforme_(id, uuid);
+  if (n) auditar_(s.dni, 'INFORME_BORRADO', id, uuid, '');
+  return { status: 'OK', borrados: n };
+}
+
+/**
+ * ¿Hay informe archivado, desde cuándo y con qué enlace?
+ *
+ * `compartir: true` lo pide el botón de WhatsApp: el destinatario —un
+ * supervisor, un cliente, un fiscalizador— no tiene cuenta en el Drive de la
+ * empresa, así que para que pueda abrir el documento el archivo pasa a
+ * "cualquiera con el enlace, solo lectura". Es una decisión con consecuencias
+ * (quien reciba el enlace ve el documento), por eso: solo ocurre al pulsar
+ * enviar, nunca al archivar; solo puede hacerlo quien ya puede ver el
+ * registro; queda en la auditoría con DNI, módulo y UUID; y el mensaje de
+ * WhatsApp lo advierte. Si la política del dominio no permite compartir, se
+ * devuelve el enlace interno igual (lo abrirá quien tenga acceso al Drive).
+ */
+function accInforme_(req, s) {
+  const id = req.moduleName;
+  const m = moduloOError_(id);
+  const uuid = String(req.uuid || '').trim();
+  if (!uuid) throw errorUsuario_('Falta el UUID del registro.');
+
+  const fila = buscarRegistro_(m, uuid);
+  if (!fila || !puedeLeer_(s, id, fila)) throw errorUsuario_('No puedes ver este registro.');
+
+  const file = buscarInforme_(id, uuid);
+  if (!file) return { status: 'OK', existe: false };
+
+  if (req.compartir === true) {
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      auditar_(s.dni, 'INFORME_COMPARTIDO', id, uuid, file.getId());
+    } catch (e) {
+      console.warn('No se pudo compartir el informe ' + id + '/' + uuid + ': ' + e.message);
+    }
+  }
+
+  let fecha = '';
+  try { fecha = Utilities.formatDate(file.getLastUpdated(), CONFIG.TIMEZONE, 'yyyy-MM-dd HH:mm'); } catch (e) {}
+  return { status: 'OK', existe: true, fileId: file.getId(), fecha: fecha,
+           ruta: 'drive:' + file.getId() + '/' + file.getName(), enlace: file.getUrl() };
+}
+
 
 function accGuardarConfig_(req, s) {
     if (!esAdmin_(s)) throw errorUsuario_('Solo el administrador puede cambiar la configuración.');

@@ -411,6 +411,7 @@ function sqlStorage(mods) {
   L.push('--');
   L.push('--   evidencias  privado · fotos, firmas y adjuntos de los registros');
   L.push('--   documentos  privado · PDF generados y archivos de gestión');
+  L.push('--   informes    privado · el informe PDF de cada registro (derivado)');
   L.push('--   publico     público · logos y recursos de marca de cada empresa');
   L.push('--');
   L.push('-- CONVENCIÓN DE RUTAS  <empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>');
@@ -428,6 +429,7 @@ values
          'application/msword','application/vnd.ms-excel','text/csv','text/plain',
          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
          'application/vnd.ms-powerpoint','image/jpeg','image/png']),
+  ('informes',   'informes',   false, 10485760, array['application/pdf']),
   ('publico',    'publico',    true,   2097152,
    array['image/jpeg','image/png','image/webp'])
 on conflict (id) do update
@@ -495,6 +497,89 @@ create policy ${b}_del on storage.objects for delete using (
     L.push('');
   });
 
+  // ── Informes: el PDF de cada registro ───────────────────────────────────
+  // Ruta: <empresa>/<modulo>/<uuid>/informe.pdf — la misma convención, así que
+  // storage_puede_leer() ya decide quién lo ve: quien ve el registro.
+  //
+  // Va en un bucket aparte de `evidencias`/`documentos` por una razón de
+  // fondo: ahí sobrescribir y borrar están reservados al Admin, porque
+  // hacerlo es destruir prueba. Un informe NO es prueba original: es un
+  // documento DERIVADO que la app regenera del registro en cada cambio. Si
+  // solo el Admin pudiera reescribirlo, el informe del supervisor que edita
+  // su inspección quedaría viejo para siempre, que es peor.
+  //
+  // Lo reescribe entonces quien puede editar el registro, más su autor
+  // (hay roles que crean y no editan: sin eso el registro recién hecho no
+  // tendría informe). Nunca alguien que solo pueda leerlo.
+  const ramasArch = mods.map(m => `    when '${m.modulo}' then return exists (
+      select 1 from ${m.tabla} t
+       where t.uuid = v_id
+         and (${condPermiso(m, 'editar', 't.')} or t.creado_por_dni = auth_dni()));`);
+  L.push(`create or replace function storage_puede_archivar(ruta text) returns boolean
+language plpgsql stable security invoker set search_path = public as $$
+declare
+  v_mod text := split_part(ruta, '/', 2);
+  v_id  text := split_part(ruta, '/', 3);
+begin
+  if auth_rol() = 'superadmin' then return true; end if;
+  if storage_empresa(ruta) is distinct from auth_empresa() then return false; end if;
+  case v_mod
+${ramasArch.join('\n')}
+    else return false;
+  end case;
+end $$;`);
+  L.push('');
+  // Borrar el informe de un registro que ya no existe. Pasa en el caso normal:
+  // la app borra primero el registro (si RLS lo rechaza, el informe debe
+  // seguir ahí) y después su informe, que en ese momento es huérfano.
+  // security definer: solo mira si la fila existe, sin filtrar por rol — si
+  // aplicara el RLS de lectura, un trabajador vería "no existe" el registro
+  // ajeno y podría borrar informes que no son suyos.
+  const ramasHuerf = mods.map(m => `    when '${m.modulo}' then return not exists (select 1 from ${m.tabla} t where t.uuid = v_id);`);
+  L.push(`create or replace function informe_huerfano(ruta text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_mod text := split_part(ruta, '/', 2);
+  v_id  text := split_part(ruta, '/', 3);
+begin
+  case v_mod
+${ramasHuerf.join('\n')}
+    else return false;
+  end case;
+end $$;
+revoke all on function informe_huerfano(text) from public;
+grant execute on function informe_huerfano(text) to authenticated;`);
+  L.push('');
+  L.push('-- ── bucket informes (privado · un PDF por registro) ──');
+  L.push(`drop policy if exists informes_sel on storage.objects;
+create policy informes_sel on storage.objects for select using (
+  bucket_id = 'informes' and storage_puede_leer(name)
+);
+drop policy if exists informes_ins on storage.objects;
+create policy informes_ins on storage.objects for insert with check (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+);
+-- Sobrescribir es lo normal aquí: el informe se regenera con cada cambio del
+-- registro y su nombre no cambia (uno por registro, no uno por edición).
+drop policy if exists informes_upd on storage.objects;
+create policy informes_upd on storage.objects for update using (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+) with check (
+  bucket_id = 'informes' and storage_puede_archivar(name)
+);
+-- Se borra al eliminar el registro: quien podía reescribirlo o, cuando el
+-- registro ya no existe (informe huérfano), quien pueda verlo dentro de su
+-- empresa. En la práctica eso es el Admin, que es el único rol con canDelete
+-- en los diez módulos y, por tanto, el único que llega a este caso: la app
+-- borra primero el registro y después su informe.
+drop policy if exists informes_del on storage.objects;
+create policy informes_del on storage.objects for delete using (
+  bucket_id = 'informes' and (
+       storage_puede_archivar(name)
+    or (storage_empresa(name) = auth_empresa() and informe_huerfano(name))
+  )
+);`);
+  L.push('');
   L.push('-- ── bucket publico (lectura abierta, escritura del admin) ──');
   L.push(`drop policy if exists publico_sel on storage.objects;
 create policy publico_sel on storage.objects for select using (bucket_id = 'publico');
@@ -871,7 +956,7 @@ select
   o.owner                                            as subido_por,
   o.created_at                                       as subido_en
 from storage.objects o
-where o.bucket_id in ('evidencias', 'documentos', 'publico')
+where o.bucket_id in ('evidencias', 'documentos', 'informes', 'publico')
   and auth_rol() in ('admin', 'superadmin');
 grant select on archivos to authenticated;
 

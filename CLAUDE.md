@@ -18,6 +18,7 @@ MOTOR/
 │   ├── Global_Skills.js.html   ← PWA_SKILLS API (todas las funciones reutilizables)
 │   ├── Motor_Render.js.html    ← MOTOR_RENDER: genera Resumen/Edicion/Detalle desde el subconfig
 │   ├── Offline_Engine.js.html  ← IndexedDB + cola offline
+│   ├── PDF_Templates.js.html   ← Informe PDF del registro: visor, archivo en Drive/Storage y envío
 │   ├── Face_Capture.js.html    ← Cámara frontal + detección de rostro
 │   ├── Consentimiento.js.html  ← Asistente de primer ingreso (datos + selfie + firma)
 │   ├── Face_Capture.js.html    ← FACE_CAPTURE: cámara frontal, detección de rostro y toma automática
@@ -39,6 +40,8 @@ MOTOR/
 ├── tools/apk_build.js      ← Compila el APK buscando el JDK y el SDK solos
 ├── tools/ota_publish.js    ← Publica el dist/ como actualización por aire
 ├── tools/ota_zip.js        ← Empaquetador ZIP determinista, sin dependencias
+├── tools/vendor_cdn.js     ← Baja Tailwind, fuentes, iconos y SheetJS a web/vendor/
+├── web/vendor/             ← Esas librerías, versionadas: la app abre sin señal
 └── PROD_INDEX.html         ← HTML final bundleado para pegar en GAS
 ```
 
@@ -74,6 +77,8 @@ npm run build              # build_web.js → dist/ (lo que despliega Vercel)
 npm test                   # RLS + Apps Script + vistas generadas + captura facial + permisos + OTA
 npm run test:rostro        # solo la captura facial (panel, respaldo sin cámara, foto de perfil)
 npm run test:ota           # solo la actualización por aire (ver "App instalable")
+npm run test:sync          # cola sin conexión: que lo guardado acabe subiendo
+npm run test:informes      # informe PDF: visor, archivo automático, borrado y envío
 ```
 
 Dos suites del `npm test` (`test:seed` y `test:empresas`) necesitan
@@ -84,8 +89,11 @@ por el código. Las demás se pueden ejecutar una por una.
 sin tocar `package.json`:
 
 ```bash
-npm i --no-save @electric-sql/pglite@0.2.17 jsdom@24.1.3
+npm i --no-save @electric-sql/pglite@0.2.17 jsdom@24.1.3 fake-indexeddb@6.0.0
 ```
+
+**Las tres van en el MISMO comando.** `npm i --no-save X` reinstala desde
+`package.json` y se lleva por delante lo instalado antes con `--no-save`.
 
 `build_web.js` resuelve los mismos includes, quita las etiquetas `<?= ?>` de Apps Script, **no** inyecta el mock de `google.script.run`, inyecta `window.__MOTOR_ENV__` (SUPABASE_URL / SUPABASE_ANON_KEY desde variables de entorno; si faltan usa las de `Global_Config.js.html`) y copia `web/` (manifest, iconos, service worker). Falla si queda un include sin resolver o si la anon key resulta ser una service_role.
 
@@ -111,6 +119,7 @@ Registrar sin conexión sigue funcionando igual, porque `Offline_Engine` usa
 IndexedDB y eso es idéntico dentro del WebView.
 
 ```bash
+npm run vendor             # baja las librerías a web/vendor/ (ya están; -f rehace)
 npm run apk                # build + cap sync + APK de depuración → .apk/
 npm run apk -- --release   # APK firmado para entregar (necesita keystore)
 npm run ota:dry            # empaqueta y calcula el hash, sin subir nada
@@ -147,9 +156,10 @@ Así nunca hay un cliente pidiendo una tabla que todavía no existe.
    da la misma versión y el mismo zip. De eso depende que la publicación se
    pueda verificar, así que **ese archivo no lleva fecha** a propósito.
 2. `tools/ota_publish.js` empaqueta `dist/` con `tools/ota_zip.js`, calcula su
-   SHA-256 y sube al bucket `actualizaciones`:
-   `bundles/bundle-<versión>.zip` (inmutable) y `latest.json`. Después vuelve a
-   descargar lo publicado y compara el hash: si no cuadra, falla.
+   SHA-256 y lo sube a los **adjuntos de la publicación fija `ota`** del
+   repositorio de GitHub (`bundle-<versión>.zip`, inmutable, y `latest.json`,
+   que sí se reemplaza). Después vuelve a descargar lo publicado y compara el
+   hash: si no cuadra, falla.
 3. El cliente llama a `notifyAppReady()` al arrancar. **Si no lo llama, el
    plugin revierte solo al bundle anterior**: es la red de seguridad contra
    publicar algo roto.
@@ -165,27 +175,77 @@ se pone ahí la versión de APK mínima (`npm run ota:publish -- --min-nativa=1.
 y los dispositivos con un APK anterior **no lo aplican**: avisan de que hay
 que reinstalar, en vez de quedarse en blanco.
 
-### Quién puede publicar una actualización
+### Dónde se alojan y quién puede publicar
 
-`tools/supabase_09_ota.sql` crea el bucket `actualizaciones`: **lectura
-pública, escritura por ninguna política**. Ni Admin ni SuperAdmin ni la anon
-key pueden subir nada por la API; solo la `service_role`, desde tu máquina o
-tu CI. Es deliberado: aquí vive código ejecutable, y quien escriba en ese
-bucket ejecuta lo que quiera en los teléfonos de la empresa. Un XSS o un token
-robado no alcanzan.
+En los **adjuntos de la publicación `ota`** del repositorio de GitHub. Es
+gratis, sirve el binario tal cual y no engorda el historial de git (los
+adjuntos se guardan aparte). El repositorio debe ser **público**: el teléfono
+descarga sin iniciar sesión, y los adjuntos de un repositorio privado piden
+autenticación que el plugin no tiene.
 
-El bucket es aparte de `publico` (que tiene tope de 2 MB y solo acepta
-imágenes, para logos). Ejecuta ese SQL **antes** del primer `ota:publish`.
+GitHub responde a esas URL con un 302 hacia `release-assets.githubusercontent.com`.
+No es problema: OkHttp (el cliente del plugin) sigue redirecciones por
+defecto, y el salto es https, así que pasa el `httpsOnly` del plugin.
+
+Para publicar hace falta **escritura en el repositorio**: `gh auth login` una
+vez, o `GH_TOKEN` en un CI. Nadie más puede: aquí vive código ejecutable, y
+quien pueda escribir ahí ejecuta lo que quiera en los teléfonos de la empresa.
+Un XSS o un token de sesión robado no alcanzan.
+
+Dos sitios tienen que coincidir, y `npm run test:ota` lo comprueba:
+
+| Qué | Dónde | Para qué |
+|---|---|---|
+| De dónde **descarga** la app | `AppState.OTA.URL` en `Global_Config.js.html` (o `OTA_URL` del entorno) | Lo lee el teléfono |
+| Dónde **publica** el script | Remoto `origin` de git (o `OTA_GITHUB_REPO`) | Lo usa tu máquina |
+
+**Alternativa con Supabase Storage:** `npm run ota:publish -- --supabase`,
+con el bucket de `tools/supabase_09_ota.sql` (lectura pública, escritura por
+ninguna política: solo la `service_role`). Quedó como opción tras migrar a
+Apps Script; el proyecto de Supabase del código ya no existe.
 
 ### Dos cosas que no son obvias
 
 - **El service worker se desactiva dentro de Capacitor** (`!window.Capacitor`
   en `build_web.js`). Si no, serviría caché vieja justo después de aplicar un
-  bundle nuevo.
-- **La CSP de `vercel.json` no rige dentro del WebView.** Capacitor tiene su
-  propia configuración de orígenes. Al añadir un CDN o una API hay que
-  declararlo también ahí, o se pierde la barrera que impide que un XSS se
-  lleve el token de Supabase.
+  bundle nuevo. Por eso las librerías van empaquetadas (siguiente punto): sin
+  service worker, un Tailwind que viniera de internet dejaría la pantalla sin
+  estilos la primera vez que alguien abre la app sin señal.
+- **Nada se carga de un CDN.** `npm run vendor` (`tools/vendor_cdn.js`) baja
+  Tailwind, SheetJS, la tipografía Archivo y los iconos a `web/vendor/`, con
+  versión fija y versionados en el repositorio. `00_Config/Index.html` **sigue
+  apuntando al CDN** —`PROD_INDEX.html` es un único HTML y allí no hay
+  archivos sueltos que referenciar— y `build_web.js` reescribe esas etiquetas
+  a `/vendor/…` solo en `dist/`. Si una etiqueta cambia y deja de reconocerse,
+  el build falla en vez de publicar una app que se rompe sin señal.
+  - La fuente de iconos completa pesa 3,9 MB e iría en **cada** bundle OTA.
+    Se pide subconjuntada (`icon_names`): 138 KB. La lista sale del código, no
+    se escribe a mano, y queda en `web/vendor/iconos.txt`.
+  - **Al usar un icono nuevo hay que ejecutar `npm run vendor -- -f`.**
+    `npm run test:ota` falla si no se hizo: el icono se vería como texto.
+  - MediaPipe (`cdn.jsdelivr.net`) se queda en línea a propósito: son varios
+    MB y `Face_Capture` degrada solo a «Usa la cámara del teléfono».
+  - En el navegador sí hay service worker, y precachea `/vendor` (la lista la
+    inyecta `build_web.js` en `__VENDOR__` de `web/sw.js`).
+- **La CSP viaja como `<meta>`, no solo como cabecera.** Dentro del WebView no
+  hay cabeceras HTTP, así que la cabecera de `vercel.json` no llegaría nunca.
+  `build_web.js` **deriva una `<meta http-equiv="Content-Security-Policy">` de
+  esa misma cabecera** y la inyecta justo después del `charset`. Un solo sitio
+  que tocar: añade el CDN a `vercel.json` y la meta se actualiza sola.
+  - En Vercel se aplican las dos (la efectiva es la intersección, y son la
+    misma política).
+  - En la app instalada la meta es la **única** CSP, y es lo que impide que un
+    XSS se lleve el token de sesión de `localStorage`.
+  - `PROD_INDEX.html` (Apps Script) no la lleva: lo genera
+    `generate_preview.js`, que no pasa por `build_web.js`. El iframe de Google
+    sigue funcionando igual.
+  - `frame-ancestors`, `report-uri`, `report-to` y `sandbox` se descartan al
+    pasar a meta: el estándar las ignora ahí. Contra el clickjacking sigue
+    valiendo la cabecera de Vercel, que sí las conserva.
+  - `npm run test:ota` comprueba que meta y cabecera no divergen, que la meta
+    va antes del primer recurso externo y que **todo origen externo del HTML
+    está permitido**: añadir un CDN y olvidar la CSP rompe la prueba en vez de
+    romper la app en producción.
 
 ### iOS
 
@@ -194,6 +254,93 @@ falta la cuenta de Apple Developer (99 USD/año) porque Apple no permite
 instalar fuera de la App Store. Sin ella, en iOS se usa la PWA (*Compartir →
 Añadir a inicio*), que conserva el registro sin conexión y se actualiza con
 cada despliegue. Nota: el PDF por `window.print()` es flojo en Safari.
+
+---
+
+## Fotos: cámara y galería en todo campo de imagen
+
+Todo campo `Image` / `Image_Collection` se dibuja con **dos botones y dos
+entradas de archivo**, en `MOTOR_RENDER.campoHTML()`. Un módulo nuevo lo
+hereda sin escribir nada.
+
+| Botón | Entrada | Para qué |
+|---|---|---|
+| Cámara | `id + '-cam'`, con `capture="environment"` | Abre la cámara trasera. Una foto cada vez (nunca `multiple`) |
+| Galería | `id`, **sin** `capture` | Elegir fotos ya tomadas; conserva `multiple` en `Image_Collection` |
+
+**Por qué dos y no una.** Dentro del APK, el selector de archivos de Capacitor
+no ofrece la cámara: solo lanza `ACTION_IMAGE_CAPTURE` cuando la entrada trae
+`capture` (`BridgeWebChromeClient`). Y poner `capture` en la única entrada
+quitaría el acceso a la galería, que también hace falta. Las dos mandan al
+mismo sitio (`MOTOR_RENDER.tomarArchivos`, que lee `dataset`, no el id).
+
+**Permiso de cámara.** El manifiesto declara `CAMERA` y
+`uses-feature … required="false"`. Lo necesita `Face_Capture` (usa
+`getUserMedia`): Capacitor pide el permiso en caliente, pero Android no
+concede uno que no esté declarado, así que sin esa línea la captura de rostro
+falla dentro del APK. `required="false"` es obligatorio al declarar `CAMERA`,
+o Google Play ocultaría la app a los dispositivos sin cámara.
+
+Como `android/` **no se versiona** (lo regenera `npx cap add android`), ese
+ajuste lo reaplica `tools/apk_build.js` en cada compilación, de forma
+idempotente. Cualquier otro cambio nativo va en el mismo sitio, o se pierde.
+
+`npm run test:render` recorre los campos de imagen de **todos** los módulos y
+falla si alguno se queda sin cámara o sin galería.
+
+---
+
+## Cola sin conexión: reglas que no se pueden romper
+
+`00_Config/Offline_Engine.js.html`. Lo que se guarda en campo **siempre** tiene
+que acabar en el servidor sin que nadie pulse nada. Dos distinciones lo
+sostienen, y confundirlas pierde datos en la práctica:
+
+**Transitorio ≠ rechazado.** Un fallo de red, una sesión caducada o un
+servidor caído significan «no se pudo preguntar»: **no suman rechazos**. Un
+rechazo real del servidor (dato inválido, permiso, RLS) sí suma, y a los
+`SYNC_MAX_RECHAZOS` el registro queda *bloqueado*: sigue guardado en el
+dispositivo, pero el envío automático lo salta. El proveedor ya clasifica el
+fallo en `result.transitorio`; **hay que respetarlo**. Tratar un corte de red
+como rechazo hace que un trabajador sin señal gaste los cinco intentos y
+pierda el envío automático para siempre — ese fallo existió y
+`rehabilitarBloqueadosPorRed()` recupera al arrancar lo que quedó así.
+
+**`navigator.onLine` no es de fiar dentro del APK.** El WebView de Android no
+lo actualiza sin el plugin de red: vale siempre `true` y el evento `online`
+no llega nunca. Por eso el reintento periódico **no lo consulta**: intenta y,
+si no hay señal, el fallo es transitorio y no cuenta. Solo se le hace caso en
+el navegador (`enAppInstalada()` distingue uno de otro).
+
+La cabecera lleva **dos señales de sincronía y no se mezclan** (es una sola
+cabecera, en `Index.html`, compartida por todos los módulos):
+
+| Señal | Dónde | Qué dice |
+|---|---|---|
+| Número de pendientes | `#ui-sync-badge`, sobre el botón de sincronizar | Cuántos cambios NO han llegado al servidor |
+| Pastilla de estado | `#ui-sync-chip`, a la derecha | **Una palabra**: Conectado · Sin conexión · Con error · Enviando… |
+
+Las mantiene `updateSyncUI(texto, offline, pendientes)`. **El texto de estado
+no lleva cifras**: «Sin conexión · 3 pendiente(s)» partía la cabecera en dos
+líneas en el móvil y tapaba el título del módulo; `npm run test:sync` falla si
+vuelve a hacerlo. **Sin número = todo llegó al servidor**, que es la señal que
+busca el usuario antes de cerrar la app. Los colores de la cabecera no se
+invierten con el tema porque siempre es marino. Por debajo de 480 px la
+pastilla se queda solo con el punto de color, y el texto sigue ahí para el
+lector de pantalla.
+
+**El botón de sincronizar se ve en toda la app con sesión abierta**, módulos y
+panel principal incluidos; solo desaparece en el Login. Es el único control de
+actualización que existe: el panel tenía el suyo (`.mnu-refresh`) y se retiró.
+Sube la cola y después recarga el Resumen del módulo activo o, en el panel, sus
+indicadores. **Al pulsarlo el icono gira desde el primer momento y durante un
+mínimo de 650 ms**, aunque la subida acabe en 80 ms: es la señal de que se está
+forzando la actualización. Gira el icono (`.sincronizando`), nunca el botón, o
+el número de pendientes daría vueltas con él.
+
+`npm run test:sync` cubre todo esto sobre el motor real con un IndexedDB
+simulado. Está comprobado que detecta el fallo descrito: con el código
+anterior, cuatro de sus pruebas fallan.
 
 ---
 
@@ -213,6 +360,9 @@ cada despliegue. Nota: el PDF por `window.print()` es flojo en Safari.
 | `SYSTEM_HEALTH_CHECK` | Valida paridad entre subconfig y columnas del Sheets |
 | `LOGIN_AUTH` | Autenticación con hash SHA-256 |
 | `SAVE_CONSENT` | Archiva la constancia de firma digital en `DATA/01_Usuarios/00_Usabilidad/<EMPRESA>/<DNI>.pdf` |
+| `SAVE_REPORT` | Archiva el informe PDF del registro en `DATA/<modulo>/00_Informes/<uuid>.pdf` (sustituye el anterior) |
+| `DELETE_REPORT` | Retira el informe PDF de un registro |
+| `GET_REPORT` | Si hay informe: su fecha y su enlace; con `compartir: true`, lo abre por enlace para poder enviarlo |
 
 **Autodiscovery**: El backend localiza cada módulo buscando una carpeta por nombre en Drive (`ROOT_APP_FOLDER_ID`). El Spreadsheet de cada módulo vive dentro de esa carpeta.
 
@@ -472,8 +622,8 @@ var SUBCONFIG_XX_NOMBRE = {
 | `Date` | Selector de fecha |
 | `Enum` | Select con `acceptedValues`. Si `allowOtherValues: true`, agrega opción libre |
 | `REF` | Select que carga datos de otro módulo. Usa `relationalDataOrigin` + `slice` |
-| `Image` | Captura/upload de imagen única, comprimida client-side |
-| `Image_Collection` | Múltiples imágenes |
+| `Image` | Imagen única, comprimida en el cliente. Dos botones: **Cámara** y **Galería** (ver abajo) |
+| `Image_Collection` | Varias imágenes. Igual: cámara (una cada vez) o galería (varias) |
 | `Face_Photo` | Cámara frontal con detección de rostro: la foto se toma sola al encuadrar bien 3 s (ver «Captura facial»). Equivale a `Image` + `captura: "rostro"` |
 | `Signature` | Pizarra de firma digital (canvas) |
 | `File` | Upload de archivo general |
@@ -522,18 +672,146 @@ Funciones globales disponibles en el frontend:
 | `PWA_SKILLS.finishLoading(tbodyId)` | Quita el esqueleto y el `aria-busy` |
 | `PWA_SKILLS.selectBuscable(select)` / `mejorarSelects(root)` | Buscador en los desplegables. **Se aplica solo** (observador global): siempre en los campos `REF` (sus opciones vienen de otro módulo y crecen) y, en el resto, a partir de 9 opciones —también en filas hijas y filtros—. Se escribe y la lista se filtra sin tildes ni mayúsculas, montado sobre el `<select>` real, que sigue siendo el control del formulario. `buscador: true` en la variable lo fuerza; `data-sin-buscador` lo quita |
 | `PWA_SKILLS.marcarObligatorios(vista)` | Asterisco rojo en las etiquetas de campos obligatorios (`data-obligatorios`, `required`); el router la llama al abrir cada Edición |
+| `PWA_SKILLS.obtenerUbicacion(opts?)` | Promesa con `{lat, lng, precision, hora}` de la Geolocation API del navegador (`Permissions-Policy: geolocation=(self)` en `vercel.json`). Rechaza con un mensaje ya listo para `toast(msg,'error')`: sin soporte, permiso denegado, GPS apagado o timeout. Ningún módulo la usa todavía — es la capacidad base para el día que uno la necesite (marcar dónde ocurrió algo); no hay tipo de campo `Location` en el subconfig ni columna en Supabase/Sheets: eso se agrega cuando un módulo concreto lo pida |
+| `PWA_SKILLS.formatoUbicacion(ubic)` / `enlaceMapa(lat, lng)` | Texto "lat, lng (±N m)" y enlace de Google Maps para mostrar una ubicación capturada |
 
-## Plantillas PDF — formato interno (sin Google Docs/Drive)
+## El PDF de cada registro: se ve, se archiva solo y se envía
 
-La app ya no depende de Google Docs ni de Drive para generar PDFs (se retiró junto con la migración a Supabase: ese flujo era 100% Google-específico y no tenía equivalente directo). Todo vive en el cliente, en `PDF_Templates.js.html`:
+Todo módulo tiene su informe sin configurar nada: `PDF_Templates.js.html`
+(`PDF_TEMPLATE`) arma el documento leyendo el **subconfig** —encabezado,
+datos, tabla de detalle, imágenes, firmas— y de ahí salen las tres cosas que
+hace la app con él: mostrarlo, archivarlo y enviarlo.
 
-**Flujo:** `plantillaBase(modulo)` arma los bloques (encabezado, datos, tabla de detalle, imágenes, firmas) leyendo el **subconfig** del módulo → `renderHTML()` los convierte en HTML imprimible → `exportar()` abre una ventana y llama a `window.print()` (el diálogo nativo "Guardar como PDF" del navegador). No hay llamada al servidor: funciona igual online, offline, y con cualquier `DB_PROVIDER`.
+**Flujo:** `plantillaBase(modulo)` arma los bloques → `prepararDocumento(modulo, uuid)`
+reúne la fila, sus filas hijas y las fotos/firmas ya firmadas →
+`renderHTML()` las convierte en HTML → el visor lo pinta y `pdfBlob()` lo
+convierte en PDF con html2pdf. No hay plantilla en la base de datos: el
+formato es código (`plantillaBase()` y la hoja `CSS` del archivo), y no hay
+pestaña de configuración para editarlo.
 
-- El botón "Descargar PDF" de cada `Detalle` llama a `PDF_TEMPLATE.exportarRegistro(modulo, uuid, titulo)`.
-- Este formato **no es editable visualmente** por el admin. Para cambiar el diseño hay que tocar `plantillaBase()` o la hoja `CSS` en `PDF_Templates.js.html` — no hay pestaña de configuración para esto (se quitó de Configuración junto con el gestor de plantillas de Docs).
-- Las imágenes/firmas se insertan si el campo trae una URL o dataURL válida.
-- **Un PDF nunca lleva datos inventados.** Si el registro no está en la copia local, `exportarRegistro` lo pide al servidor por su UUID; si tampoco así aparece, **no se exporta** y se explica por qué. El registro de ejemplo queda solo para la vista previa del formato (llamada sin `uuid`). Un documento de seguridad con aspecto oficial y contenido de muestra es un documento falso.
-- El Detalle de un registro que no existe oculta **Editar** y **PDF** y muestra el motivo (borrado, de otra empresa o aún sin sincronizar).
+### 1 · Se ve dentro de la app (nunca en una ventana nueva)
+
+El botón **PDF** del Detalle llama a `PDF_TEMPLATE.exportarRegistro(modulo, uuid, titulo)`,
+que abre el **visor**: una capa sobre la app con el documento y cuatro cosas —
+volver, **Imprimir** (el diálogo "Guardar como PDF" del sistema), **Descargar**
+y **Enviar**. Se cierra con el botón de volver, con Escape, con el botón
+físico de atrás del teléfono (`popstate`) y al cambiar de vista.
+
+Antes esto era `window.open()`. En el móvil y dentro de la app instalada eso
+es una pestaña a pantalla completa sin barra de direcciones: **el PDF tapaba
+la app y no había manera de volver al registro.** Por eso el documento es hoy
+una vista más, no una ventana.
+
+**Un informe nunca lleva datos inventados.** Si el registro no está en la copia
+local, `prepararDocumento` lo pide al servidor por su UUID; si tampoco así
+aparece, **no se genera** y se explica por qué. El registro de ejemplo queda
+solo para la vista previa del formato (llamada sin `uuid`). Un documento de
+seguridad con aspecto oficial y contenido de muestra es un documento falso, y
+por lo mismo el Detalle de un registro que no existe oculta **Editar**, **PDF**
+y **Enviar**, y dice el motivo (borrado, de otra empresa o aún sin sincronizar).
+
+Los estilos del documento se inyectan **acotados a `.pt-doc`**
+(`_cssDocumento()`): la hoja del PDF declara `body`, `table`, `h1`… y sin
+acotar se los aplicaría a la aplicación entera. Al imprimir, un bloque
+`@media print` oculta la app y deja solo la hoja.
+
+### 2 · Se archiva solo, y se vuelve a archivar con cada cambio
+
+| Proveedor | Dónde queda el informe |
+|---|---|
+| `appscript` | Drive: `DATA/<modulo>/00_Informes/<uuid>.pdf` (`SAVE_REPORT`) |
+| `supabase` | Storage: `informes/<empresa_id>/<modulo>/<uuid>/informe.pdf` |
+
+El nombre depende **solo del UUID**: actualizar es sustituir ese archivo, no
+acumular una copia por edición. En una fiscalización, siete versiones del
+mismo informe sin saber cuál rige son peor que ninguna. En Drive el anterior
+va a la papelera, así que un archivado equivocado se recupera 30 días.
+
+**Se archiva cuando el registro llega al servidor, nunca antes.** Sin señal no
+hay dónde subirlo, así que al sincronizar un registro la cola apunta su UUID
+en una lista (`PDF_TEMPLATE.encolarArchivo`, en `localStorage`) y
+`procesarPendientes()` los genera de a uno, con tope por pasada —un PDF cuesta
+~1 s de CPU; 40 seguidos tras un turno sin cobertura congelarían la app—. La
+lista sobrevive al cierre de la app y se reintenta al arrancar. Un fallo de red
+**no gasta intentos** (misma regla que la cola: transitorio ≠ rechazado); un
+rechazo real se reintenta `MAX_INTENTOS` veces y se descarta para no bloquear
+la lista.
+
+Un cambio en el registro —un campo, una fila del detalle, una foto— pasa por el
+mismo guardado, así que vuelve a encolar y el informe se regenera.
+
+Se puede desactivar por empresa (`empresas.config.Informe_PDF_Auto = false`) o
+por dispositivo (`AppState.Settings.InformePDFAuto = false`); por omisión está
+activo.
+
+### 3 · Se borra con el registro
+
+Eliminar el registro principal retira su informe: un documento con sello
+oficial no debe sobrevivir al registro del que salió. El orden importa —
+**primero el registro, después el documento**: al revés, un borrado que RLS
+rechace dejaría un registro vivo sin informe y nada volvería a generarlo.
+Lo hace `DataService.delete()` (fachada), y en Apps Script además `DELETE_ROWS`
+lo retira en la misma operación.
+
+### 4 · Se envía por WhatsApp
+
+`PDF_TEMPLATE.enviarPorWhatsApp(modulo, uuid, titulo, boton)` — botón
+**Enviar** del Detalle y del visor. Dos caminos, en este orden:
+
+1. **El PDF adjunto** (Web Share API): el documento llega al chat y se puede
+   reenviar, abrir y guardar.
+2. Si el dispositivo no sabe compartir archivos —**el WebView de Android,
+   dentro del APK, no implementa Web Share**—, el **enlace** del documento
+   archivado. Si aún no estaba archivado (se guardó sin señal), se archiva en
+   ese momento.
+
+Si no hay ninguno de los dos se explica por qué, en vez de abrir WhatsApp con
+un mensaje sin documento.
+
+**El enlace es para alguien de fuera**, que no tiene cuenta en el Drive ni en
+el Supabase de la empresa, así que al pulsar enviar:
+
+- `supabase` → URL **firmada por 7 días**: pasada la semana deja de servir.
+- `appscript` → el archivo pasa a "cualquiera con el enlace, solo lectura"
+  (`GET_REPORT` con `compartir: true`), y eso queda en `_AUDITORIA` con DNI,
+  módulo y UUID.
+
+Solo ocurre al pulsar enviar (nunca al archivar), solo puede hacerlo quien ya
+puede ver el registro, y el mensaje lo advierte: *«El enlace abre el documento
+a cualquiera que lo reciba: no lo reenvíes fuera de la empresa.»*
+
+### Quién puede archivar y borrar
+
+Quien **edita** el registro, más **su autor** — esto último hace falta porque
+hay roles que crean y no editan (un Trabajador en `02_Reportes`): sin ello,
+justo el registro que acaba de hacer se quedaría sin informe. Nunca quien solo
+puede leerlo. Lo hacen cumplir `storage_puede_archivar()` /
+`informe_huerfano()` (generadas en `supabase_03_storage.sql`) y
+`puedeArchivarInforme_()` en `Code.gs`.
+
+Por eso el informe vive en un bucket **aparte** de `evidencias` y
+`documentos`: ahí sobrescribir y borrar están reservados al Admin, porque
+hacerlo es destruir prueba. Un informe no es prueba original, es un documento
+derivado que se regenera del registro; si solo el Admin pudiera reescribirlo,
+el informe de la inspección que el supervisor acaba de corregir quedaría viejo
+para siempre.
+
+### html2pdf va empaquetado, no en un CDN
+
+`html2pdf` (html2canvas + jsPDF, 885 KB) lo baja `npm run vendor` a
+`web/vendor/html2pdf.bundle.min.js`. `PDF_TEMPLATE.cargarGenerador()` lo pide
+de ahí y solo cae al CDN como respaldo, porque la CSP del proyecto no permite
+cdnjs y dentro del APK no hay internet garantizado. Era un fallo real: el
+asistente de consentimiento lo cargaba del CDN y en `dist/` quedaba bloqueado,
+así que nadie podía firmar su constancia. Ahora los dos usan el mismo cargador.
+
+`npm run test:informes` cubre todo esto sobre el bundle real: que el visor se
+abra y se cierre sin ventanas nuevas, que los estilos no se escapen a la app,
+que al sincronizar se archive, que editar vuelva a archivar el mismo archivo,
+que eliminar el registro borre su informe y que el envío use el adjunto o el
+enlace. Las políticas del bucket están en `npm run test:rls` y el camino de
+Drive en `npm run test:appscript`.
+
 
 **Correo por plantilla** (`EMAIL_TEMPLATE_ID`, Skill 10) sí sigue usando Google Docs + `MailApp`, vía `Code.gs` (`sendTemplatedEmail`, disparado desde `SYNC_OFFLINE_QUEUE`) — es la única pieza que se mantuvo puenteada a Apps Script a propósito, porque no tiene reemplazo directo en Supabase.
 
@@ -746,6 +1024,7 @@ Ruta: `<empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>` — la empresa va primero
 |---|---|---|---|
 | `evidencias` | Privado | Fotos, firmas, adjuntos | 10 MB |
 | `documentos` | Privado | PDF, Excel, Word, CSV | 25 MB |
+| `informes` | Privado | El informe PDF de cada registro (uno por registro, se sustituye) | 10 MB |
 | `publico` | Público | Logos y marca | 2 MB |
 
 `DataProvider.subirArchivosDe(modulo, datos)` sube todos los campos de archivo del registro y sustituye su valor por la ruta. Cada subida lleva **nombre único** (`<campo>_<n>_<sello>.<ext>`) y `x-upsert: false`. Borrar **o sobrescribir** evidencia queda reservado a Admin y SuperAdmin: es destruir prueba.
@@ -760,7 +1039,9 @@ Ruta: `<empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>` — la empresa va primero
 
 **Login offline:** con Supabase no existe usuario demo. Sin red solo puede reentrar el último usuario que inició sesión online en ese dispositivo (se guarda PBKDF2 con sal en `pwa_offline_cred`, nunca un hash rápido). `AppState.User.Token` es aleatorio y no deriva de la contraseña. Cerrar sesión voluntariamente revoca el refresh_token en el servidor (`DataService.logout()`) y borra la cola offline (avisa si hay pendientes); que expire la sesión **no** la borra. El perfil se carga por el **id** de la cuenta autenticada, nunca por DNI.
 
-**Cabeceras (vercel.json):** hay `Content-Security-Policy`. Si se añade una librería de CDN u otro origen (API, imágenes), hay que agregarlo a la CSP (y a `CDN_HOSTS` de `web/sw.js` si debe funcionar offline), o el navegador lo bloqueará. `img-src`/`connect-src` están limitados a propósito a Supabase: es lo que impide que un XSS se lleve el token. Los scripts de CDN con versión fija llevan `integrity` (SRI). `cdn.jsdelivr.net` está permitido en `script-src`/`connect-src` solo para el modelo de detección facial de MediaPipe, y `script-src` lleva `'wasm-unsafe-eval'` porque ese modelo es WebAssembly.
+**Cabeceras (vercel.json):** hay `Content-Security-Policy`. Si se añade un origen nuevo (API, imágenes), hay que agregarlo a la CSP o el navegador lo bloqueará. `img-src`/`connect-src` están limitados a propósito a Supabase y Apps Script: es lo que impide que un XSS se lleve el token. **Una librería nueva no se añade por CDN**: se empaqueta con `npm run vendor` (ver «App instalable»), y `npm run test:ota` falla si queda algo externo en el HTML. El único tercero que sigue permitido es `cdn.jsdelivr.net`, en `script-src`/`connect-src`, para el modelo de detección facial de MediaPipe; `script-src` lleva `'wasm-unsafe-eval'` porque ese modelo es WebAssembly.
+
+**Esa cabecera es la fuente única de la CSP.** `build_web.js` la lee de `vercel.json` y la inyecta además como `<meta http-equiv="Content-Security-Policy">` en `dist/index.html`, porque dentro del WebView de Capacitor no hay cabeceras HTTP y ahí la meta es la única protección. No hay que tocarla en dos sitios: se edita `vercel.json` y se reconstruye. Ver «App instalable».
 
 **Archivos en las vistas:** las columnas guardan la RUTA de Storage. `PWA_SKILLS.renderDriveMedia` y el PDF las firman en lote (`DataService.resolveMedia`, URL de 1 h). El bucket se deduce de la extensión (imagen → `evidencias`, resto → `documentos`). Para separar varios archivos de un campo usar siempre `partirListaMedia(valor)` — nunca `split(',')`: un dataURL contiene una coma. Las galerías (`Image_Collection`) se acumulan al editar.
 
@@ -777,7 +1058,7 @@ Ruta: `<empresa_id>/<modulo>/<uuid>/<campo>_<n>.<ext>` — la empresa va primero
 3. **Un módulo, un archivo**: todo vive en su `subconfig`. Un `Mod_XX_*.html`
    propio es la excepción, no la norma, y hay que justificarla.
 4. **Trazabilidad Drive**: El subconfig DEBE incluir `DRIVE_FOLDER_NAME`.
-5. **PDF automático**: Todo módulo lo obtiene gratis vía el formato interno (`PDF_Templates.js.html`) leyendo su subconfig — no requiere configuración adicional. `GOOGLE_DOC_TEMPLATE_ID` es un campo heredado sin uso.
+5. **PDF automático**: Todo módulo lo obtiene gratis vía el formato interno (`PDF_Templates.js.html`) leyendo su subconfig — no requiere configuración adicional. Eso incluye el visor dentro de la app, el **archivo automático del informe** en Drive/Storage con cada cambio del registro, su borrado al eliminar el registro y el envío por WhatsApp: no hay nada que declarar ni que invocar por módulo (ver «El PDF de cada registro»). `GOOGLE_DOC_TEMPLATE_ID` es un campo heredado sin uso.
 6. **Estructura relacional**: El subconfig DEBE definir `PARENT_TABLE`, `CHILD_TABLE` y `RELATIONAL_KEY`.
 7. **Filas dinámicas**: con `CHILD_TABLE` + `Relational_Fields`, el motor arma
    solo el bloque de detalle (alta, alta en bloque, precarga al editar y lista

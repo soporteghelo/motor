@@ -191,6 +191,47 @@ log(r.rows[0].n > 0, 'Vista archivos disponible para el Admin (' + r.rows[0].n +
 const pub = await db.query(`select allowed_mime_types from storage.buckets where id = 'publico'`);
 log(!pub.rows[0].allowed_mime_types.includes('image/svg+xml'), 'Bucket publico sin SVG');
 
+console.log('\n── Informes PDF: el documento de cada registro (bucket informes)');
+// El informe es un documento DERIVADO: se regenera del registro en cada
+// cambio, siempre con el mismo nombre. Por eso no vive con las evidencias
+// (donde sobrescribir y borrar son del Admin): aquí lo reescribe quien puede
+// editar el registro, más su autor, y se borra con el registro.
+const inf = (emp, mod, uuid) => `${emp}/${mod}/${uuid}/informe.pdf`;
+const bi = await db.query(`select public, allowed_mime_types from storage.buckets where id = 'informes'`);
+log(bi.rows[0] && bi.rows[0].public === false && String(bi.rows[0].allowed_mime_types) === 'application/pdf',
+    'Bucket informes: privado y solo PDF');
+await debePasar(U.trabA, `insert into storage.objects (bucket_id, name) values ('informes', '${inf(A, '08_PETAR', 'PTR-T1')}')`,
+  'El autor archiva el informe de su registro aunque no pueda editarlo (canUpdate:false)');
+await debeFallar(U.trabA, `insert into storage.objects (bucket_id, name) values ('informes', '${inf(A, '08_PETAR', 'PTR-S1')}')`,
+  'Trabajador NO archiva el informe de un registro ajeno que solo puede leer');
+await debePasar(U.supA, `insert into storage.objects (bucket_id, name) values ('informes', '${inf(A, '08_PETAR', 'PTR-S1')}')`,
+  'Supervisor archiva el informe de su PETAR');
+await debeFallar(U.adminB, `insert into storage.objects (bucket_id, name) values ('informes', '${inf(A, '08_PETAR', 'PTR-B1')}')`,
+  'Admin B NO archiva informes en la carpeta de la empresa A');
+await debePasar(U.supA, `update storage.objects set metadata = '{"v":2}' where bucket_id = 'informes' and name = '${inf(A, '08_PETAR', 'PTR-T1')}'`,
+  'Quien edita el registro SÍ sustituye su informe (es lo que pasa en cada cambio)');
+await debeFallar(U.trabA, `update storage.objects set metadata = '{"v":3}' where bucket_id = 'informes' and name = '${inf(A, '08_PETAR', 'PTR-S1')}'`,
+  'Trabajador NO sustituye el informe de un registro ajeno');
+r = await como(U.trabA, `select count(*)::int n from storage.objects where bucket_id = 'informes'`);
+log(r.rows[0].n === 2, 'El informe lo ve quien ve el registro (Trabajador: ' + r.rows[0].n + ' de 2)');
+r = await como(U.adminB, `select count(*)::int n from storage.objects where bucket_id = 'informes'`);
+log(r.rows[0].n === 0, 'Admin B no ve ningún informe de la empresa A');
+// Borrado: primero el registro, después su informe (que entonces es huérfano)
+await debePasar(U.supA, `insert into storage.objects (bucket_id, name) values ('informes', '${inf(A, '07_IPERC', 'IPC-S1')}')`,
+  'Supervisor archiva el informe de su IPERC');
+await debeFallar(U.trabA, `delete from storage.objects where bucket_id = 'informes' and name = '${inf(A, '07_IPERC', 'IPC-S1')}'`,
+  'Nadie borra el informe de un registro VIVO que no puede editar');
+await debePasar(U.adminA, `delete from iperc where uuid = 'IPC-S1'`, 'Admin elimina el registro principal');
+// Eliminar un registro es cosa del Admin en los diez módulos (canDelete), y es
+// él quien retira después el informe huérfano: sin esto, borrar un registro
+// dejaría para siempre su PDF con sello oficial en el servidor.
+await debeFallar(U.trabA, `delete from storage.objects where bucket_id = 'informes' and name = '${inf(A, '07_IPERC', 'IPC-S1')}'`,
+  'El informe de un registro eliminado no lo retira cualquiera');
+await debePasar(U.adminA, `delete from storage.objects where bucket_id = 'informes' and name = '${inf(A, '07_IPERC', 'IPC-S1')}'`,
+  'El Admin SÍ retira el informe huérfano (el registro ya no existe)');
+await debeFallar(U.adminB, `delete from storage.objects where bucket_id = 'informes' and name = '${inf(A, '08_PETAR', 'PTR-S1')}'`,
+  'Admin B NO borra informes de la empresa A');
+
 console.log('\n── Plan, suspensión y visibilidad por rol (A6)');
 const cuenta = async (u, t) => (await como(u, `select count(*)::int n from ${t}`)).rows[0].n;
 const petarAdminA = await cuenta(U.adminA, 'petar');

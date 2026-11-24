@@ -175,12 +175,56 @@ log(r.status === 'OK', 'Sigue aceptando el formato antiguo de la cola (dataArray
 const delta = como(tokS, { action: 'READ_DELTA', moduleName: '04_Actos_Condiciones', lastSyncDate: new Date(Date.now() - 60000).toISOString() });
 log(delta.payload.length === 3, 'READ_DELTA trae lo nuevo o editado (' + delta.payload.length + ')');
 
+seccion('Informe PDF del registro (DATA/<modulo>/00_Informes)');
+const pdf64 = Buffer.from('%PDF-1.4 informe de prueba').toString('base64');
+const informe = (token, mod, uuid, b64) => como(token, { action: 'SAVE_REPORT', moduleName: mod, uuid, pdfBase64: b64 === undefined ? pdf64 : b64 });
+log(informe(tokT2, '08_PETAR', 'PTR-T1').status === 'ERROR', 'Quien no ve el registro NO archiva su informe');
+r = informe(tokT, '08_PETAR', 'PTR-T1');
+log(r.status === 'OK' && /^drive:/.test(r.ruta), 'El autor archiva el informe de su registro aunque no pueda editarlo');
+const infId = r.fileId;
+log(env.archivos[infId].nombre === 'PTR-T1.pdf' && env.archivos[infId].mime === 'application/pdf',
+    'Se guarda como <uuid>.pdf');
+const carpInf = env.carpetas[env.archivos[infId].padres[0]];
+log(carpInf.ruta().endsWith('DATA/08_PETAR/00_Informes'), 'En DATA/08_PETAR/00_Informes (' + carpInf.ruta().split('/').slice(-3).join('/') + ')');
+log(informe(tokA, '08_PETAR', 'NO-EXISTE').status === 'ERROR', 'No se archiva un informe sin registro');
+log(informe(tokA, '08_PETAR', 'PTR-T1', '').status === 'ERROR', 'Un informe vacío se rechaza');
+// Utilities.base64Decode es permisivo (ignora caracteres fuera del alfabeto
+// en vez de lanzar), así que la única defensa real es mirar la firma %PDF.
+log(informe(tokA, '08_PETAR', 'PTR-T1', Buffer.from('esto no es un PDF').toString('base64')).msg.indexOf('no es un PDF válido') !== -1,
+    'Un archivo que decodifica bien pero no empieza con %PDF se rechaza (no pisa el informe bueno)');
+log(env.archivos[infId].papelera === false, 'Y el informe anterior sigue vigente tras el intento fallido');
+
+// Cambiar el registro vuelve a archivar: el archivo anterior va a la papelera
+r = informe(tokS, '08_PETAR', 'PTR-T1', Buffer.from('%PDF-1.4 version 2').toString('base64'));
+log(r.status === 'OK' && r.fileId !== infId, 'Al cambiar el registro se archiva el informe nuevo');
+log(env.archivos[infId].papelera === true, 'Y el anterior va a la papelera (recuperable, no destruido)');
+const vigentes = [];
+{ const it2 = carpInf.getFiles(); while (it2.hasNext()) vigentes.push(it2.next().getName()); }
+log(vigentes.filter(n => n === 'PTR-T1.pdf').length === 1, 'Queda UN informe vigente por registro, no una copia por edición');
+
+// Consulta y enlace para enviar
+let info = como(tokT, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1' });
+log(info.status === 'OK' && info.existe === true && !!info.enlace && !!info.fecha, 'GET_REPORT dice que existe, desde cuándo y con qué enlace');
+log(como(tokT2, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1' }).status === 'ERROR', 'Quien no ve el registro no consulta su informe');
+log(como(tokA, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-S1' }).existe === false, 'Un registro sin informe responde existe:false');
+const nuevoId = como(tokT, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1' }).fileId;
+log(env.archivos[nuevoId].getSharingAccess() === 'PRIVATE', 'Consultar NO comparte el archivo');
+info = como(tokT, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1', compartir: true });
+log(env.archivos[nuevoId].getSharingAccess() === 'ANYONE_WITH_LINK' && env.archivos[nuevoId].getSharingPermission() === 'VIEW',
+    'Enviar por WhatsApp sí lo abre por enlace, solo lectura');
+const audit = libro.getSheetByName('_AUDITORIA').getDataRange().getValues().map(f => f.join('|'));
+log(audit.some(l => /INFORME_COMPARTIDO\|08_PETAR\|PTR-T1/.test(l)), 'Y queda en la auditoría quién lo compartió');
+log(audit.some(l => /\|INFORME\|08_PETAR\|PTR-T1/.test(l)), 'El archivado también queda registrado');
+
 seccion('Eliminar');
 log(como(tokS, { action: 'DELETE_ROWS', moduleName: '08_PETAR', uuids: ['PTR-S1'] }).status === 'ERROR', 'Supervisor NO elimina (canDelete:false)');
 const nArch = Object.keys(env.archivos).length;
 r = como(tokA, { action: 'DELETE_ROWS', moduleName: '08_PETAR', uuids: ['PTR-T1'] });
 log(r.status === 'OK' && como(tokA, { action: 'READ_DB', moduleName: '08_PETAR' }).payload.length === 1, 'Admin elimina el registro (y su detalle)');
 log(Object.keys(env.archivos).length === nArch && !env.archivos[ref.slice(6).split('/')[0]].papelera, 'Los archivos de evidencia se conservan en Drive');
+log(env.archivos[nuevoId].papelera === true, 'El informe PDF sí se retira: un documento oficial no sobrevive a su registro');
+log(como(tokA, { action: 'GET_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1' }).status === 'ERROR', 'Y ya no se puede consultar (el registro no existe)');
+log(como(tokA, { action: 'DELETE_REPORT', moduleName: '08_PETAR', uuid: 'PTR-T1' }).status === 'OK', 'Pedir borrarlo otra vez no da error (ya no hay nada)');
 
 seccion('Configuración de la empresa');
 log(como(tokS, { action: 'SAVE_CONFIG', config: { App_Nombre: 'X' } }).status === 'ERROR', 'Supervisor NO cambia la configuración');

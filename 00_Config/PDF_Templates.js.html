@@ -324,17 +324,65 @@ const PDF_TEMPLATE = {
     return cuerpo;
   },
 
-  /** Documento completo (con estilos de impresión) listo para imprimir */
-  documentoHTML: function(plantilla, registro, hijos, titulo) {
-    const pag = plantilla.pagina || {};
+  /**
+   * La MISMA hoja de estilos, pero acotada a un contenedor: el documento se
+   * pinta DENTRO de la app (visor y generador de PDF), no en una ventana
+   * aparte. Sin acotarla, `body { font-size:11pt }` y `.pt-tabla th` se
+   * aplicarían a toda la aplicación.
+   *
+   * La hoja es plana a propósito (una regla por selector, sin anidar), así que
+   * basta anteponer el prefijo a cada selector. `@page` se descarta: en
+   * pantalla no significa nada y la impresión la define `_cssImpresion()`.
+   */
+  _cssDocumento: function(prefijo) {
+    const reglas = [prefijo + ' { box-sizing:border-box; }'];
+    this.CSS.replace('@PAGE_RULE@', '').split('}').forEach(trozo => {
+      const corte = trozo.indexOf('{');
+      if (corte === -1) return;
+      const selector = trozo.slice(0, corte).trim();
+      const cuerpo = trozo.slice(corte + 1).trim();
+      if (!selector || !cuerpo || selector.charAt(0) === '@') return;
+      const sels = selector.split(',').map(s => s.trim()).filter(Boolean)
+        .map(s => (s === 'body' || s === 'html') ? prefijo : prefijo + ' ' + s);
+      reglas.push(sels.join(', ') + ' { ' + cuerpo + ' }');
+    });
+    return reglas.join('\n');
+  },
+
+  /**
+   * Impresión: se oculta la app y se imprime solo la hoja del visor. Antes el
+   * documento vivía en una ventana nueva —que en la app instalada y en el
+   * móvil se abría a pantalla completa SIN forma de volver atrás—.
+   */
+  _cssImpresion: function(plantilla) {
+    const pag = (plantilla && plantilla.pagina) || {};
     const orientacion = pag.orientacion === 'horizontal' ? 'landscape' : 'portrait';
     const margen = parseInt(pag.margen) || 16;
-    const reglaPagina = '@page { size: ' + (pag.tamano || 'A4') + ' ' + orientacion +
-                        '; margin: ' + margen + 'mm; }';
-    return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">' +
-      '<title>' + this._esc(titulo || 'Documento') + '</title>' +
-      '<style>' + this.CSS.replace('@PAGE_RULE@', reglaPagina) + '</style>' +
-      '</head><body>' + this.renderHTML(plantilla, registro, hijos) + '</body></html>';
+    return '@media print {' +
+      '  body > *:not(#' + this.VISOR_ID + ') { display:none !important; }' +
+      '  #' + this.VISOR_ID + ' { position:static !important; inset:auto !important; background:#fff !important; overflow:visible !important; display:block !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-visor-barra, #' + this.VISOR_ID + ' .pt-visor-pie { display:none !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-visor-scroll { overflow:visible !important; padding:0 !important; display:block !important; }' +
+      '  #' + this.VISOR_ID + ' .pt-doc { box-shadow:none !important; margin:0 !important; padding:0 !important; width:auto !important; max-width:none !important; min-height:0 !important; }' +
+      '  @page { size: ' + (pag.tamano || 'A4') + ' ' + orientacion + '; margin: ' + margen + 'mm; }' +
+      '}';
+  },
+
+  VISOR_ID: 'pt-visor',
+
+  /** Inyecta (una sola vez por formato) los estilos acotados del documento. */
+  _montarEstilos: function(plantilla) {
+    let hoja = document.getElementById('pt-estilos');
+    if (!hoja) {
+      hoja = document.createElement('style');
+      hoja.id = 'pt-estilos';
+      document.head.appendChild(hoja);
+    }
+    hoja.textContent = this._cssDocumento('.pt-doc') + '\n' +
+      '.pt-doc { background:#fff; color:#1b1b21; }' +
+      '.pt-doc img { max-width:100%; }' +
+      '.pt-doc .pt-banner, .pt-doc .pt-sev-mortal { -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
+      '\n' + this._cssImpresion(plantilla);
   },
 
   /** Hoja de estilos del formato interno de respaldo */
@@ -382,32 +430,130 @@ const PDF_TEMPLATE = {
       '.pt-salto { break-after:page; page-break-after:always; }',
 
   // -----------------------------------------------------------------------
-  // SALIDA
+  // SALIDA · VISOR DENTRO DE LA APP
   // -----------------------------------------------------------------------
   /**
-   * Abre el diálogo de impresión (Guardar como PDF).
-   * Parte del HTML-plantilla guardado —el mismo que vive en la base de datos—
-   * y solo sustituye marcadores. Así el documento impreso es exactamente el
-   * que el administrador aprobó, no una nueva interpretación de los bloques.
+   * Muestra el documento en una capa sobre la app, con su propia cabecera:
+   * volver, imprimir (Guardar como PDF del sistema), descargar y enviar por
+   * WhatsApp.
+   *
+   * POR QUÉ NO UNA VENTANA NUEVA
+   * Antes se abría con `window.open()`. En el móvil y dentro de la app
+   * instalada eso es una pestaña a pantalla completa sin barra de direcciones:
+   * el PDF tapaba la app y no había forma de regresar al registro. Ahora el
+   * documento es una vista más de la app: se cierra con el botón de volver,
+   * con Escape y con el botón físico de atrás del teléfono.
+   *
+   * @param {object} doc  { registro, hijos, plantilla, titulo, modulo, uuid }
    */
-  exportar: function(modulo, registro, hijos, titulo, ventana) {
-    const html = this.documentoHTML(this.plantillaBase(modulo), registro, hijos, titulo || modulo);
-    const win = ventana || window.open('', '_blank');
-    if (!win) {
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('El navegador bloqueó la ventana. Permite las ventanas emergentes.', 'error', 5000);
-      }
-      return false;
-    }
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    // Se espera a que carguen las imágenes (fotos/firmas firmadas). Si la
-    // ventana venía abierta de antes, el load puede haber ocurrido ya.
-    const imprimir = function() { win.focus(); win.print(); };
-    if (win.document.readyState === 'complete') setTimeout(imprimir, 400);
-    else win.onload = imprimir;
+  abrirVisor: function(doc) {
+    this.cerrarVisor();
+    this._montarEstilos(doc.plantilla);
+
+    const capa = document.createElement('div');
+    capa.id = this.VISOR_ID;
+    capa.className = 'fixed inset-0 z-[9995] flex flex-col bg-[#0b101d]/95';
+    capa.setAttribute('role', 'dialog');
+    capa.setAttribute('aria-modal', 'true');
+    capa.setAttribute('aria-label', 'Informe: ' + String(doc.titulo || ''));
+
+    // Acciones de la barra. Cada icono va como literal en su propia línea
+    // porque tools/vendor_cdn.js saca de aquí la lista de iconos que empaqueta:
+    // un icono que no detecte se vería como la palabra "print" en la pantalla.
+    const acciones = [
+      { accion: 'imprimir',  icono: 'print',    etiqueta: 'Imprimir',
+        clases: 'bg-[#ffd53f] text-[#162138] hover:brightness-105' },
+      { accion: 'descargar', icono: 'download', etiqueta: 'Descargar',
+        clases: 'border border-white/25 text-white hover:bg-white/10' },
+      { accion: 'whatsapp',  icono: 'share',    etiqueta: 'Enviar',
+        clases: 'border border-white/25 text-white hover:bg-white/10' }
+    ];
+    const boton = a =>
+      '<button type="button" data-' + a.accion + ' aria-label="' + this._esc(a.etiqueta) + '" title="' + this._esc(a.etiqueta) + '" ' +
+        'class="h-10 min-w-[2.5rem] px-2.5 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 ' +
+        'whitespace-nowrap transition-colors ' + a.clases + '">' +
+        '<span class="material-symbols-outlined text-[18px]" aria-hidden="true">' + a.icono + '</span>' +
+        '<span class="hidden sm:inline">' + this._esc(a.etiqueta) + '</span></button>';
+
+    capa.innerHTML =
+      '<header class="pt-visor-barra shrink-0 flex items-center gap-2 px-2 sm:px-4 py-2 bg-[#162138] text-white shadow-lg">' +
+        '<button type="button" data-cerrar aria-label="Volver al registro" ' +
+          'class="w-10 h-10 shrink-0 rounded-full hover:bg-white/10 flex items-center justify-center">' +
+          '<span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></button>' +
+        '<div class="min-w-0 flex-1">' +
+          '<p class="text-[12px] font-black leading-tight truncate">' + this._esc(doc.titulo || 'Informe') + '</p>' +
+          '<p class="text-[10px] text-white/70 leading-tight truncate" data-estado>Documento generado desde el registro</p>' +
+        '</div>' +
+        acciones.map(boton).join('') +
+      '</header>' +
+      '<div class="pt-visor-scroll flex-1 overflow-auto p-2 sm:p-6">' +
+        '<div class="pt-doc mx-auto shadow-2xl" style="width:100%;max-width:210mm;padding:14mm 12mm;min-height:60vh;">' +
+          this.renderHTML(doc.plantilla, doc.registro, doc.hijos) +
+        '</div>' +
+      '</div>';
+
+    const cerrar = () => this.cerrarVisor();
+    capa.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    capa.querySelector('[data-imprimir]').addEventListener('click', () => this.imprimirVisor());
+    capa.querySelector('[data-descargar]').addEventListener('click', e =>
+      this.descargar(doc.modulo, doc.uuid, e.currentTarget));
+    capa.querySelector('[data-whatsapp]').addEventListener('click', e =>
+      this.enviarPorWhatsApp(doc.modulo, doc.uuid, doc.titulo, e.currentTarget));
+
+    this._onEsc = e => { if (e.key === 'Escape') cerrar(); };
+    document.addEventListener('keydown', this._onEsc);
+    document.body.appendChild(capa);
+    // El documento se desplaza dentro del visor; la app de debajo, quieta
+    this._scrollPrevio = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // El botón físico de atrás del teléfono cierra el visor en vez de salir
+    // de la app o de saltarse la vista del registro.
+    try { history.pushState({ ptVisor: true }, ''); this._conHistorial = true; } catch (e) { this._conHistorial = false; }
+    this._onAtras = () => { this._conHistorial = false; this.cerrarVisor(); };
+    window.addEventListener('popstate', this._onAtras);
+    capa.querySelector('[data-cerrar]').focus();
+
+    this._visor = doc;
+    if (doc.uuid) this._mostrarEstadoArchivo(doc.modulo, doc.uuid);
     return true;
+  },
+
+  cerrarVisor: function() {
+    const capa = document.getElementById(this.VISOR_ID);
+    if (this._onEsc) { document.removeEventListener('keydown', this._onEsc); this._onEsc = null; }
+    if (this._onAtras) { window.removeEventListener('popstate', this._onAtras); this._onAtras = null; }
+    if (capa) capa.remove();
+    if (capa) document.body.style.overflow = this._scrollPrevio || '';
+    if (this._conHistorial) { this._conHistorial = false; try { history.back(); } catch (e) {} }
+    this._visor = null;
+  },
+
+  imprimirVisor: function() {
+    if (!document.getElementById(this.VISOR_ID)) return false;
+    window.print();
+    return true;
+  },
+
+  /** Línea de estado de la cabecera: dónde está archivado el documento. */
+  _mostrarEstadoArchivo: async function(modulo, uuid) {
+    const linea = () => {
+      const capa = document.getElementById(this.VISOR_ID);
+      return capa ? capa.querySelector('[data-estado]') : null;
+    };
+    const el = linea();
+    if (!el) return;
+    let info = { existe: false };
+    try { info = (await DataService.reportInfo(modulo, uuid)) || { existe: false }; } catch (e) {}
+    const el2 = linea();
+    if (!el2) return;
+    if (info.existe) {
+      el2.textContent = 'Archivado en ' + (info.donde || 'el servidor') +
+        (info.fecha ? ' · ' + String(info.fecha).slice(0, 10) : '');
+    } else if (this._pendiente(modulo, uuid)) {
+      el2.textContent = 'Se archivará en cuanto haya conexión';
+    } else {
+      el2.textContent = 'Documento generado desde el registro';
+    }
   },
 
   /**
@@ -468,55 +614,424 @@ const PDF_TEMPLATE = {
     return copia;
   },
 
-  async exportarRegistro(modulo, uuid, titulo) {
-    // La ventana se abre YA, dentro del clic: si se abre después de los
-    // await (hijos, firmas de URL), el bloqueador de emergentes la frena.
-    const ventana = window.open('', '_blank');
-    if (ventana) {
-      ventana.document.write('<p style="font-family:Arial,sans-serif;padding:24px;color:#454652">Generando documento…</p>');
-    }
-    let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
-    let hijos = [];
+  /**
+   * Reúne todo lo que necesita el documento de UN registro: la fila, sus filas
+   * hijas y las fotos/firmas ya firmadas (en Storage la columna guarda la ruta
+   * de un bucket privado). Lo usan el visor, el PDF descargable y el archivo
+   * automático: una sola forma de armar el documento, un solo resultado.
+   *
+   * @param {string} modulo
+   * @param {string} [uuid]  sin uuid = vista previa del formato (datos de ejemplo)
+   * @returns {Promise<{registro, hijos, plantilla, titulo, modulo, uuid, ejemplo, falta}>}
+   */
+  async prepararDocumento(modulo, uuid, titulo) {
+    const plantilla = this.plantillaBase(modulo);
+    const base = { modulo: modulo, uuid: uuid ? String(uuid) : '', plantilla: plantilla, hijos: [],
+                   titulo: titulo || (this._tituloModulo(modulo) + (uuid ? '' : ' · formato')) };
 
-    // No esta en la copia local: se pide ESE registro al servidor.
+    let registro = uuid ? this.buscarRegistro(modulo, uuid) : null;
+
+    // No está en la copia local: se pide ESE registro al servidor (no la tabla).
     if (!registro && uuid && typeof DataService !== 'undefined' && DataService.query) {
       try {
         const res = await DataService.query(modulo, { cond: { UUID: { eq: String(uuid) } }, limite: 1 });
         if (res && res.status === 'OK' && Array.isArray(res.payload) && res.payload[0]) registro = res.payload[0];
-      } catch (e) { /* sin red: se avisa abajo */ }
+      } catch (e) { /* sin red: se resuelve abajo */ }
     }
 
-    if (!registro && uuid) {
-      // NUNCA un PDF con datos inventados cuando se pidio un registro
-      // concreto: un documento de seguridad con aspecto oficial y contenido
-      // de ejemplo es peor que no tener documento. (La vista previa del
-      // formato, que llama sin uuid, si usa el registro de ejemplo.)
-      if (ventana) {
-        ventana.document.body.innerHTML =
-          '<div style="font-family:Arial,sans-serif;padding:32px;color:#162138;max-width:520px">' +
-          '<h2 style="margin:0 0 8px">No se pudo generar el documento</h2>' +
-          '<p style="color:#4f5c78;line-height:1.5">No se encontro el registro en este dispositivo y no fue ' +
-          'posible pedirlo al servidor. Conectate y vuelve a abrir el registro antes de exportarlo.</p></div>';
-      }
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('No se encontró el registro: no se exporta un PDF con datos de ejemplo.', 'error', 5000);
-      }
-      return null;
-    }
+    // NUNCA un documento con datos inventados cuando se pidió un registro
+    // concreto: un papel de seguridad con aspecto oficial y contenido de
+    // ejemplo es peor que no tener documento.
+    if (!registro && uuid) return Object.assign(base, { registro: null, falta: true });
 
     if (!registro) {
       const ej = this.registroEjemplo(modulo);
-      registro = ej.registro; hijos = ej.hijos;
-      if (typeof PWA_SKILLS !== 'undefined') {
-        PWA_SKILLS.toast('Vista previa del formato con datos de ejemplo.', 'info', 3200);
-      }
-    } else if (this.tieneTablaHija(modulo) && uuid && typeof DataService !== 'undefined' && DataService.readChildren) {
-      // Igual que en Edición y Detalle: READ_DB solo trae el padre, así que
-      // las filas hijas del PDF hay que pedirlas aparte o la tabla sale vacía.
+      return Object.assign(base, { registro: ej.registro, hijos: ej.hijos, ejemplo: true });
+    }
+
+    let hijos = [];
+    if (this.tieneTablaHija(modulo) && typeof DataService !== 'undefined' && DataService.readChildren) {
+      // Igual que en Edición y Detalle: la lectura del padre no trae el
+      // detalle, así que las filas hijas se piden aparte o la tabla sale vacía.
       try { hijos = await DataService.readChildren(modulo, uuid); } catch (e) { hijos = []; }
     }
-    registro = await this._conMediaResuelta(modulo, registro);
-    return this.exportar(modulo, registro, hijos, titulo || (modulo + ' ' + (uuid || '')), ventana);
+    return Object.assign(base, { registro: await this._conMediaResuelta(modulo, registro), hijos: hijos });
+  },
+
+  _tituloModulo: function(modulo) {
+    const t = (typeof MOTOR_RENDER !== 'undefined' && MOTOR_RENDER.titulo) ? MOTOR_RENDER.titulo(modulo) : '';
+    return t || String(modulo).replace(/^\d+_/, '').replace(/_/g, ' ');
+  },
+
+  /** Nombre del archivo PDF de un registro. */
+  nombreArchivo: function(modulo, uuid) {
+    return 'Informe_' + String(modulo).replace(/[^\w-]/g, '') +
+           (uuid ? '_' + String(uuid).replace(/[^\w-]/g, '').slice(0, 12) : '') + '.pdf';
+  },
+
+  /**
+   * Punto de entrada del botón "PDF" de cada Detalle. Mismo nombre que antes
+   * —lo llama MOTOR_RENDER—, pero ahora abre el visor dentro de la app en vez
+   * de una ventana nueva sin retorno.
+   */
+  async exportarRegistro(modulo, uuid, titulo) {
+    const doc = await this.prepararDocumento(modulo, uuid, titulo);
+    if (doc.falta) {
+      if (typeof PWA_SKILLS !== 'undefined') {
+        PWA_SKILLS.toast('No se encontró el registro en este dispositivo ni en el servidor: ' +
+          'conéctate y vuelve a abrirlo antes de exportarlo.', 'error', 5500);
+      }
+      return null;
+    }
+    if (doc.ejemplo && typeof PWA_SKILLS !== 'undefined') {
+      PWA_SKILLS.toast('Vista previa del formato con datos de ejemplo.', 'info', 3200);
+    }
+    return this.abrirVisor(doc);
+  },
+
+  // -----------------------------------------------------------------------
+  // ARCHIVO PDF DEL REGISTRO (Drive / Storage)
+  // -----------------------------------------------------------------------
+  // El informe se archiva solo cuando el registro llega al servidor, y se
+  // vuelve a generar con CADA cambio: lo que está archivado es siempre la
+  // última versión del registro. Al eliminar el registro se borra su informe.
+  //
+  // Dónde queda, según el proveedor activo:
+  //   appscript → Drive:   DATA/<modulo>/00_Informes/<uuid>.pdf
+  //   supabase  → Storage: informes/<empresa_id>/<modulo>/<uuid>/informe.pdf
+  //
+  // El nombre de un registro es SIEMPRE el mismo: "actualizar" es sustituir
+  // ese archivo, no acumular una copia por edición (en una fiscalización
+  // nadie sabría cuál de las siete es la vigente).
+
+  CLAVE_PENDIENTES: 'pdf_informes_pendientes',
+  MAX_PENDIENTES: 300,
+  MAX_INTENTOS: 3,
+
+  /** El archivo automático se puede desactivar por empresa o por dispositivo. */
+  archivoAutomatico: function() {
+    const cfg = ((typeof AppState !== 'undefined' && AppState.User) || {}).EmpresaConfig || {};
+    if (cfg.Informe_PDF_Auto === false || cfg.Informe_PDF_Auto === 'false') return false;
+    const s = (typeof AppState !== 'undefined' && AppState.Settings) || {};
+    return s.InformePDFAuto !== false;
+  },
+
+  /**
+   * Carga el generador de PDF (html2pdf = html2canvas + jsPDF).
+   * PRIMERO la copia local de /vendor: la CSP del proyecto solo permite
+   * scripts del propio origen, y dentro del APK no hay internet garantizado.
+   * El CDN queda como respaldo para PROD_INDEX.html (Apps Script), que es un
+   * único HTML y no tiene archivos sueltos que referenciar.
+   */
+  CDN_PDF: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+  SRI_PDF: 'sha384-Yv5O+t3uE3hunW8uyrbpPW3iw6/5/Y7HitWJBLgqfMoA36NogMmy+8wWZMpn3HWc',
+  LOCAL_PDF: '/vendor/html2pdf.bundle.min.js',
+
+  cargarGenerador: function() {
+    if (window.html2pdf) return Promise.resolve(true);
+    if (this._libPdf) return this._libPdf;
+    const self = this;
+    const intentar = (src, sri) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      if (sri) { s.integrity = sri; s.crossOrigin = 'anonymous'; s.referrerPolicy = 'no-referrer'; }
+      s.onload = () => window.html2pdf ? resolve(true) : reject(new Error('html2pdf no quedó disponible'));
+      s.onerror = () => reject(new Error('no se pudo cargar ' + src));
+      document.head.appendChild(s);
+    });
+    this._libPdf = intentar(this.LOCAL_PDF, '')
+      .catch(() => intentar(self.CDN_PDF, self.SRI_PDF))
+      .catch(e => { self._libPdf = null; throw new Error('No se pudo cargar el generador de PDF. ' + e.message); });
+    return this._libPdf;
+  },
+
+  /**
+   * Hoja de 210 mm fuera de la vista: html2canvas necesita medidas reales,
+   * así que el documento se renderiza de verdad, pero donde no se ve ni
+   * desplaza la app.
+   */
+  _hostOculto: function(doc) {
+    this._montarEstilos(doc.plantilla);
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;';
+    host.innerHTML = '<div class="pt-doc" style="width:210mm;padding:14mm 12mm;">' +
+      this.renderHTML(doc.plantilla, doc.registro, doc.hijos) + '</div>';
+    document.body.appendChild(host);
+    return host;
+  },
+
+  /** Documento → Blob PDF (A4). Es el archivo que se archiva y el que se adjunta. */
+  async pdfBlob(doc) {
+    await this.cargarGenerador();
+    if (!window.html2pdf) throw new Error('No se pudo cargar el generador de PDF.');
+    const pag = doc.plantilla.pagina || {};
+    const host = this._hostOculto(doc);
+    try {
+      return await window.html2pdf().set({
+        margin: 0,
+        filename: this.nombreArchivo(doc.modulo, doc.uuid),
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+        pagebreak: { mode: ['css', 'legacy'], avoid: '.pt-no-cortar' },
+        jsPDF: { unit: 'mm', format: String(pag.tamano || 'a4').toLowerCase(),
+                 orientation: pag.orientacion === 'horizontal' ? 'landscape' : 'portrait' }
+      }).from(host.firstElementChild).outputPdf('blob');
+    } finally {
+      host.remove();
+    }
+  },
+
+  /** Descarga el PDF en el dispositivo (botón del visor). */
+  async descargar(modulo, uuid, boton) {
+    const fin = this._ocupado(boton, 'Generando…');
+    try {
+      const doc = (this._visor && this._visor.uuid === String(uuid || ''))
+        ? this._visor : await this.prepararDocumento(modulo, uuid);
+      if (doc.falta) throw new Error('No se encontró el registro.');
+      const blob = await this.pdfBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = this.nombreArchivo(modulo, uuid);
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      return true;
+    } catch (e) {
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast(e.message, 'error', 5000);
+      return false;
+    } finally { fin(); }
+  },
+
+  /** Desactiva un botón mientras dura una tarea larga (y lo deja como estaba). */
+  _ocupado: function(boton, texto) {
+    if (!boton) return function () {};
+    const antes = boton.innerHTML;
+    boton.disabled = true;
+    boton.classList.add('opacity-60', 'pointer-events-none');
+    boton.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin" aria-hidden="true">progress_activity</span>' +
+                      '<span class="hidden sm:inline">' + this._esc(texto || 'Un momento…') + '</span>';
+    return function () {
+      boton.disabled = false;
+      boton.classList.remove('opacity-60', 'pointer-events-none');
+      boton.innerHTML = antes;
+    };
+  },
+
+  /**
+   * Genera el informe de un registro y lo archiva en el servidor.
+   * Silencioso a propósito: es una consecuencia del guardado, no una acción
+   * del usuario. Si falla por red, el registro sigue en la lista de pendientes.
+   */
+  async archivar(modulo, uuid) {
+    if (!modulo || !uuid) return { status: 'ERROR', msg: 'Falta el módulo o el UUID.' };
+    if (typeof DataService === 'undefined' || !DataService.saveReport) {
+      return { status: 'ERROR', msg: 'El proveedor activo no archiva informes.' };
+    }
+    let doc;
+    try { doc = await this.prepararDocumento(modulo, uuid); }
+    catch (e) { return { status: 'ERROR', msg: e.message, transitorio: true }; }
+    // Sin el registro no se archiva nada: un informe vacío con aspecto
+    // oficial es peor que la falta de informe.
+    if (!doc.registro || doc.falta) return { status: 'ERROR', msg: 'No se pudo leer el registro.', transitorio: true };
+
+    let blob;
+    try { blob = await this.pdfBlob(doc); }
+    catch (e) { return { status: 'ERROR', msg: e.message, transitorio: true }; }
+
+    try {
+      const r = await DataService.saveReport({ blob: blob, modulo: modulo, uuid: uuid });
+      return (r && r.status === 'OK') ? r : (r || { status: 'ERROR', msg: 'Respuesta vacía del servidor.' });
+    } catch (e) {
+      return { status: 'ERROR', msg: e.message, transitorio: true };
+    }
+  },
+
+  /** Borra el informe archivado (lo llama DataService.delete al eliminar el registro). */
+  async borrarArchivo(modulo, uuid) {
+    this.olvidarPendiente(modulo, uuid);
+    if (typeof DataService === 'undefined' || !DataService.deleteReport) return { status: 'OK' };
+    try { return await DataService.deleteReport(modulo, uuid); }
+    catch (e) { return { status: 'ERROR', msg: e.message }; }
+  },
+
+  // ── Lista de pendientes ────────────────────────────────────────────────
+  // Un registro guardado sin señal no puede archivar su PDF: no hay dónde
+  // subirlo. Se apunta aquí (módulo + uuid, unos bytes) y se archiva en cuanto
+  // el registro llega al servidor. La lista sobrevive al cierre de la app, así
+  // que un turno entero sin cobertura no deja informes sin generar.
+  _pendientes: function() {
+    try {
+      const l = JSON.parse(localStorage.getItem(this.CLAVE_PENDIENTES) || '[]');
+      return Array.isArray(l) ? l : [];
+    } catch (e) { return []; }
+  },
+  _guardarPendientes: function(lista) {
+    try { localStorage.setItem(this.CLAVE_PENDIENTES, JSON.stringify(lista.slice(-this.MAX_PENDIENTES))); }
+    catch (e) { /* almacenamiento lleno: se archivará al próximo guardado */ }
+  },
+  _pendiente: function(modulo, uuid) {
+    return this._pendientes().some(p => p.m === modulo && p.u === String(uuid));
+  },
+
+  /** Apunta uno o varios registros para archivar su informe. */
+  encolarArchivo: function(modulo, uuids) {
+    if (!this.archivoAutomatico()) return 0;
+    const lista = this._pendientes();
+    let nuevos = 0;
+    [].concat(uuids || []).filter(Boolean).forEach(u => {
+      const uuid = String(u);
+      const i = lista.findIndex(p => p.m === modulo && p.u === uuid);
+      // Si ya estaba, se reinician los intentos: el registro volvió a cambiar
+      // y lo que haya archivado quedó viejo.
+      if (i !== -1) lista.splice(i, 1);
+      lista.push({ m: modulo, u: uuid, n: 0 });
+      nuevos++;
+    });
+    this._guardarPendientes(lista);
+    return nuevos;
+  },
+
+  olvidarPendiente: function(modulo, uuid) {
+    this._guardarPendientes(this._pendientes().filter(p => !(p.m === modulo && p.u === String(uuid))));
+  },
+
+  /**
+   * Archiva los pendientes, de uno en uno. Un fallo transitorio (sin red,
+   * sesión caducada) deja el registro en la lista y detiene la pasada: no se
+   * gastan intentos cuando el problema es la señal. Un rechazo real se
+   * reintenta MAX_INTENTOS veces y luego se descarta, para que un registro
+   * imposible no bloquee la lista entera.
+   */
+  async procesarPendientes(opciones) {
+    opciones = opciones || {};
+    if (this._drenando) return { archivados: 0, pendientes: this._pendientes().length, motivo: 'en-curso' };
+    if (!this.archivoAutomatico()) return { archivados: 0, pendientes: 0, motivo: 'desactivado' };
+    const sesion = (typeof AppState !== 'undefined' && AppState.User) || {};
+    if (!sesion.DNI) return { archivados: 0, pendientes: this._pendientes().length, motivo: 'sin-sesion' };
+    // navigator.onLine no es de fiar dentro del APK (el WebView no lo
+    // actualiza): ahí se intenta siempre y el fallo de red es transitorio.
+    if (!navigator.onLine && !(typeof enAppInstalada === 'function' && enAppInstalada())) {
+      return { archivados: 0, pendientes: this._pendientes().length, motivo: 'sin-red' };
+    }
+
+    this._drenando = true;
+    let archivados = 0;
+    try {
+      // Tope por pasada: generar un PDF cuesta ~1 s de CPU. Con 40 registros
+      // subidos de golpe tras un turno sin señal, hacerlos todos seguidos
+      // congelaría la app; el resto sale en la pasada siguiente.
+      const tope = Math.max(1, parseInt(opciones.tope, 10) || 6);
+      for (let k = 0; k < tope; k++) {
+        const lista = this._pendientes();
+        if (!lista.length) break;
+        const item = lista[0];
+        const r = await this.archivar(item.m, item.u);
+        const actual = this._pendientes();
+        const i = actual.findIndex(p => p.m === item.m && p.u === item.u);
+        if (i === -1) continue;                      // lo quitaron mientras tanto (registro eliminado)
+        if (r && r.status === 'OK') {
+          actual.splice(i, 1);
+          archivados++;
+        } else if (r && r.transitorio) {
+          this._guardarPendientes(actual);           // se reintenta luego, sin gastar intentos
+          break;
+        } else {
+          actual[i].n = (actual[i].n || 0) + 1;
+          actual[i].error = String((r && r.msg) || 'error');
+          if (actual[i].n >= this.MAX_INTENTOS) {
+            console.warn('[Informe PDF] se descarta ' + item.m + '/' + item.u + ': ' + actual[i].error);
+            actual.splice(i, 1);
+          }
+        }
+        this._guardarPendientes(actual);
+        await new Promise(sigue => setTimeout(sigue, 150));   // la interfaz respira entre documentos
+      }
+    } finally { this._drenando = false; }
+    return { archivados: archivados, pendientes: this._pendientes().length };
+  },
+
+  // -----------------------------------------------------------------------
+  // ENVÍO POR WHATSAPP
+  // -----------------------------------------------------------------------
+  /**
+   * Manda el informe por WhatsApp. Dos caminos, en este orden:
+   *   1. El PDF como ADJUNTO (Web Share API): el documento llega al chat y se
+   *      puede reenviar, abrir y guardar. Es lo que la gente espera.
+   *   2. Si el dispositivo no sabe compartir archivos —el WebView de Android,
+   *      dentro del APK, no implementa Web Share—, el ENLACE del documento
+   *      archivado (Drive o Storage).
+   * Si no hay ninguno de los dos se explica por qué, en vez de abrir WhatsApp
+   * con un mensaje sin documento.
+   */
+  async enviarPorWhatsApp(modulo, uuid, titulo, boton) {
+    const fin = this._ocupado(boton, 'Preparando…');
+    try {
+      if (!uuid) {
+        if (typeof PWA_SKILLS !== 'undefined') {
+          PWA_SKILLS.toast('Esta es la vista previa del formato: no hay registro que enviar.', 'info', 4000);
+        }
+        return false;
+      }
+      const doc = (this._visor && this._visor.uuid === String(uuid))
+        ? this._visor : await this.prepararDocumento(modulo, uuid, titulo);
+      if (doc.falta) throw new Error('No se encontró el registro: conéctate y vuelve a abrirlo.');
+
+      const nombre = this.nombreArchivo(modulo, uuid);
+      const encabezado = this._tituloModulo(modulo) + ' · ' + (doc.titulo || uuid);
+
+      // 1 · Adjunto
+      if (navigator.share && typeof File === 'function') {
+        let archivo = null;
+        try {
+          const blob = await this.pdfBlob(doc);
+          archivo = new File([blob], nombre, { type: 'application/pdf' });
+        } catch (e) { archivo = null; }
+        if (archivo && (!navigator.canShare || navigator.canShare({ files: [archivo] }))) {
+          try {
+            await navigator.share({ files: [archivo], title: encabezado, text: this._mensaje(encabezado) });
+            return true;
+          } catch (e) {
+            // Selector cerrado por el usuario: no es un fallo que explicar
+            if (e && (e.name === 'AbortError' || /abort|cancel/i.test(e.message || ''))) return false;
+          }
+        }
+      }
+
+      // 2 · Enlace del documento archivado
+      let info = null;
+      try { info = await DataService.reportInfo(modulo, uuid, { compartir: true }); } catch (e) { info = null; }
+      if (!info || !info.existe || !info.enlace) {
+        // Todavía no estaba archivado (se guardó sin señal): se archiva ahora
+        const r = await this.archivar(modulo, uuid);
+        if (r && r.status === 'OK') {
+          this.olvidarPendiente(modulo, uuid);
+          try { info = await DataService.reportInfo(modulo, uuid, { compartir: true }); } catch (e) { info = null; }
+        }
+      }
+      if (info && info.enlace) {
+        PWA_SKILLS.abrirWhatsApp('', this._mensaje(encabezado, info.enlace));
+        return true;
+      }
+
+      throw new Error('Este dispositivo no puede adjuntar archivos y el informe aún no está en el servidor. ' +
+                      'Conéctate, espera a que se sincronice y vuelve a intentarlo.');
+    } catch (e) {
+      if (typeof PWA_SKILLS !== 'undefined') PWA_SKILLS.toast(e.message, 'error', 6000);
+      return false;
+    } finally { fin(); }
+  },
+
+  /** Texto que acompaña al documento en WhatsApp. */
+  _mensaje: function(encabezado, enlace) {
+    const u = (typeof AppState !== 'undefined' && AppState.User) || {};
+    const pila = ['📄 *' + encabezado + '*', ''];
+    pila.push('Informe del sistema de Seguridad y Salud en el Trabajo' +
+              (u.EmpresaNombre ? ' de *' + u.EmpresaNombre + '*' : '') + '.');
+    if (enlace) {
+      pila.push('', '🔗 Documento:', enlace, '',
+                '⚠️ El enlace abre el documento a cualquiera que lo reciba: no lo reenvíes fuera de la empresa.');
+    }
+    if (u.Nombre) pila.push('', 'Enviado por ' + u.Nombre + (u.DNI ? ' (DNI ' + u.DNI + ')' : '') + '.');
+    return pila.join('\n');
   },
 
   /** Registro de ejemplo para la vista previa del editor */

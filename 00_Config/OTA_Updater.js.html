@@ -44,17 +44,14 @@ window.MOTOR_OTA = (function () {
 
   /**
    * Base donde viven latest.json y los zips.
-   * Orden: OTA_URL del build → SUPABASE_URL del build → la URL que ya tiene
-   * la app. Lo último importa: el build se hace a menudo sin .env y entonces
-   * la URL real es la de Global_Config.js.html, no la del entorno.
+   *
+   * Orden: OTA_URL del build → AppState.OTA.URL de Global_Config.js.html.
+   * El segundo importa: el build se hace a menudo sin .env, y entonces la URL
+   * buena es la del archivo de configuración, no la del entorno.
    */
   function base() {
-    var u = String(env.OTA_URL || '').trim();
-    if (!u) {
-      var sb = String(env.SUPABASE_URL || '').trim() ||
-               (window.AppState && AppState.Supabase && String(AppState.Supabase.URL || '').trim()) || '';
-      if (sb) u = sb.replace(/\/+$/, '') + '/storage/v1/object/public/actualizaciones';
-    }
+    var u = String(env.OTA_URL || '').trim() ||
+            (window.AppState && AppState.OTA && String(AppState.OTA.URL || '').trim()) || '';
     return u.replace(/\/+$/, '');
   }
 

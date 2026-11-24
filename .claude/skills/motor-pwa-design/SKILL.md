@@ -253,9 +253,26 @@ El botón de la cabecera (`#ui-global-sync-btn` →
 `PWA_SKILLS.triggerGlobalSync()`) es **el único control de sincronización de la
 aplicación**, presente y futura.
 
+- **Se ve en toda la app con sesión abierta**, módulos y **panel principal**
+  incluidos; solo desaparece en el Login. Esconderlo fuera de un módulo dejaba
+  al usuario sin forma de forzar el envío ni de comprobar que todo llegó, justo
+  en la pantalla de inicio. Lo fija el router
+  (`syncBtn.style.display = (viewID === 'Login') ? 'none' : 'flex'`) y
+  `updateSyncUI` no vuelve a ocultarlo.
 - **Nunca** añadas botones de «Sincronizar», «Actualizar» o «Recargar» dentro de
   un módulo, panel, tabla, cabecera o barra de acciones. Si encuentras uno,
-  quítalo.
+  quítalo. El panel principal tenía el suyo (`.mnu-refresh`) y se retiró al
+  hacer visible el de la cabecera: dos botones que hacen lo mismo en la misma
+  pantalla confunden.
+- **Hace lo que toque según dónde esté**: sube la cola siempre y después
+  recarga el Resumen del módulo activo o, en el panel, sus indicadores
+  (`loadDashboardData`).
+- **Al pulsarlo gira el icono desde el primer momento** y durante **un mínimo
+  de 650 ms** aunque la subida acabe en 80 ms: sin ese mínimo el giro no se ve
+  y parece que el botón no hizo nada. Gira el icono (`.sincronizando`), nunca
+  el botón entero, o el número de pendientes daría vueltas con él. Mientras
+  dura, un aviso intermedio del motor no puede apagarlo (lo protege
+  `btn.dataset.ocupado`).
 - La marca de frescura («Actualizado 16:47», «Última sincronización…») es texto,
   nunca un botón. Los mensajes remiten al botón de la cabecera.
 - **Un diagnóstico no es una sincronización.** La regla prohíbe botones que
@@ -263,6 +280,36 @@ aplicación**, presente y futura.
   conexión en Configuración es legítima si es de solo lectura, no refresca
   ninguna caché y no reenvía la cola. La cola pendiente se muestra como texto y
   remite al botón de la cabecera para enviarla.
+
+### La cabecera: dos señales, cada una en su sitio
+
+La cabecera es **una sola**, vive en `00_Config/Index.html` y la comparten
+todos los módulos: lo que se cambia aquí se ve en todos a la vez. Nunca se
+copia una cabecera dentro de un módulo.
+
+| Señal | Dónde | Qué dice |
+|---|---|---|
+| **Número de pendientes** | Sobre el botón de sincronizar (`#ui-sync-badge`, esquina superior) | Cuántos cambios NO han llegado al servidor |
+| **Pastilla de estado** | `#ui-sync-chip`, a la derecha | **Una palabra**: si hay enlace con el servidor |
+
+- **El número vive solo en el distintivo.** Un texto como
+  «Sin conexión · 3 pendiente(s)» parte la cabecera en dos líneas en el móvil
+  —justo donde se registra en campo— y tapa el título del módulo. El texto de
+  estado **no lleva cifras**: lo comprueba `npm run test:sync`.
+- **Sin número = todo llegó al servidor.** Es la señal que busca el trabajador
+  antes de cerrar la app, así que con pendientes el botón se ve **también
+  fuera de un módulo** (lo decide `updateSyncUI`, no el router).
+- Estados de la pastilla, una clase cada uno, y el punto toma su color:
+  `is-ok` «Conectado» · `is-off` «Sin conexión» · `is-warn` «Con error» ·
+  `is-sync` «Enviando…». Por debajo de 480 px la pastilla se queda solo con el
+  punto; el texto sigue ahí para el lector de pantalla.
+- El distintivo es **rojo con texto blanco** (4,8:1) y lleva un aro del color
+  de la cabecera. No usa el amarillo de acción: el amarillo significa «pulsa
+  aquí», y aquí el número informa. Los colores de la cabecera **no se
+  invierten con el tema**, porque la cabecera es marino en los dos.
+- Los tres controles (menú, sincronizar, tema) miden lo mismo (`.icon-btn`,
+  38 px) y la cabecera **nunca** desborda: el título cede con puntos
+  suspensivos antes que los controles, que son acciones.
 
 ## Acciones inferiores siempre visibles
 

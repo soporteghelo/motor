@@ -36,6 +36,7 @@ function crearEntorno(opts) {
     createFolder(n) { return new Carpeta(n, this.id); }
     createFile(blob) { return new Archivo(blob.getName(), blob.getContentType(), blob.getBytes(), this.id); }
     getFiles() { return iterador(Object.values(archivos).filter(a => a.padres.indexOf(this.id) !== -1 && !a.papelera)); }
+    getFilesByName(n) { return iterador(Object.values(archivos).filter(a => a.padres.indexOf(this.id) !== -1 && !a.papelera && a.nombre === n)); }
     ruta() { return (this.padre && carpetas[this.padre] ? carpetas[this.padre].ruta() + '/' : '') + this.nombre; }
   }
   class Archivo {
@@ -47,6 +48,13 @@ function crearEntorno(opts) {
     getParents() { return iterador(this.padres.map(p => carpetas[p]).filter(Boolean)); }
     moveTo(c) { this.padres = [c.getId()]; return this; }
     setTrashed(b) { this.papelera = !!b; return this; } isTrashed() { return this.papelera; }
+    getLastUpdated() { return this.actualizado || new Date(); }
+    // Compartir por enlace: la prueba comprueba QUE se comparte y con qué
+    // permiso, que es la decisión delicada (el informe pasa a ser legible por
+    // cualquiera que reciba el enlace).
+    setSharing(acceso, permiso) { this.acceso = acceso; this.permiso = permiso; return this; }
+    getSharingAccess() { return this.acceso || 'PRIVATE'; }
+    getSharingPermission() { return this.permiso || 'NONE'; }
   }
   class Blob {
     constructor(bytes, mime, nombre) { this.bytes = typeof bytes === 'string' ? firmados(Buffer.from(bytes, 'utf8')) : bytes; this.mime = mime; this.nombre = nombre; }
@@ -55,6 +63,8 @@ function crearEntorno(opts) {
   }
   const miUnidad = new Carpeta('Mi unidad', null);
   const DriveApp = {
+    Access: { PRIVATE: 'PRIVATE', ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', DOMAIN: 'DOMAIN' },
+    Permission: { NONE: 'NONE', VIEW: 'VIEW', EDIT: 'EDIT', COMMENT: 'COMMENT' },
     getFolderById(id) { const c = carpetas[id]; if (!c) throw new Error('No se encontró el elemento con el id especificado: ' + id); return c; },
     getFileById(id) { const a = archivos[id]; if (!a) throw new Error('No se encontró el archivo: ' + id); return a; },
     getRootFolder() { return miUnidad; },
